@@ -16,13 +16,13 @@ Please review our [Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you
 
 ## :bulb: Asking Questions
 
-If you have any question that does not relate to a bug or a feature request, please use [GitHub Discussions](https://github.com/retro/semantic-layer/discussions) instead of GitHub issues.
+If you have any question that does not relate to a bug or a feature request, please use [GitHub Discussions](https://github.com/verybigthings/semantic-layer/discussions) instead of GitHub issues.
 
 ## :inbox_tray: How can I Contribute?
 
 **GitHub issues**
 
-If you encounter a problem with this library or if you have a new feature you'd like to see in this project, please create [a new issue](https://github.com/retro/semantic-layer/issues/new/choose).
+If you encounter a problem with this library or if you have a new feature you'd like to see in this project, please create [a new issue](https://github.com/verybigthings/semantic-layer/issues/new/choose).
 
 **GitHub Pull requests**
 

@@ -1,23 +1,31 @@
 {
-	"version": "0.2",
-	"language": "en",
-	"words": [
-		"degit",
-		"esbuild",
-		"semantic-layer",
-		"octocat",
-		"outdir",
-		"rmrf",
-		"ryansonshine",
-		"socio",
-		"tsdoc"
-	],
-	"flagWords": [],
-	"ignorePaths": [
-		"package.json",
-		"package-lock.json",
-		"yarn.lock",
-		"tsconfig.json",
-		"node_modules/**"
-	]
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "dagrejs",
+    "datetime",
+    "degit",
+    "esbuild",
+    "graphlib",
+    "ilike",
+    "octocat",
+    "oracledb",
+    "outdir",
+    "rmrf",
+    "ryansonshine",
+    "semantic-layer",
+    "socio",
+    "sqls",
+    "tsdoc",
+    "gjuchault",
+    "chrono"
+  ],
+  "flagWords": [],
+  "ignorePaths": [
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "tsconfig.json",
+    "node_modules/**"
+  ]
 }
