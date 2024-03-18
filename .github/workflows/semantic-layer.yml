@@ -1,4 +1,4 @@
-name: @verybigthings/semantic-layer
+name: semantic-layer
 
 on: [push]
 
