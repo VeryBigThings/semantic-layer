@@ -16,7 +16,8 @@
     "semantic-layer",
     "socio",
     "sqls",
-    "tsdoc"
+    "tsdoc",
+    "gjuchault"
   ],
   "flagWords": [],
   "ignorePaths": [
