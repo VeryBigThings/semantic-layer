@@ -13,6 +13,7 @@
     "datetime",
     "degit",
     "esbuild",
+    "fanout",
     "Favourites",
     "Finlandia",
     "Galactica",
@@ -33,7 +34,8 @@
     "stico",
     "Sucesso",
     "testcontainers",
-    "tsdoc"
+    "tsdoc",
+    "verybigthings"
   ],
   "flagWords": [],
   "ignorePaths": [
