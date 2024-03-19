@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as graphlib from "@dagrejs/graphlib";
 
-import { AnyQuery, QuerySegment, TableQuery } from "../../types.js";
 import type { AnyDatabase, Join } from "../builder/database.js";
+import { AnyQuery, QuerySegment, TableQuery } from "../../types.js";
 
-import knex from "knex";
-import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
 import { expandQueryToSegments } from "./expand-query.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
+import invariant from "tiny-invariant";
+import knex from "knex";
 
 interface ReferencedTables {
   all: string[];
@@ -293,6 +293,9 @@ function buildQuery(
     rootSqlQuery.orderByRaw(orderBy.join(", "));
   }
 
+  rootSqlQuery.limit(query.limit ?? 5000);
+  rootSqlQuery.offset(query.offset ?? 0);
+
   return rootSqlQuery;
 }
 
@@ -316,9 +319,10 @@ export function build(
   );
 
   const result = sqlQuery.toSQL().toNative();
+  const bindings: unknown[] = [...result.bindings];
 
   return {
     sql: result.sql,
-    bindings: result.bindings,
+    bindings,
   };
 }

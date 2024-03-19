@@ -20,6 +20,8 @@ export type Query<DN extends string, MN extends string, F = never> = {
   metrics?: MN[];
   order?: { [K in DN | MN]?: "asc" | "desc" };
   filters?: QueryFilter<F>[];
+  limit?: number;
+  offset?: number;
 };
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
