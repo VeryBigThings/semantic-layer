@@ -1,81 +1,121 @@
-# TypeScript Library Starter
+# @verybigthings/semantic-layer
 
-![NPM](https://img.shields.io/npm/l/@gjuchault/typescript-library-starter)
-![NPM](https://img.shields.io/npm/v/@gjuchault/typescript-library-starter)
-![GitHub Workflow Status](https://github.com/gjuchault/typescript-library-starter/actions/workflows/typescript-library-starter.yml/badge.svg?branch=main)
+![NPM](https://img.shields.io/npm/l/@verybigthings/semantic-layer)
+![NPM](https://img.shields.io/npm/v/@verybigthings/semantic-layer)
+![GitHub Workflow Status](https://github.com/verybigthings/semantic-layer/actions/workflows/semantic-layer.yml/badge.svg?branch=main)
 
-Yet another (opinionated) TypeScript library starter template.
+## Introduction
 
-If you're looking for a backend service starter, check out my [typescript-service-starter](https://github.com/gjuchault/typescript-service-starter)
+The `@verybigthings/semantic-layer` library is crafted to simplify interactions between applications and relational databases, by providing a framework that abstracts SQL query complexities into a more manageable form. It aids in constructing analytical queries while addressing common issues such as join fanout and chasm traps. The library intelligently determines optimal join strategies for requested tables, based on their definitions within the database. Designed for direct integration into existing code bases, it operates without the need for deploying external services.
 
-## Opinions and limitations
+## Key Features
 
-1. Relies as much as possible on each included library's defaults
-2. Only relies on GitHub Actions
-3. Does not include documentation generation
+- **Declarative Schema and Query Building:** Utilize a fluent, TypeScript-based API to define your database schema and queries declaratively.
+- **Type Safety:** Minimize errors with type-safe interfaces for query construction, enhancing code reliability.
+- **Dynamic SQL Query Generation:** Automatically construct complex SQL queries tailored to your application's business logic, eliminating the need for string concatenation.
 
-## Getting started
+## Getting Started
 
-1. `npx degit gjuchault/typescript-library-starter my-project` or click on the `Use this template` button on GitHub!
-2. `cd my-project`
-3. `npm install`
-4. `git init` (if you used degit)
-5. `npm run setup`
+### Installation
 
-To enable deployment, you will need to:
+To integrate the Semantic Layer Library into your project, run the following command with npm:
 
-1. Set up the `NPM_TOKEN` secret in GitHub Actions ([Settings > Secrets > Actions](https://github.com/gjuchault/typescript-library-starter/settings/secrets/actions))
-2. Give `GITHUB_TOKEN` write permissions for GitHub releases ([Settings > Actions > General](https://github.com/gjuchault/typescript-library-starter/settings/actions) > Workflow permissions)
+```shell
+npm install @verybigthings/semantic-layer
+```
 
-## Features
+## Usage Examples
 
-### Node.js, npm version
+### Defining Tables and Fields
 
-TypeScript Library Starter relies on [Volta](https://volta.sh/) to ensure the Node.js version is consistent across developers. It's also used in the GitHub workflow file.
+This library allows you to define tables and their respective fields, including dimensions and metrics, which represent the various columns and computed values within your database.
 
-### TypeScript
+**Defining a Table:**
 
-Leverages [esbuild](https://github.com/evanw/esbuild) for blazing-fast builds but keeps `tsc` to generate `.d.ts` files.
-Generates a single ESM build.
+```typescript
+const customersTable = C.table("Customer")
+  .withDimension("customer_id", {
+    type: "number",
+    primaryKey: true,
+    sql: ({ table, sql }) => sql`${table.column("CustomerId")}`,
+  })
+  .withDimension("first_name", {
+    type: "string",
+    sql: ({ table }) => table.column("FirstName"),
+  })
+  .withDimension("last_name", {
+    type: "string",
+    sql: ({ table }) => table.column("LastName"),
+  });
 
-Commands:
+const invoicesTable = C.table("Invoice")
+  .withDimension("invoice_id", {
+    type: "number",
+    primaryKey: true,
+    sql: ({ table, sql }) => sql`${table.column("InvoiceId")}`,
+  })
+  .withMetric("total", {
+    type: "sum",
+    sql: ({ table }) => table.column("Total"),
+  });
+```
 
-- `build`: runs type checking, then ESM and `d.ts` files in the `build/` directory
-- `clean`: removes the `build/` directory
-- `type:dts`: only generates `d.ts`
-- `type:check`: only runs type checking
-- `type:build`: only generates ESM
+**Defining a Database and joining tables:**
 
-### Tests
+```typescript
+const db = C.database()
+  .withTable(customersTable)
+  .withTable(invoicesTable)
+  .joinOneToMany(
+    "Customer",
+    "Invoice",
+    ({ sql, dimensions }) =>
+      sql`${dimensions.Customer.customer_id} = ${dimensions.Invoice.customer_id}`
+  );
+```
 
-TypeScript Library Starter uses [Node.js's native test runner](https://nodejs.org/api/test.html). Coverage is done using [c8](https://github.com/bcoe/c8) but will switch to Node.js's one once out.
+### Data Querying
 
-Commands:
+Leverage the library's querying capabilities to fetch dimensions and metrics, apply filters, and sort results efficiently.
 
-- `test`: runs test runner
-- `test:watch`: runs test runner in watch mode
-- `test:coverage`: runs test runner and generates coverage reports
+```typescript
+// Dimension and metric query
+const query = db.query({
+  dimensions: ["Customer.customer_id"],
+  metrics: ["Invoice.total"],
+  order: { "Customer.customer_id": "asc" },
+  limit: 10,
+});
 
-### Format & lint
+// Metric query with filters
+const query = db.query({
+  metrics: ["Invoice.total", "InvoiceLine.quantity"],
+  filters: [{ operator: "equals", member: "Customer.customer_id", value: [1] }],
+});
 
-This template relies on [Biome](https://biomejs.dev/) to do both formatting & linting in no time.
-It also uses [cspell](https://github.com/streetsidesoftware/cspell) to ensure correct spelling.
+// Dimension query with filters
+const query = db.query({
+  dimensions: ["Customer.first_name", "Customer.last_name"],
+  filters: [{ operator: "equals", member: "Customer.customer_id", value: [1] }],
+});
 
-Commands:
+// Filtering and sorting
+const query = db.query({
+  dimensions: ["Customer.first_name"],
+  metrics: ["Invoice.total"],
+  filters: [{ operator: "gt", member: "Invoice.total", value: [100] }],
+  order: { "Invoice.total": "desc" },
+});
+```
 
-- `format`: runs Prettier with automatic fixing
-- `format:check`: runs Prettier without automatic fixing (used in CI)
-- `lint`: runs Biome with automatic fixing
-- `lint:check`: runs Biome without automatic fixing (used in CI)
-- `spell:check`: runs spell checking
+### Executing queries
 
-### Releasing
+Note: @verybigthings/semantic-layer focuses on SQL generation. Execute the generated queries with your SQL client:
 
-Under the hood, this library uses [semantic-release](https://github.com/semantic-release/semantic-release) and [Commitizen](https://github.com/commitizen/cz-cli).
-The goal is to avoid manual release processes. Using `semantic-release` will automatically create a GitHub release (hence tags) as well as an npm release.
-Based on your commit history, `semantic-release` will automatically create a patch, feature, or breaking release.
+```typescript
+const result = await sqlClient.query(query.sql, query.bindings);
+```
 
-Commands:
+## Acknowledgments
 
-- `cz`: interactive CLI that helps you generate a proper git commit message, using [Commitizen](https://github.com/commitizen/cz-cli)
-- `semantic-release`: triggers a release (used in CI)
+@verybigthings/semantic-layer draws inspiration from several BI libraries, particularly [https://cube.dev](Cube.dev). While our API is very close to that of Cube.dev, future development may change our approach.
