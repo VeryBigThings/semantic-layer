@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as graphlib from "@dagrejs/graphlib";
 
-import { AnyQuery, QuerySegment, TableQuery } from "../../types.js";
+import { AnyQuery, ModelQuery, QuerySegment } from "../../types.js";
 import type { AnyDatabase, Join } from "../builder/database.js";
 
 import knex from "knex";
@@ -10,7 +10,7 @@ import { BaseDialect } from "../dialect/base.js";
 import { expandQueryToSegments } from "./expand-query.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
 
-interface ReferencedTables {
+interface ReferencedModels {
   all: string[];
   dimensions: string[];
   metrics: string[];
@@ -24,35 +24,38 @@ function buildQuerySegmentJoinQuery(
   database: AnyDatabase,
   Dialect: typeof BaseDialect,
   joinGraph: graphlib.Graph,
-  tableQueries: Record<string, TableQuery>,
+  modelQueries: Record<string, ModelQuery>,
   source: string,
 ) {
-  const visitedTables = new Set<string>();
-
-  const sqlQuery = knex(source);
+  const visitedModels = new Set<string>();
+  const model = database.getModel(source);
+  const sqlQuery =
+    model.config.type === "table"
+      ? knex(model.config.name)
+      : knex(knex.raw(`(${model.config.sql}) as ${model.config.alias}`));
   const dialect = new Dialect(sqlQuery);
 
-  const tableStack: { tableName: string; join?: Join }[] = [
-    { tableName: source },
+  const modelStack: { modelName: string; join?: Join }[] = [
+    { modelName: source },
   ];
 
-  while (tableStack.length > 0) {
-    const { tableName, join } = tableStack.pop()!;
-    if (visitedTables.has(tableName)) {
+  while (modelStack.length > 0) {
+    const { modelName, join } = modelStack.pop()!;
+    if (visitedModels.has(modelName)) {
       continue;
     }
-    visitedTables.add(tableName);
+    visitedModels.add(modelName);
 
-    const tableQuery = tableQueries[tableName];
-    const table = database.getTable(tableName);
-    const hasMetrics = tableQuery?.metrics && tableQuery.metrics.size > 0;
-    const unvisitedNeighbors = (joinGraph.neighbors(tableName) ?? []).filter(
-      (tableName) => !visitedTables.has(tableName),
+    const modelQuery = modelQueries[modelName];
+    const model = database.getModel(modelName);
+    const hasMetrics = modelQuery?.metrics && modelQuery.metrics.size > 0;
+    const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
+      (modelName) => !visitedModels.has(modelName),
     );
-    const dimensionNames = new Set(tableQuery?.dimensions || []);
+    const dimensionNames = new Set(modelQuery?.dimensions || []);
 
     if (hasMetrics) {
-      for (const d of table.getPrimaryKeyDimensions()) {
+      for (const d of model.getPrimaryKeyDimensions()) {
         dimensionNames.add(d.getPath());
       }
     }
@@ -60,8 +63,15 @@ function buildQuerySegmentJoinQuery(
     if (join) {
       const joinType = join.reversed ? "rightJoin" : "leftJoin";
       const joinOn = join.joinOnDef.render(database, dialect);
+      const rightModel = database.getModel(join.right);
+      const joinSubject =
+        rightModel.config.type === "table"
+          ? rightModel.config.name
+          : knex.raw(
+              `(${rightModel.config.sql}) as ${rightModel.config.alias}`,
+            );
 
-      sqlQuery[joinType](join.right, knex.raw(joinOn.sql, joinOn.bindings));
+      sqlQuery[joinType](joinSubject, knex.raw(joinOn.sql, joinOn.bindings));
 
       // We have a join that is multiplying the rows, so we need to use DISTINCT
       if (join.type === "manyToMany" || join.type === "oneToMany") {
@@ -69,7 +79,7 @@ function buildQuerySegmentJoinQuery(
       }
     }
 
-    for (const metricName of tableQuery?.metrics || []) {
+    for (const metricName of modelQuery?.metrics || []) {
       const metric = database.getMetric(metricName);
       const { sql, bindings } = metric.getSql(dialect);
       sqlQuery.select(
@@ -86,10 +96,10 @@ function buildQuerySegmentJoinQuery(
       );
     }
 
-    tableStack.push(
-      ...unvisitedNeighbors.map((unvisitedTableName) => ({
-        tableName: unvisitedTableName,
-        join: database.getJoin(tableName, unvisitedTableName),
+    modelStack.push(
+      ...unvisitedNeighbors.map((unvisitedModelName) => ({
+        modelName: unvisitedModelName,
+        join: database.getJoin(modelName, unvisitedModelName),
       })),
     );
   }
@@ -107,8 +117,8 @@ function buildQuerySegment(
   const sources = joinGraph.sources();
 
   const source =
-    segment.referencedTables.metrics.length > 0
-      ? segment.referencedTables.metrics[0]
+    segment.referencedModels.metrics.length > 0
+      ? segment.referencedModels.metrics[0]
       : sources[0];
 
   invariant(source, "No source found for segment");
@@ -118,7 +128,7 @@ function buildQuerySegment(
     database,
     Dialect,
     joinGraph,
-    segment.tableQueries,
+    segment.modelQueries,
     source,
   );
   const dialect = new Dialect(initialSqlQuery);
@@ -129,7 +139,7 @@ function buildQuerySegment(
         database,
         dialect,
         "dimension",
-        segment.referencedTables.all,
+        segment.referencedModels.all,
       )
       .buildFilters(segment.query.filters, "and");
 
@@ -182,7 +192,7 @@ function buildQuery(
   database: AnyDatabase,
   Dialect: typeof BaseDialect,
   query: AnyQuery,
-  referencedTables: ReferencedTables,
+  referencedModels: ReferencedModels,
   joinGraph: graphlib.Graph,
   segments: QuerySegment[],
 ) {
@@ -193,8 +203,8 @@ function buildQuery(
 
   invariant(initialSqlQuerySegment, "No initial sql query segment found");
 
-  const joinOnDimensions = referencedTables.dimensions.flatMap((tableName) =>
-    database.getTable(tableName).getPrimaryKeyDimensions(),
+  const joinOnDimensions = referencedModels.dimensions.flatMap((modelName) =>
+    database.getModel(modelName).getPrimaryKeyDimensions(),
   );
   const rootAlias = getAlias(0);
   const rootSqlQuery = knex(initialSqlQuerySegment.sqlQuery.as(rootAlias));
@@ -261,8 +271,8 @@ function buildQuery(
   if (query.filters) {
     const metricPrefixes = sqlQuerySegments.reduce<Record<string, string>>(
       (acc, segment, idx) => {
-        if (segment.metricTable) {
-          acc[segment.metricTable] = getAlias(idx);
+        if (segment.metricModel) {
+          acc[segment.metricModel] = getAlias(idx);
         }
         return acc;
       },
@@ -273,7 +283,7 @@ function buildQuery(
         database,
         dialect,
         "metric",
-        referencedTables.metrics,
+        referencedModels.metrics,
         metricPrefixes,
       )
       .buildFilters(query.filters, "and");
@@ -304,16 +314,16 @@ export function build(
   Dialect: typeof BaseDialect,
   query: AnyQuery,
 ) {
-  const { referencedTables, segments } = expandQueryToSegments(database, query);
+  const { referencedModels, segments } = expandQueryToSegments(database, query);
 
-  const joinGraph = findOptimalJoinGraph(database.graph, referencedTables.all);
+  const joinGraph = findOptimalJoinGraph(database.graph, referencedModels.all);
 
   const sqlQuery = buildQuery(
     client,
     database,
     Dialect,
     query,
-    referencedTables,
+    referencedModels,
     joinGraph,
     segments,
   );

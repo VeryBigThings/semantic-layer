@@ -27,7 +27,7 @@ export type Query<DN extends string, MN extends string, F = never> = {
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQuery = Query<string, string, any>;
 
-export interface TableQuery {
+export interface ModelQuery {
   dimensions: Set<string>;
   metrics: Set<string>;
 }
@@ -41,13 +41,13 @@ export interface QuerySegmentQuery {
 export interface QuerySegment {
   query: QuerySegmentQuery;
   projectedQuery: QuerySegmentQuery;
-  referencedTables: {
+  referencedModels: {
     all: string[];
     dimensions: string[];
     metrics: string[];
   };
-  tableQueries: Record<string, TableQuery>;
-  metricTable: string | null;
+  modelQueries: Record<string, ModelQuery>;
+  metricModel: string | null;
 }
 
 export interface SqlWithBindings {

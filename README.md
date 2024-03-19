@@ -6,7 +6,7 @@
 
 ## Introduction
 
-The `@verybigthings/semantic-layer` library is crafted to simplify interactions between applications and relational databases, by providing a framework that abstracts SQL query complexities into a more manageable form. It aids in constructing analytical queries while addressing common issues such as join fanout and chasm traps. The library intelligently determines optimal join strategies for requested tables, based on their definitions within the database. Designed for direct integration into existing code bases, it operates without the need for deploying external services.
+The `@verybigthings/semantic-layer` library is crafted to simplify interactions between applications and relational databases, by providing a framework that abstracts SQL query complexities into a more manageable form. It aids in constructing analytical queries while addressing common issues such as join fanout and chasm traps. The library intelligently determines optimal join strategies for requested models, based on their definitions within the database. Designed for direct integration into existing code bases, it operates without the need for deploying external services.
 
 ## Key Features
 
@@ -26,51 +26,84 @@ npm install @verybigthings/semantic-layer
 
 ## Usage Examples
 
-### Defining Tables and Fields
+### Defining Models and Fields
 
-This library allows you to define tables and their respective fields, including dimensions and metrics, which represent the various columns and computed values within your database.
+This library allows you to define models and their respective fields, including dimensions and metrics, which represent the various columns and computed values within your database.
 
-**Defining a Table:**
+**Defining a Model:**
 
 ```typescript
-const customersTable = C.table("Customer")
+const customersModel = C.model("customers")
+  .fromTable("Customer")
   .withDimension("customer_id", {
     type: "number",
     primaryKey: true,
-    sql: ({ table, sql }) => sql`${table.column("CustomerId")}`,
+    sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
   })
   .withDimension("first_name", {
     type: "string",
-    sql: ({ table }) => table.column("FirstName"),
+    sql: ({ model }) => model.column("FirstName"),
   })
   .withDimension("last_name", {
     type: "string",
-    sql: ({ table }) => table.column("LastName"),
+    sql: ({ model }) => model.column("LastName"),
   });
 
-const invoicesTable = C.table("Invoice")
+const invoicesModel = C.model("invoices")
+  .fromTable("Invoice")
   .withDimension("invoice_id", {
     type: "number",
     primaryKey: true,
-    sql: ({ table, sql }) => sql`${table.column("InvoiceId")}`,
+    sql: ({ model, sql }) => sql`${model.column("InvoiceId")}`,
   })
   .withMetric("total", {
     type: "sum",
-    sql: ({ table }) => table.column("Total"),
+    sql: ({ model }) => model.column("Total"),
+  });
+
+const invoiceLinesModel = C.model("invoice_lines")
+  .fromTable("InvoiceLine")
+  .withDimension("invoice_line_id", {
+    type: "number",
+    primaryKey: true,
+    sql: ({ model }) => model.column("InvoiceLineId"),
+  })
+  .withDimension("invoice_id", {
+    type: "number",
+    sql: ({ model }) => model.column("InvoiceId"),
+  })
+  .withDimension("track_id", {
+    type: "number",
+    sql: ({ model }) => model.column("TrackId"),
+  })
+  .withMetric("quantity", {
+    type: "sum",
+    sql: ({ model }) => model.column("Quantity"),
+  })
+  .withMetric("total_unit_price", {
+    type: "sum",
+    sql: ({ model }) => model.column("UnitPrice"),
   });
 ```
 
-**Defining a Database and joining tables:**
+**Defining a Database and joining models:**
 
 ```typescript
 const db = C.database()
-  .withTable(customersTable)
-  .withTable(invoicesTable)
+  .withModel(customersModel)
+  .withModel(invoicesModel)
+  .withModel(invoiceLinesModel)
   .joinOneToMany(
-    "Customer",
-    "Invoice",
+    "customers",
+    "invoices",
     ({ sql, dimensions }) =>
-      sql`${dimensions.Customer.customer_id} = ${dimensions.Invoice.customer_id}`
+      sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`
+  )
+  .joinOneToMany(
+    "invoices",
+    "invoice_lines",
+    ({ sql, dimensions }) =>
+      sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`
   );
 ```
 
@@ -81,41 +114,49 @@ Leverage the library's querying capabilities to fetch dimensions and metrics, ap
 ```typescript
 // Dimension and metric query
 const query = db.query({
-  dimensions: ["Customer.customer_id"],
-  metrics: ["Invoice.total"],
-  order: { "Customer.customer_id": "asc" },
+  dimensions: ["customers.customer_id"],
+  metrics: ["invoices.total"],
+  order: { "customers.customer_id": "asc" },
   limit: 10,
 });
 
 // Metric query with filters
 const query = db.query({
-  metrics: ["Invoice.total", "InvoiceLine.quantity"],
-  filters: [{ operator: "equals", member: "Customer.customer_id", value: [1] }],
+  metrics: ["invoices.total", "invoice_lines.quantity"],
+  filters: [
+    { operator: "equals", member: "customers.customer_id", value: [1] },
+  ],
 });
 
 // Dimension query with filters
 const query = db.query({
-  dimensions: ["Customer.first_name", "Customer.last_name"],
-  filters: [{ operator: "equals", member: "Customer.customer_id", value: [1] }],
+  dimensions: ["customers.first_name", "customers.last_name"],
+  filters: [
+    { operator: "equals", member: "customers.customer_id", value: [1] },
+  ],
 });
 
 // Filtering and sorting
 const query = db.query({
-  dimensions: ["Customer.first_name"],
-  metrics: ["Invoice.total"],
-  filters: [{ operator: "gt", member: "Invoice.total", value: [100] }],
-  order: { "Invoice.total": "desc" },
+  dimensions: ["customers.first_name"],
+  metrics: ["invoices.total"],
+  filters: [{ operator: "gt", member: "invoices.total", value: [100] }],
+  order: { "invoices.total": "desc" },
 });
 ```
 
 ### Executing queries
 
-Note: @verybigthings/semantic-layer focuses on SQL generation. Execute the generated queries with your SQL client:
+Note: `@verybigthings/semantic-layer` focuses on SQL generation. Execute the generated queries with your SQL client:
 
 ```typescript
 const result = await sqlClient.query(query.sql, query.bindings);
 ```
 
+### Limitations
+
+At the moment, only PostgreSQL queries are generated correctly. We're working on adding support for additional dialects.
+
 ## Acknowledgments
 
-@verybigthings/semantic-layer draws inspiration from several BI libraries, particularly [https://cube.dev](Cube.dev). While our API is very close to that of Cube.dev, future development may change our approach.
+`@verybigthings/semantic-layer` draws inspiration from several BI libraries, particularly [Cube.dev](https://cube.dev). While our API is very close to that of Cube.dev, future development may change our approach.
