@@ -43,7 +43,7 @@ import { notEquals as filterNotEquals } from "./filter-builder/not-equals.js";
 import { sqlAsSqlWithBindings } from "./util.js";
 
 export class FilterBuilder {
-  private readonly referencedTables: Set<string>;
+  private readonly referencedModels: Set<string>;
 
   constructor(
     private readonly filterFragmentBuilders: Record<
@@ -53,19 +53,19 @@ export class FilterBuilder {
     private readonly dialect: BaseDialect,
     private readonly database: Database,
     private readonly filterType: FilterType,
-    referencedTables: string[],
+    referencedModels: string[],
     private readonly metricPrefixes?: Record<string, string>,
   ) {
-    this.referencedTables = new Set(referencedTables);
+    this.referencedModels = new Set(referencedModels);
   }
   getMemberSql(memberName: string): SqlWithBindings | undefined {
     const member = this.database.getMember(memberName);
-    if (this.referencedTables.has(member.table.name)) {
+    if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
         return member.getSql(this.dialect);
       }
       if (this.filterType === "metric" && member.isMetric()) {
-        const prefix = this.metricPrefixes?.[member.table.name];
+        const prefix = this.metricPrefixes?.[member.model.name];
         const sql = member.getAlias(this.dialect);
         return sqlAsSqlWithBindings(
           prefix ? `${this.dialect.asIdentifier(prefix)}.${sql}` : sql,
@@ -149,7 +149,7 @@ export class FilterFragmentBuilderRegistry<T = never> {
     database: Database,
     dialect: BaseDialect,
     filterType: FilterType,
-    referencedTables: string[],
+    referencedModels: string[],
     metricPrefixes?: Record<string, string>,
   ): FilterBuilder {
     return new FilterBuilder(
@@ -157,7 +157,7 @@ export class FilterFragmentBuilderRegistry<T = never> {
       dialect,
       database,
       filterType,
-      referencedTables,
+      referencedModels,
       metricPrefixes,
     );
   }

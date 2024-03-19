@@ -13,14 +13,14 @@ export abstract class Ref {
 
 export class ColumnRef extends Ref {
   constructor(
-    public readonly table: AnyTable,
+    public readonly model: AnyModel,
     public readonly name: string,
   ) {
     super();
   }
   render(dialect: BaseDialect) {
     const sql = `${dialect.asIdentifier(
-      this.table.name,
+      this.model.getAs(),
     )}.${dialect.asIdentifier(this.name)}`;
     return {
       sql,
@@ -72,7 +72,7 @@ export class SqlWithRefs extends Ref {
 export type SqlDef = ColumnRef | SqlWithRefs;
 
 export type SqlFn<DN extends string = string> = (args: {
-  table: {
+  model: {
     column: (name: string) => ColumnRef;
     dimension: (name: DN) => DimensionRef;
   };
@@ -114,28 +114,28 @@ export interface MetricProps<DN extends string = string> {
 
 export abstract class Member {
   public abstract readonly name: string;
-  public abstract readonly table: AnyTable;
+  public abstract readonly model: AnyModel;
   public abstract props: { sql?: SqlFn };
 
-  abstract getSql(dialect: BaseDialect, tableAlias?: string): SqlWithBindings;
+  abstract getSql(dialect: BaseDialect, modelAlias?: string): SqlWithBindings;
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
   getAlias(dialect: BaseDialect) {
     return dialect.asIdentifier(
-      `${this.table.name}___${this.name.replaceAll(".", "___")}`,
+      `${this.model.name}___${this.name.replaceAll(".", "___")}`,
     );
   }
   getPath() {
-    return `${this.table.name}.${this.name}`;
+    return `${this.model.name}.${this.name}`;
   }
   renderSql(dialect: BaseDialect): SqlWithBindings | undefined {
     if (this.props.sql) {
       const result = this.props.sql({
-        table: {
-          column: (name: string) => new ColumnRef(this.table, name),
+        model: {
+          column: (name: string) => new ColumnRef(this.model, name),
           dimension: (name: string) =>
-            new DimensionRef(this.table.getDimension(name)),
+            new DimensionRef(this.model.getDimension(name)),
         },
         sql: (strings, ...values) => new SqlWithRefs([...strings], values),
       });
@@ -146,23 +146,23 @@ export abstract class Member {
 
 export class Dimension extends Member {
   constructor(
-    public readonly table: AnyTable,
+    public readonly model: AnyModel,
     public readonly name: string,
     public readonly props: DimensionProps,
     public readonly granularity?: Granularity,
   ) {
     super();
   }
-  getSql(dialect: BaseDialect, tableAlias?: string) {
-    if (tableAlias) {
+  getSql(dialect: BaseDialect, modelAlias?: string) {
+    if (modelAlias) {
       return sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(tableAlias)}.${this.getAlias(dialect)}`,
+        `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
     const result =
       this.renderSql(dialect) ??
       sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(this.table.name)}.${dialect.asIdentifier(
+        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
           this.name,
         )}`,
       );
@@ -184,29 +184,29 @@ export class Dimension extends Member {
 
 export class Metric extends Member {
   constructor(
-    public readonly table: AnyTable,
+    public readonly model: AnyModel,
     public readonly name: string,
     public readonly props: MetricProps,
   ) {
     super();
   }
-  getSql(dialect: BaseDialect, tableAlias?: string) {
-    if (tableAlias) {
+  getSql(dialect: BaseDialect, modelAlias?: string) {
+    if (modelAlias) {
       return sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(tableAlias)}.${this.getAlias(dialect)}`,
+        `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
     return (
       this.renderSql(dialect) ??
       sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(this.table.name)}.${dialect.asIdentifier(
+        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
           this.name,
         )}`,
       )
     );
   }
-  getAggregateSql(dialect: BaseDialect, tableAlias?: string) {
-    const { sql, bindings } = this.getSql(dialect, tableAlias);
+  getAggregateSql(dialect: BaseDialect, modelAlias?: string) {
+    const { sql, bindings } = this.getSql(dialect, modelAlias);
     return {
       sql: `${this.props.type.toUpperCase()}(${sql})`,
       bindings,
@@ -221,23 +221,29 @@ export class Metric extends Member {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyTable = Table<any, any, any>;
-export class Table<
-  TN extends string,
+export type AnyModel = Model<any, any, any>;
+export type ModelConfig =
+  | { type: "table"; name: string }
+  | { type: "sqlQuery"; alias: string; sql: string };
+
+export class Model<
+  N extends string,
   DN extends string = never,
   MN extends string = never,
 > {
-  public readonly name: TN;
   public readonly dimensions: Record<string, Dimension> = {};
   public readonly metrics: Record<string, Metric> = {};
 
-  constructor(name: TN) {
+  constructor(
+    public readonly name: N,
+    public readonly config: ModelConfig,
+  ) {
     this.name = name;
   }
   withDimension<DN1 extends string, DP extends DimensionProps<DN>>(
     name: DN1,
     dimension: DP,
-  ): Table<TN, DN | WithGranularityDimensionNames<DN1, DP["type"]>, MN> {
+  ): Model<N, DN | WithGranularityDimensionNames<DN1, DP["type"]>, MN> {
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
@@ -255,21 +261,21 @@ export class Table<
   withMetric<MN1 extends string>(
     name: MN1,
     metric: MetricProps<DN>,
-  ): Table<TN, DN, MN | MN1> {
+  ): Model<N, DN, MN | MN1> {
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
   getMetric(name: MN) {
     const metric = this.metrics[name];
     if (!metric) {
-      throw new Error(`Metric ${name} not found in table ${this.name}`);
+      throw new Error(`Metric ${name} not found in model ${this.name}`);
     }
     return metric;
   }
   getDimension(name: DN) {
     const dimension = this.dimensions[name];
     if (!dimension) {
-      throw new Error(`Dimension ${name} not found in table ${this.name}`);
+      throw new Error(`Dimension ${name} not found in model ${this.name}`);
     }
     return dimension;
   }
@@ -279,12 +285,30 @@ export class Table<
   getMember(name: DN | MN) {
     const member = this.dimensions[name] || this.metrics[name];
     if (!member) {
-      throw new Error(`Member ${name} not found in table ${this.name}`);
+      throw new Error(`Member ${name} not found in model ${this.name}`);
     }
     return member;
   }
+  getAs() {
+    return this.config.type === "sqlQuery"
+      ? this.config.alias
+      : this.config.name;
+  }
 }
 
-export function table<TN extends string>(name: TN): Table<TN> {
-  return new Table(name);
+const VALID_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+export function model<N extends string>(name: N) {
+  if (!VALID_NAME_RE.test(name)) {
+    throw new Error(`Invalid model name: ${name}`);
+  }
+
+  return {
+    fromTable: (tableName: string) => {
+      return new Model<N>(name, { type: "table", name: tableName });
+    },
+    fromSqlQuery: (sql: string) => {
+      return new Model<N>(name, { type: "sqlQuery", alias: name, sql });
+    },
+  };
 }

@@ -1,39 +1,39 @@
 import {
   AnyQuery,
   AnyQueryFilter,
+  ModelQuery,
   QuerySegment,
-  TableQuery,
 } from "../../types.js";
 
 import { Database } from "../builder/database.js";
 
 function analyzeQuery(database: Database, query: AnyQuery) {
-  const allTables = new Set<string>();
-  const dimensionTables = new Set<string>();
-  const metricTables = new Set<string>();
-  const projectedDimensionsByTable: Record<string, Set<string>> = {};
-  const dimensionsByTable: Record<string, Set<string>> = {};
-  const projectedMetricsByTable: Record<string, Set<string>> = {};
-  const metricsByTable: Record<string, Set<string>> = {};
+  const allModels = new Set<string>();
+  const dimensionModels = new Set<string>();
+  const metricModels = new Set<string>();
+  const projectedDimensionsByModel: Record<string, Set<string>> = {};
+  const dimensionsByModel: Record<string, Set<string>> = {};
+  const projectedMetricsByModel: Record<string, Set<string>> = {};
+  const metricsByModel: Record<string, Set<string>> = {};
 
   for (const dimension of query.dimensions || []) {
-    const tableName = database.getDimension(dimension).table.name;
-    allTables.add(tableName);
-    dimensionTables.add(tableName);
-    dimensionsByTable[tableName] ||= new Set<string>();
-    dimensionsByTable[tableName]!.add(dimension);
-    projectedDimensionsByTable[tableName] ||= new Set<string>();
-    projectedDimensionsByTable[tableName]!.add(dimension);
+    const modelName = database.getDimension(dimension).model.name;
+    allModels.add(modelName);
+    dimensionModels.add(modelName);
+    dimensionsByModel[modelName] ||= new Set<string>();
+    dimensionsByModel[modelName]!.add(dimension);
+    projectedDimensionsByModel[modelName] ||= new Set<string>();
+    projectedDimensionsByModel[modelName]!.add(dimension);
   }
 
   for (const metric of query.metrics || []) {
-    const tableName = database.getMetric(metric).table.name;
-    allTables.add(tableName);
-    metricTables.add(tableName);
-    metricsByTable[tableName] ||= new Set<string>();
-    metricsByTable[tableName]!.add(metric);
-    projectedMetricsByTable[tableName] ||= new Set<string>();
-    projectedMetricsByTable[tableName]!.add(metric);
+    const modelName = database.getMetric(metric).model.name;
+    allModels.add(modelName);
+    metricModels.add(modelName);
+    metricsByModel[modelName] ||= new Set<string>();
+    metricsByModel[modelName]!.add(metric);
+    projectedMetricsByModel[modelName] ||= new Set<string>();
+    projectedMetricsByModel[modelName]!.add(metric);
   }
 
   const filterStack: AnyQueryFilter[] = [...(query.filters || [])];
@@ -44,35 +44,35 @@ function analyzeQuery(database: Database, query: AnyQuery) {
       filterStack.push(...filter.filters);
     } else {
       const member = database.getMember(filter.member);
-      const tableName = member.table.name;
+      const modelName = member.model.name;
 
-      allTables.add(tableName);
+      allModels.add(modelName);
 
       if (member.isDimension()) {
-        // dimensionTables are used for join of query segments
+        // dimensionModels are used for join of query segments
         // so we're not adding them here, because we don't have
         // a guarantee that join on dimensions will be projected
         // (and if we projected them automatically, we'd get wrong results)
-        // In the segment query allTables are used to join tables, which
+        // In the segment query allModels are used to join models, which
         // means that any dimension filters will work
-        dimensionsByTable[tableName] ||= new Set<string>();
-        dimensionsByTable[tableName]!.add(filter.member);
+        dimensionsByModel[modelName] ||= new Set<string>();
+        dimensionsByModel[modelName]!.add(filter.member);
       } else {
-        metricTables.add(tableName);
-        metricsByTable[tableName] ||= new Set<string>();
-        metricsByTable[tableName]!.add(filter.member);
+        metricModels.add(modelName);
+        metricsByModel[modelName] ||= new Set<string>();
+        metricsByModel[modelName]!.add(filter.member);
       }
     }
   }
 
   return {
-    allTables,
-    dimensionTables,
-    metricTables,
-    dimensionsByTable,
-    projectedDimensionsByTable,
-    metricsByTable,
-    projectedMetricsByTable,
+    allModels,
+    dimensionModels,
+    metricModels,
+    dimensionsByModel,
+    projectedDimensionsByModel,
+    metricsByModel,
+    projectedMetricsByModel,
   };
 }
 
@@ -86,7 +86,7 @@ interface PreparedQuery {
 function getQuerySegment(
   database: Database,
   queryAnalysis: ReturnType<typeof analyzeQuery>,
-  metricTable: string | null,
+  metricModel: string | null,
   index: number,
 ): QuerySegment {
   const queries: {
@@ -107,23 +107,23 @@ function getQuerySegment(
 
   const queriesKeys = Object.keys(queries) as (keyof typeof queries)[];
 
-  const referencedTables = {
-    all: new Set<string>(queryAnalysis.allTables),
+  const referencedModels = {
+    all: new Set<string>(queryAnalysis.allModels),
     dimensions: new Set<string>(),
     metrics: new Set<string>(),
   };
 
-  const tableQueries: Record<string, TableQuery> = {};
+  const modelQueries: Record<string, ModelQuery> = {};
 
   for (const q of queriesKeys) {
-    for (const [tableName, dimensions] of Object.entries(
-      queryAnalysis.projectedDimensionsByTable,
+    for (const [modelName, dimensions] of Object.entries(
+      queryAnalysis.projectedDimensionsByModel,
     )) {
-      const table = database.getTable(tableName);
-      referencedTables.all.add(tableName);
-      referencedTables.dimensions.add(tableName);
+      const model = database.getModel(modelName);
+      referencedModels.all.add(modelName);
+      referencedModels.dimensions.add(modelName);
 
-      const primaryKeyDimensionNames = table
+      const primaryKeyDimensionNames = model
         .getPrimaryKeyDimensions()
         .map((d) => d.getPath());
 
@@ -139,7 +139,7 @@ function getQuerySegment(
         }
       }
 
-      tableQueries[tableName] = {
+      modelQueries[modelName] = {
         dimensions: new Set<string>(
           index === 0
             ? new Set([...dimensions, ...primaryKeyDimensionNames])
@@ -150,23 +150,23 @@ function getQuerySegment(
     }
   }
 
-  if (metricTable) {
-    referencedTables.all.add(metricTable);
-    referencedTables.metrics.add(metricTable);
-    tableQueries[metricTable] ||= {
+  if (metricModel) {
+    referencedModels.all.add(metricModel);
+    referencedModels.metrics.add(metricModel);
+    modelQueries[metricModel] ||= {
       dimensions: new Set<string>(),
       metrics: new Set<string>(),
     };
 
     for (const q of queriesKeys) {
-      const metrics = metricTable
+      const metrics = metricModel
         ? queryAnalysis[
-            q === "query" ? "metricsByTable" : "projectedMetricsByTable"
-          ][metricTable] ?? new Set<string>()
+            q === "query" ? "metricsByModel" : "projectedMetricsByModel"
+          ][metricModel] ?? new Set<string>()
         : new Set<string>();
       for (const metric of metrics) {
         queries[q].metrics.add(metric);
-        tableQueries[metricTable]!.metrics.add(metric);
+        modelQueries[metricModel]!.metrics.add(metric);
       }
     }
   }
@@ -182,13 +182,13 @@ function getQuerySegment(
       dimensions: Array.from(queries.projectedQuery.dimensions),
       metrics: Array.from(queries.projectedQuery.metrics),
     },
-    referencedTables: {
-      all: Array.from(referencedTables.all),
-      dimensions: Array.from(referencedTables.dimensions),
-      metrics: Array.from(referencedTables.metrics),
+    referencedModels: {
+      all: Array.from(referencedModels.all),
+      dimensions: Array.from(referencedModels.dimensions),
+      metrics: Array.from(referencedModels.metrics),
     },
-    tableQueries,
-    metricTable,
+    modelQueries: modelQueries,
+    metricModel: metricModel,
   };
 }
 
@@ -211,28 +211,28 @@ function mergeQuerySegmentWithFilters(
 
 export function expandQueryToSegments(database: Database, query: AnyQuery) {
   const queryAnalysis = analyzeQuery(database, query);
-  const metricTables = Object.keys(queryAnalysis.metricsByTable);
+  const metricModels = Object.keys(queryAnalysis.metricsByModel);
   const segments =
-    metricTables.length === 0
+    metricModels.length === 0
       ? [
           mergeQuerySegmentWithFilters(
             getQuerySegment(database, queryAnalysis, null, 0),
             query.filters,
           ),
         ]
-      : metricTables.map((table, idx) =>
+      : metricModels.map((model, idx) =>
           mergeQuerySegmentWithFilters(
-            getQuerySegment(database, queryAnalysis, table, idx),
+            getQuerySegment(database, queryAnalysis, model, idx),
             query.filters,
           ),
         );
 
   return {
     query,
-    referencedTables: {
-      all: Array.from(queryAnalysis.allTables),
-      dimensions: Array.from(queryAnalysis.dimensionTables),
-      metrics: Array.from(queryAnalysis.metricTables),
+    referencedModels: {
+      all: Array.from(queryAnalysis.allModels),
+      dimensions: Array.from(queryAnalysis.dimensionModels),
+      metrics: Array.from(queryAnalysis.metricModels),
     },
     segments,
   };
