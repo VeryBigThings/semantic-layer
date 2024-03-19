@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as graphlib from "@dagrejs/graphlib";
 
-import type { AnyDatabase, Join } from "../builder/database.js";
 import { AnyQuery, QuerySegment, TableQuery } from "../../types.js";
+import type { AnyDatabase, Join } from "../builder/database.js";
 
+import knex from "knex";
+import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
 import { expandQueryToSegments } from "./expand-query.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
-import invariant from "tiny-invariant";
-import knex from "knex";
 
 interface ReferencedTables {
   all: string[];
