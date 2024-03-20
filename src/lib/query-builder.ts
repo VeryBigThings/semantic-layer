@@ -1,7 +1,9 @@
 import {
   AnyQuery,
   AnyQueryFilter,
+  MemberFormat,
   MemberNameToType,
+  MemberType,
   Query,
   QueryMemberName,
   QueryReturnType,
@@ -148,4 +150,41 @@ export class QueryBuilder<
 
     return result;
   }
+
+  introspect(query: AnyQuery) {
+    const queryDimensions = query.dimensions ?? [];
+    const queryMetrics = query.metrics ?? [];
+
+    return [...queryDimensions, ...queryMetrics].reduce<
+      Record<
+        string,
+        {
+          memberType: "dimension" | "metric";
+          path: string;
+          format?: MemberFormat;
+          type: MemberType;
+          description?: string;
+        }
+      >
+    >((acc, memberName) => {
+      const member = this.repository.getMember(memberName);
+      acc[memberName.replaceAll(".", "___")] = {
+        memberType: member.isDimension() ? "dimension" : "metric",
+        path: member.getPath(),
+        format: member.getFormat(),
+        type: member.getType(),
+        description: member.getDescription(),
+      };
+
+      return acc;
+    }, {});
+  }
 }
+
+export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
+  infer D,
+  infer M,
+  infer F
+>
+  ? Query<string & keyof D, string & keyof M, F>
+  : never;

@@ -6,12 +6,12 @@ import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
@@ -1083,7 +1083,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("model descriptions", async () => {
+  await describe("model descriptions and query introspection", async () => {
     const customersModel = C.model("customers")
       .fromSqlQuery('select * from "Customer"')
       .withDimension("customer_id", {
@@ -1123,6 +1123,8 @@ await describe("semantic layer", async () => {
           sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
       );
 
+    const queryBuilder = repository.build("postgresql");
+
     await it("allows access to the model descriptions", () => {
       const docs: string[] = [];
       const dimensions = repository.getDimensions();
@@ -1148,6 +1150,50 @@ await describe("semantic layer", async () => {
         "DIMENSION: invoices.customer_id, TYPE: number, DESCRIPTION: The unique identifier of the invoice customer, FORMAT: -",
         "METRIC: invoices.total, TYPE: string, DESCRIPTION: -, FORMAT: percentage",
       ]);
+    });
+
+    await it("allows introspection of a query", () => {
+      const query: QueryBuilderQuery<typeof queryBuilder> = {
+        dimensions: [
+          "customers.customer_id",
+          "invoices.invoice_id",
+          "invoices.customer_id",
+        ],
+        metrics: ["invoices.total"],
+      };
+
+      const introspection = queryBuilder.introspect(query);
+
+      assert.deepEqual(introspection, {
+        customers___customer_id: {
+          memberType: "dimension",
+          path: "customers.customer_id",
+          type: "number",
+          description: "The unique identifier of the customer",
+          format: undefined,
+        },
+        invoices___invoice_id: {
+          memberType: "dimension",
+          path: "invoices.invoice_id",
+          type: "number",
+          description: "The unique identifier of the invoice",
+          format: undefined,
+        },
+        invoices___customer_id: {
+          memberType: "dimension",
+          path: "invoices.customer_id",
+          type: "number",
+          description: "The unique identifier of the invoice customer",
+          format: undefined,
+        },
+        invoices___total: {
+          memberType: "metric",
+          path: "invoices.total",
+          format: "percentage",
+          type: "string",
+          description: undefined,
+        },
+      });
     });
   });
 });
