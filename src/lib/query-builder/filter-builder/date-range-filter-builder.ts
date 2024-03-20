@@ -1,12 +1,15 @@
 import * as chrono from "chrono-node";
 
 import dayjs from "dayjs";
-import { z } from "zod";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
+import { z } from "zod";
 
 const Schema = z.union([
   z.string(),
-  z.tuple([z.union([z.string(), z.date()]), z.union([z.string(), z.date()])]),
+  z.object({
+    startDate: z.union([z.string(), z.date()]),
+    endDate: z.union([z.string(), z.date()]),
+  }),
 ]);
 type Schema = z.infer<typeof Schema>;
 
@@ -22,19 +25,19 @@ function parseDateRange(value: Schema) {
       result[result.length - 1]!.start.date();
     return [firstDate, lastDate];
   }
-  const [firstDateRaw, lastDateRaw] = value;
-  const firstDate =
-    typeof firstDateRaw === "string"
-      ? dayjs(firstDateRaw).toDate()
-      : firstDateRaw;
-  const lastDate =
-    typeof lastDateRaw === "string" ? dayjs(lastDateRaw).toDate() : lastDateRaw;
+  const { startDate: startDateRaw, endDate: endDateRaw } = value;
+  const startDate =
+    typeof startDateRaw === "string"
+      ? dayjs(startDateRaw).toDate()
+      : startDateRaw;
+  const endDate =
+    typeof endDateRaw === "string" ? dayjs(endDateRaw).toDate() : endDateRaw;
 
-  if (!(firstDate && lastDate)) {
+  if (!(startDate && endDate)) {
     throw new Error(`Invalid date range: ${JSON.stringify(value)}`);
   }
 
-  return [firstDate, lastDate];
+  return [startDate, endDate];
 }
 
 function makeDateRangeFilterBuilder<T extends string>(name: T, isNot: boolean) {

@@ -1,17 +1,17 @@
-import * as assert from "node:assert/strict";
 import * as C from "../index.js";
+import * as assert from "node:assert/strict";
 
-import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { after, before, describe, it } from "node:test";
 
+import { InferSqlQueryResultType } from "../index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
@@ -968,11 +968,9 @@ await describe("semantic layer", async () => {
                           type: "string",
                         },
                         {
-                          type: "array",
-                          minItems: 2,
-                          maxItems: 2,
-                          items: [
-                            {
+                          type: "object",
+                          properties: {
+                            startDate: {
                               anyOf: [
                                 {
                                   type: "string",
@@ -983,7 +981,7 @@ await describe("semantic layer", async () => {
                                 },
                               ],
                             },
-                            {
+                            endDate: {
                               anyOf: [
                                 {
                                   type: "string",
@@ -994,7 +992,9 @@ await describe("semantic layer", async () => {
                                 },
                               ],
                             },
-                          ],
+                          },
+                          required: ["startDate", "endDate"],
+                          additionalProperties: false,
                         },
                       ],
                     },
