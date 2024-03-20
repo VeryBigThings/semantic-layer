@@ -1,7 +1,7 @@
 import { ZodSchema, z } from "zod";
 
-import type { FilterBuilder } from "../filter-builder.js";
 import { SqlWithBindings } from "../../types.js";
+import type { FilterBuilder } from "../filter-builder.js";
 
 export class FilterFragmentBuilder<
   N extends string,

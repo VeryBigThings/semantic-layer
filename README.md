@@ -118,6 +118,8 @@ const repository = semanticLayer
     ({ sql, dimensions }) =>
       sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`
   );
+
+const queryBuilder = repository.build("postgresql");
 ```
 
 ### Data Querying
@@ -126,7 +128,7 @@ Leverage the library's querying capabilities to fetch dimensions and metrics, ap
 
 ```typescript
 // Dimension and metric query
-const query = repository.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.customer_id"],
   metrics: ["invoices.total"],
   order: { "customers.customer_id": "asc" },
@@ -134,7 +136,7 @@ const query = repository.query({
 });
 
 // Metric query with filters
-const query = repository.query({
+const query = queryBuilder.buildQuery({
   metrics: ["invoices.total", "invoice_lines.quantity"],
   filters: [
     { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -142,7 +144,7 @@ const query = repository.query({
 });
 
 // Dimension query with filters
-const query = repository.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.first_name", "customers.last_name"],
   filters: [
     { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -150,7 +152,7 @@ const query = repository.query({
 });
 
 // Filtering and sorting
-const query = repository.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.first_name"],
   metrics: ["invoices.total"],
   filters: [{ operator: "gt", member: "invoices.total", value: [100] }],

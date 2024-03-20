@@ -287,6 +287,12 @@ export class Model<
     }
     return member;
   }
+  getDimensions() {
+    return Object.values(this.dimensions);
+  }
+  getMetrics() {
+    return Object.values(this.metrics);
+  }
   getAs() {
     return this.config.type === "sqlQuery"
       ? this.config.alias

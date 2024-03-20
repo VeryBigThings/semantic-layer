@@ -76,13 +76,7 @@ export type GranularityByDimensionType = typeof GranularityByDimensionType;
 export type Granularity =
   GranularityByDimensionType[keyof GranularityByDimensionType][number];
 
-export type MemberType =
-  | "string"
-  | "number"
-  | "date"
-  | "time"
-  | "datetime"
-  | "boolean";
+export type MemberType = "string" | "number" | "date" | "datetime" | "boolean";
 
 export type MemberNameToType = { [k in never]: MemberType };
 

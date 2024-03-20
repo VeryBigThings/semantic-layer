@@ -1,11 +1,4 @@
 import {
-  AnyFilterFragmentBuilderRegistry,
-  GetFilterFragmentBuilderRegistryPayload,
-  defaultFilterFragmentBuilderRegistry,
-} from "./query-builder/filter-builder.js";
-import { AnyModel, Model } from "./model.js";
-import { AvailableDialects, FilterType, MemberNameToType } from "./types.js";
-import {
   JOIN_WEIGHTS,
   Join,
   JoinDimensionRef,
@@ -14,12 +7,19 @@ import {
   JoinOnDef,
   REVERSED_JOIN,
 } from "./join.js";
+import { AnyModel, Model } from "./model.js";
+import {
+  AnyFilterFragmentBuilderRegistry,
+  GetFilterFragmentBuilderRegistryPayload,
+  defaultFilterFragmentBuilderRegistry,
+} from "./query-builder/filter-builder.js";
+import { AvailableDialects, FilterType, MemberNameToType } from "./types.js";
 
+import graphlib from "@dagrejs/graphlib";
+import knex from "knex";
+import invariant from "tiny-invariant";
 import { BaseDialect } from "./dialect/base.js";
 import { QueryBuilder } from "./query-builder.js";
-import graphlib from "@dagrejs/graphlib";
-import invariant from "tiny-invariant";
-import knex from "knex";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelN<T> = T extends Model<infer N, any, any> ? N : never;
@@ -96,6 +96,10 @@ export class Repository<
       M,
       GetFilterFragmentBuilderRegistryPayload<T>
     >;
+  }
+
+  public getFilterFragmentBuilderRegistry() {
+    return this.filterFragmentBuilderRegistry;
   }
 
   getFilterBuilder(
@@ -232,6 +236,14 @@ export class Repository<
       return this.getMetric(memberName);
     }
     throw new Error(`Member ${memberName} not found`);
+  }
+
+  getDimensions() {
+    return Object.values(this.models).flatMap((m) => m.getDimensions());
+  }
+
+  getMetrics() {
+    return Object.values(this.models).flatMap((m) => m.getMetrics());
   }
 
   getModel(modelName: string) {

@@ -2,11 +2,11 @@ import * as graphlib from "@dagrejs/graphlib";
 
 import { AnyQuery, ModelQuery, QuerySegment } from "../types.js";
 
-import type { AnyRepository } from "../repository.js";
+import knex from "knex";
+import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
 import type { Join } from "../join.js";
-import invariant from "tiny-invariant";
-import knex from "knex";
+import type { AnyRepository } from "../repository.js";
 
 interface ReferencedModels {
   all: string[];

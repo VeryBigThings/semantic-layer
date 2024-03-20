@@ -1,5 +1,5 @@
-import { Granularity } from "../types.js";
 import knex from "knex";
+import { Granularity } from "../types.js";
 
 export class BaseDialect {
   constructor(private sqlQuery: knex.Knex.QueryBuilder) {}

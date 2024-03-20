@@ -1,16 +1,17 @@
-import * as C from "../index.js";
 import * as assert from "node:assert/strict";
+import * as C from "../index.js";
 
+import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { after, before, describe, it } from "node:test";
 
-import { InferSqlQueryResultType } from "../index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
@@ -222,7 +223,7 @@ await describe("semantic layer", async () => {
     const queryBuilder = repository.build("postgresql");
 
     await it("can query one dimension and one metric", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
@@ -249,7 +250,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query one dimension and multiple metrics", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total", "invoice_lines.total_unit_price"],
         order: { "customers.customer_id": "asc" },
@@ -316,7 +317,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query one dimension and metric and filter by a different metric", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
@@ -350,7 +351,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query a metric and filter by a dimension", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         metrics: ["invoices.total"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -366,7 +367,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query multiple metrics and filter by a dimension", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         metrics: ["invoices.total", "invoice_lines.quantity"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -384,7 +385,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query dimensions only", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id", "albums.title"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -483,7 +484,7 @@ await describe("semantic layer", async () => {
     const queryBuilder = repository.build("postgresql");
 
     await it("can query one dimension and multiple metrics", async () => {
-      const query = queryBuilder.build({
+      const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
@@ -537,6 +538,549 @@ await describe("semantic layer", async () => {
           invoices___total: "37.62",
         },
       ]);
+    });
+  });
+
+  await describe("query schema", async () => {
+    await it("can parse a valid query", () => {
+      const customersModel = C.model("customers")
+        .fromSqlQuery('select * from "Customer"')
+        .withDimension("customer_id", {
+          type: "number",
+          primaryKey: true,
+          sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
+        });
+
+      const invoicesModel = C.model("invoices")
+        .fromSqlQuery('select * from "Invoice"')
+        .withDimension("invoice_id", {
+          type: "number",
+          primaryKey: true,
+          sql: ({ model }) => model.column("InvoiceId"),
+        })
+        .withDimension("customer_id", {
+          type: "number",
+          sql: ({ model }) => model.column("CustomerId"),
+        })
+        .withMetric("total", {
+          type: "string",
+          aggregateWith: "sum",
+          sql: ({ model }) => model.column("Total"),
+        });
+
+      const repository = C.repository()
+        .withModel(customersModel)
+        .withModel(invoicesModel)
+        .joinOneToMany(
+          "customers",
+          "invoices",
+          ({ sql, dimensions }) =>
+            sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+        );
+
+      const queryBuilder = repository.build("postgresql");
+
+      const query = {
+        dimensions: ["customers.customer_id"],
+        metrics: ["invoices.total"],
+        order: { "customers.customer_id": "asc" },
+        filters: [
+          { operator: "equals", member: "customers.customer_id", value: [1] },
+        ],
+        limit: 10,
+      };
+
+      const parsed = queryBuilder.querySchema.safeParse(query);
+      assert.ok(parsed.success);
+
+      const jsonSchema = zodToJsonSchema(queryBuilder.querySchema);
+
+      assert.deepEqual(jsonSchema, {
+        type: "object",
+        properties: {
+          dimensions: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: [
+                "customers.customer_id",
+                "invoices.invoice_id",
+                "invoices.customer_id",
+              ],
+            },
+          },
+          metrics: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["invoices.total"],
+            },
+          },
+          filters: {
+            type: "array",
+            items: {
+              anyOf: [
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "and",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
+                  },
+                  required: ["operator", "filters"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "or",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
+                  },
+                  required: ["operator", "filters"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "equals",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        anyOf: [
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
+                        ],
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notEquals",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        anyOf: [
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
+                        ],
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notSet",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                  },
+                  required: ["operator", "member"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "set",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                  },
+                  required: ["operator", "member"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "contains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notContains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "startsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notStartsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "endsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notEndsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "gt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "gte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "lt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "lte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "inDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      anyOf: [
+                        {
+                          type: "string",
+                        },
+                        {
+                          type: "array",
+                          minItems: 2,
+                          maxItems: 2,
+                          items: [
+                            {
+                              anyOf: [
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
+                              ],
+                            },
+                            {
+                              anyOf: [
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "notInDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      $ref: "#/properties/filters/items/anyOf/16/properties/value",
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "beforeDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      anyOf: [
+                        {
+                          type: "string",
+                        },
+                        {
+                          type: "string",
+                          format: "date-time",
+                        },
+                      ],
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: {
+                      type: "string",
+                      const: "afterDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      $ref: "#/properties/filters/items/anyOf/18/properties/value",
+                    },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+              ],
+            },
+          },
+          limit: {
+            type: "number",
+          },
+          offset: {
+            type: "number",
+          },
+          order: {
+            type: "object",
+            additionalProperties: {
+              type: "string",
+              enum: ["asc", "desc"],
+            },
+          },
+        },
+        additionalProperties: false,
+        $schema: "http://json-schema.org/draft-07/schema#",
+      });
     });
   });
 });

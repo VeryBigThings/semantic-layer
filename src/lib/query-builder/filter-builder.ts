@@ -6,13 +6,17 @@ import {
   SqlWithBindings,
 } from "../types.js";
 import {
-  AnyFilterFragmentBuilder,
-  GetFilterFragmentBuilderPayload,
-} from "./filter-builder/filter-fragment-builder.js";
-import {
   afterDate as filterAfterDate,
   beforeDate as filterBeforeDate,
 } from "./filter-builder/date-filter-builder.js";
+import {
+  inDateRange as filterInDateRange,
+  notInDateRange as filterNotInDateRange,
+} from "./filter-builder/date-range-filter-builder.js";
+import {
+  AnyFilterFragmentBuilder,
+  GetFilterFragmentBuilderPayload,
+} from "./filter-builder/filter-fragment-builder.js";
 import {
   contains as filterContains,
   endsWith as filterEndsWith,
@@ -22,19 +26,15 @@ import {
   startsWith as filterStartsWith,
 } from "./filter-builder/ilike-filter-builder.js";
 import {
+  notSet as filterSet,
+  set as filterNotSet,
+} from "./filter-builder/null-check-filter-builder.js";
+import {
   gt as filterGt,
   gte as filterGte,
   lt as filterLt,
   lte as filterLte,
 } from "./filter-builder/number-comparison-filter-builder.js";
-import {
-  inDateRange as filterInDateRange,
-  notInDateRange as filterNotInDateRange,
-} from "./filter-builder/date-range-filter-builder.js";
-import {
-  set as filterNotSet,
-  notSet as filterSet,
-} from "./filter-builder/null-check-filter-builder.js";
 
 import { BaseDialect } from "../dialect/base.js";
 import type { Repository } from "../repository.js";
@@ -144,6 +144,9 @@ export class FilterFragmentBuilderRegistry<T = never> {
   ): FilterFragmentBuilderRegistry<T | GetFilterFragmentBuilderPayload<F>> {
     this.filterFragmentBuilders[builder.operator] = builder;
     return this;
+  }
+  getFilterFragmentBuilders() {
+    return Object.values(this.filterFragmentBuilders);
   }
   getFilterBuilder(
     repository: Repository,
