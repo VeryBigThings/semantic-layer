@@ -5,9 +5,9 @@ import {
   QuerySegment,
 } from "../../types.js";
 
-import { Database } from "../builder/database.js";
+import { Repository } from "../builder/repository.js";
 
-function analyzeQuery(database: Database, query: AnyQuery) {
+function analyzeQuery(repository: Repository, query: AnyQuery) {
   const allModels = new Set<string>();
   const dimensionModels = new Set<string>();
   const metricModels = new Set<string>();
@@ -17,7 +17,7 @@ function analyzeQuery(database: Database, query: AnyQuery) {
   const metricsByModel: Record<string, Set<string>> = {};
 
   for (const dimension of query.dimensions || []) {
-    const modelName = database.getDimension(dimension).model.name;
+    const modelName = repository.getDimension(dimension).model.name;
     allModels.add(modelName);
     dimensionModels.add(modelName);
     dimensionsByModel[modelName] ||= new Set<string>();
@@ -27,7 +27,7 @@ function analyzeQuery(database: Database, query: AnyQuery) {
   }
 
   for (const metric of query.metrics || []) {
-    const modelName = database.getMetric(metric).model.name;
+    const modelName = repository.getMetric(metric).model.name;
     allModels.add(modelName);
     metricModels.add(modelName);
     metricsByModel[modelName] ||= new Set<string>();
@@ -43,7 +43,7 @@ function analyzeQuery(database: Database, query: AnyQuery) {
     if (filter.operator === "and" || filter.operator === "or") {
       filterStack.push(...filter.filters);
     } else {
-      const member = database.getMember(filter.member);
+      const member = repository.getMember(filter.member);
       const modelName = member.model.name;
 
       allModels.add(modelName);
@@ -84,7 +84,7 @@ interface PreparedQuery {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function getQuerySegment(
-  database: Database,
+  repository: Repository,
   queryAnalysis: ReturnType<typeof analyzeQuery>,
   metricModel: string | null,
   index: number,
@@ -119,7 +119,7 @@ function getQuerySegment(
     for (const [modelName, dimensions] of Object.entries(
       queryAnalysis.projectedDimensionsByModel,
     )) {
-      const model = database.getModel(modelName);
+      const model = repository.getModel(modelName);
       referencedModels.all.add(modelName);
       referencedModels.dimensions.add(modelName);
 
@@ -209,20 +209,20 @@ function mergeQuerySegmentWithFilters(
   };
 }
 
-export function expandQueryToSegments(database: Database, query: AnyQuery) {
-  const queryAnalysis = analyzeQuery(database, query);
+export function expandQueryToSegments(repository: Repository, query: AnyQuery) {
+  const queryAnalysis = analyzeQuery(repository, query);
   const metricModels = Object.keys(queryAnalysis.metricsByModel);
   const segments =
     metricModels.length === 0
       ? [
           mergeQuerySegmentWithFilters(
-            getQuerySegment(database, queryAnalysis, null, 0),
+            getQuerySegment(repository, queryAnalysis, null, 0),
             query.filters,
           ),
         ]
       : metricModels.map((model, idx) =>
           mergeQuerySegmentWithFilters(
-            getQuerySegment(database, queryAnalysis, model, idx),
+            getQuerySegment(repository, queryAnalysis, model, idx),
             query.filters,
           ),
         );

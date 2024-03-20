@@ -1,126 +1,43 @@
-import * as queryBuilder from "../query/builder.js";
-
-import { FilterType, Query } from "../../types.js";
+import { FilterType, MemberNameToType } from "../../types.js";
 import {
   AnyFilterFragmentBuilderRegistry,
   GetFilterFragmentBuilderRegistryPayload,
   defaultFilterFragmentBuilderRegistry,
 } from "../query/filter-builder.js";
+import {
+  JOIN_WEIGHTS,
+  Join,
+  JoinDimensionRef,
+  JoinDimensions,
+  JoinFn,
+  JoinOnDef,
+  REVERSED_JOIN,
+} from "./join.js";
 import { AnyModel, Model } from "./model.js";
 
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
+import { QueryBuilder } from "../query/builder.js";
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelN<T> = T extends Model<infer N, any, any> ? N : never;
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type ModelDN<T> = T extends Model<infer N, infer DN, any>
-  ? `${N}.${DN}`
+// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
+export type ModelD<T> = T extends Model<infer N, infer D, any>
+  ? { [K in string & keyof D as `${N}.${K}`]: D[K] }
   : never;
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type ModelMN<T> = T extends Model<infer N, any, infer MN>
-  ? `${N}.${MN}`
+// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
+export type ModelM<T> = T extends Model<infer N, any, infer M>
+  ? { [K in string & keyof M as `${N}.${K}`]: M[K] }
   : never;
 
-export class JoinDimensionRef<N extends string, DN extends string> {
-  constructor(
-    private readonly model: N,
-    private readonly dimension: DN,
-  ) {}
-  render(database: Database, dialect: BaseDialect) {
-    return database
-      .getModel(this.model)
-      .getDimension(this.dimension)
-      .getSql(dialect);
-  }
-}
-export class JoinOnDef {
-  constructor(
-    private readonly strings: string[],
-    private readonly values: unknown[],
-  ) {}
-  render(database: Database, dialect: BaseDialect) {
-    const sql: string[] = [];
-    const bindings: unknown[] = [];
-    for (let i = 0; i < this.strings.length; i++) {
-      sql.push(this.strings[i]!);
-      if (this.values[i]) {
-        const value = this.values[i];
-        if (value instanceof JoinDimensionRef) {
-          const result = value.render(database, dialect);
-          sql.push(result.sql);
-          bindings.push(...result.bindings);
-        } else {
-          sql.push("?");
-          bindings.push(value);
-        }
-      }
-    }
-    return {
-      sql: sql.join(""),
-      bindings,
-    };
-  }
-}
+// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
+export type AnyRepository = Repository<any, any, any, any>;
 
-export interface Join {
-  left: string;
-  right: string;
-  joinOnDef: JoinOnDef;
-  reversed: boolean;
-  type: "oneToOne" | "oneToMany" | "manyToOne" | "manyToMany";
-}
-
-export type JoinFn<
-  DN extends string,
-  N1 extends string,
-  N2 extends string,
-> = (args: {
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => JoinOnDef;
-  dimensions: JoinDimensions<DN, N1, N2>;
-}) => JoinOnDef;
-
-export type ModelDimensionsWithoutModelPrefix<
-  N extends string,
-  DN extends string,
-> = DN extends `${N}.${infer D}` ? D : never;
-
-export type JoinDimensions<
-  DN extends string,
-  N1 extends string,
-  N2 extends string,
-> = {
-  [TK in N1]: {
-    [DK in ModelDimensionsWithoutModelPrefix<N1, DN>]: JoinDimensionRef<TK, DK>;
-  };
-} & {
-  [TK in N2]: {
-    [DK in ModelDimensionsWithoutModelPrefix<N2, DN>]: JoinDimensionRef<TK, DK>;
-  };
-};
-
-const JOIN_WEIGHTS: Record<Join["type"], number> = {
-  oneToOne: 1,
-  oneToMany: 3,
-  manyToOne: 2,
-  manyToMany: 4,
-};
-
-const REVERSED_JOIN: Record<Join["type"], Join["type"]> = {
-  oneToOne: "oneToOne",
-  oneToMany: "manyToOne",
-  manyToOne: "oneToMany",
-  manyToMany: "manyToMany",
-};
-
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyDatabase = Database<any, any, any, any>;
-
-export class Database<
+export class Repository<
   N extends string = never,
-  DN extends string = never,
-  MN extends string = never,
+  D extends MemberNameToType = MemberNameToType,
+  M extends MemberNameToType = MemberNameToType,
   F = GetFilterFragmentBuilderRegistryPayload<
     ReturnType<typeof defaultFilterFragmentBuilderRegistry>
   >,
@@ -151,30 +68,30 @@ export class Database<
         metric,
       };
     }
-    return this as Database<N | ModelN<T>, DN | ModelDN<T>, MN | ModelMN<T>, F>;
+    return this as Repository<N | ModelN<T>, D & ModelD<T>, M & ModelM<T>, F>;
   }
 
   public withFilterFragmentBuilderRegistry<
     T extends AnyFilterFragmentBuilderRegistry,
   >(filterFragmentBuilderRegistry: T) {
     this.filterFragmentBuilderRegistry = filterFragmentBuilderRegistry;
-    return this as Database<
+    return this as Repository<
       N,
-      DN,
-      MN,
+      D,
+      M,
       GetFilterFragmentBuilderRegistryPayload<T>
     >;
   }
 
   getFilterBuilder(
-    database: Database,
+    repository: Repository,
     dialect: BaseDialect,
     filterType: FilterType,
     referencedModels: string[],
     metricPrefixes?: Record<string, string>,
   ) {
     return this.filterFragmentBuilderRegistry.getFilterBuilder(
-      database,
+      repository,
       dialect,
       filterType,
       referencedModels,
@@ -186,12 +103,12 @@ export class Database<
     type: Join["type"],
     modelName1: N1,
     modelName2: N2,
-    joinSqlDefFn: JoinFn<DN, N1, N2>,
+    joinSqlDefFn: JoinFn<string & keyof D, N1, N2>,
   ) {
     const model1 = this.models[modelName1];
     const model2 = this.models[modelName2];
-    invariant(model1, `Model ${model1} not found in database`);
-    invariant(model2, `Model ${model2} not found in database`);
+    invariant(model1, `Model ${model1} not found in repository`);
+    invariant(model2, `Model ${model2} not found in repository`);
     const dimensions = {
       [model1.name]: Object.keys(model1.dimensions).reduce<
         Record<string, JoinDimensionRef<string, string>>
@@ -205,7 +122,7 @@ export class Database<
         acc[dimension] = new JoinDimensionRef(model2.name, dimension);
         return acc;
       }, {}),
-    } as JoinDimensions<DN, N1, N2>;
+    } as JoinDimensions<string & keyof D, N1, N2>;
 
     const joinSqlDef = joinSqlDefFn({
       sql: (strings, ...values) => new JoinOnDef([...strings], values),
@@ -239,7 +156,7 @@ export class Database<
   joinOneToOne<N1 extends string, N2 extends string>(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<DN, N1, N2>,
+    joinSqlDefFn: JoinFn<string & keyof D, N1, N2>,
   ) {
     return this.join("oneToOne", model1, model2, joinSqlDefFn);
   }
@@ -247,7 +164,7 @@ export class Database<
   joinOneToMany<N1 extends string, N2 extends string>(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<DN, N1, N2>,
+    joinSqlDefFn: JoinFn<string & keyof D, N1, N2>,
   ) {
     return this.join("oneToMany", model1, model2, joinSqlDefFn);
   }
@@ -255,7 +172,7 @@ export class Database<
   joinManyToOne<N1 extends string, N2 extends string>(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<DN, N1, N2>,
+    joinSqlDefFn: JoinFn<string & keyof D, N1, N2>,
   ) {
     return this.join("manyToOne", model1, model2, joinSqlDefFn);
   }
@@ -263,7 +180,7 @@ export class Database<
   joinManyToMany<N1 extends string, N2 extends string>(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<DN, N1, N2>,
+    joinSqlDefFn: JoinFn<string & keyof D, N1, N2>,
   ) {
     return this.join("manyToMany", model1, model2, joinSqlDefFn);
   }
@@ -318,18 +235,11 @@ export class Database<
     return this.joins[modelName]?.[joinModelName];
   }
 
-  query(query: Query<DN, MN, F & { member: DN | MN }>) {
-    const graphComponents = graphlib.alg.components(this.graph);
-    if (graphComponents.length > 1) {
-      throw new Error("Database graph must be a single connected component");
-    }
-
-    const DialectClass = BaseDialect;
-
-    return queryBuilder.build(this, DialectClass, query);
+  build() {
+    return new QueryBuilder<D, M, F>(this, BaseDialect);
   }
 }
 
-export function database() {
-  return new Database();
+export function repository() {
+  return new Repository();
 }

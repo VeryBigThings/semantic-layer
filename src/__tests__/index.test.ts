@@ -10,12 +10,13 @@ import {
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-/*const query = db.query({
+/*const query = built.query({
   dimensions: [
     "customers.customer_id",
     //'invoice_lines.invoice_line_id',
@@ -128,7 +129,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("InvoiceDate"),
       })
       .withMetric("total", {
-        type: "sum",
+        type: "string",
+        aggregateWith: "sum",
         sql: ({ model }) => model.column("Total"),
       });
 
@@ -148,11 +150,13 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("TrackId"),
       })
       .withMetric("quantity", {
-        type: "sum",
+        type: "string",
+        aggregateWith: "sum",
         sql: ({ model }) => model.column("Quantity"),
       })
       .withMetric("total_unit_price", {
-        type: "sum",
+        type: "string",
+        aggregateWith: "sum",
         sql: ({ model }) => model.column("UnitPrice"),
       });
 
@@ -184,7 +188,7 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("Title"),
       });
 
-    const db = C.database()
+    const repository = C.repository()
       .withModel(customersModel)
       .withModel(invoicesModel)
       .withModel(invoiceLinesModel)
@@ -215,15 +219,20 @@ await describe("semantic layer", async () => {
           sql`${dimensions.tracks.album_id} = ${dimensions.albums.album_id}`,
       );
 
+    const queryBuilder = repository.build();
+
     await it("can query one dimension and one metric", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         { customers___customer_id: 1, invoices___total: "39.62" },
@@ -240,14 +249,17 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query one dimension and multiple metrics", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total", "invoice_lines.total_unit_price"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         {
@@ -304,7 +316,7 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query one dimension and metric and filter by a different metric", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
@@ -318,7 +330,10 @@ await describe("semantic layer", async () => {
         ],
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         { customers___customer_id: 2, invoices___total: "37.62" },
@@ -335,27 +350,33 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query a metric and filter by a dimension", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         metrics: ["invoices.total"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [{ invoices___total: "39.62" }]);
     });
 
     await it("can query multiple metrics and filter by a dimension", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         metrics: ["invoices.total", "invoice_lines.quantity"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         { invoices___total: "39.62", invoice_lines___quantity: "38" },
@@ -363,14 +384,17 @@ await describe("semantic layer", async () => {
     });
 
     await it("can query dimensions only", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         dimensions: ["customers.customer_id", "albums.title"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         { customers___customer_id: 1, albums___title: "Ac�stico MTV" },
@@ -441,11 +465,12 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("CustomerId"),
       })
       .withMetric("total", {
-        type: "sum",
+        type: "string",
+        aggregateWith: "sum",
         sql: ({ model }) => model.column("Total"),
       });
 
-    const db = C.database()
+    const repository = C.repository()
       .withModel(customersModel)
       .withModel(invoicesModel)
       .joinOneToMany(
@@ -455,15 +480,20 @@ await describe("semantic layer", async () => {
           sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
       );
 
+    const queryBuilder = repository.build();
+
     await it("can query one dimension and multiple metrics", async () => {
-      const query = db.query({
+      const query = queryBuilder.build({
         dimensions: ["customers.customer_id"],
         metrics: ["invoices.total"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
 
-      const result = await client.query(query.sql, query.bindings);
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
 
       assert.deepEqual(result.rows, [
         {

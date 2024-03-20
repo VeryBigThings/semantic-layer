@@ -1,11 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as graphlib from "@dagrejs/graphlib";
 
-import { AnyQuery, ModelQuery, QuerySegment } from "../../types.js";
-import type { AnyDatabase, Join } from "../builder/database.js";
+import {
+  AnyQuery,
+  MemberNameToType,
+  ModelQuery,
+  Query,
+  QueryMemberName,
+  QueryReturnType,
+  QuerySegment,
+  SqlQueryResult,
+} from "../../types.js";
 
 import knex from "knex";
 import invariant from "tiny-invariant";
+import { Simplify } from "type-fest";
+import type { Join } from "../builder/join.js";
+import type { AnyRepository } from "../builder/repository.js";
 import { BaseDialect } from "../dialect/base.js";
 import { expandQueryToSegments } from "./expand-query.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
@@ -21,14 +32,14 @@ const client = knex({ client: "pg" });
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function buildQuerySegmentJoinQuery(
   knex: knex.Knex,
-  database: AnyDatabase,
+  repository: AnyRepository,
   Dialect: typeof BaseDialect,
   joinGraph: graphlib.Graph,
   modelQueries: Record<string, ModelQuery>,
   source: string,
 ) {
   const visitedModels = new Set<string>();
-  const model = database.getModel(source);
+  const model = repository.getModel(source);
   const sqlQuery =
     model.config.type === "table"
       ? knex(model.config.name)
@@ -47,7 +58,7 @@ function buildQuerySegmentJoinQuery(
     visitedModels.add(modelName);
 
     const modelQuery = modelQueries[modelName];
-    const model = database.getModel(modelName);
+    const model = repository.getModel(modelName);
     const hasMetrics = modelQuery?.metrics && modelQuery.metrics.size > 0;
     const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
       (modelName) => !visitedModels.has(modelName),
@@ -62,8 +73,8 @@ function buildQuerySegmentJoinQuery(
 
     if (join) {
       const joinType = join.reversed ? "rightJoin" : "leftJoin";
-      const joinOn = join.joinOnDef.render(database, dialect);
-      const rightModel = database.getModel(join.right);
+      const joinOn = join.joinOnDef.render(repository, dialect);
+      const rightModel = repository.getModel(join.right);
       const joinSubject =
         rightModel.config.type === "table"
           ? rightModel.config.name
@@ -80,7 +91,7 @@ function buildQuerySegmentJoinQuery(
     }
 
     for (const metricName of modelQuery?.metrics || []) {
-      const metric = database.getMetric(metricName);
+      const metric = repository.getMetric(metricName);
       const { sql, bindings } = metric.getSql(dialect);
       sqlQuery.select(
         knex.raw(`${sql} as ${metric.getAlias(dialect)}`, bindings),
@@ -88,7 +99,7 @@ function buildQuerySegmentJoinQuery(
     }
 
     for (const dimensionName of dimensionNames) {
-      const dimension = database.getDimension(dimensionName);
+      const dimension = repository.getDimension(dimensionName);
       const { sql, bindings } = dimension.getSql(dialect);
 
       sqlQuery.select(
@@ -99,7 +110,7 @@ function buildQuerySegmentJoinQuery(
     modelStack.push(
       ...unvisitedNeighbors.map((unvisitedModelName) => ({
         modelName: unvisitedModelName,
-        join: database.getJoin(modelName, unvisitedModelName),
+        join: repository.getJoin(modelName, unvisitedModelName),
       })),
     );
   }
@@ -109,7 +120,7 @@ function buildQuerySegmentJoinQuery(
 
 function buildQuerySegment(
   knex: knex.Knex,
-  database: AnyDatabase,
+  repository: AnyRepository,
   Dialect: typeof BaseDialect,
   joinGraph: graphlib.Graph,
   segment: QuerySegment,
@@ -125,7 +136,7 @@ function buildQuerySegment(
 
   const initialSqlQuery = buildQuerySegmentJoinQuery(
     knex,
-    database,
+    repository,
     Dialect,
     joinGraph,
     segment.modelQueries,
@@ -134,9 +145,9 @@ function buildQuerySegment(
   const dialect = new Dialect(initialSqlQuery);
 
   if (segment.query.filters) {
-    const filter = database
+    const filter = repository
       .getFilterBuilder(
-        database,
+        repository,
         dialect,
         "dimension",
         segment.referencedModels.all,
@@ -153,7 +164,7 @@ function buildQuerySegment(
   const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;
 
   for (const dimensionName of segment.query.dimensions || []) {
-    const dimension = database.getDimension(dimensionName);
+    const dimension = repository.getDimension(dimensionName);
     sqlQuery.select(
       knex.raw(
         `${dialect.asIdentifier(alias)}.${dimension.getAlias(
@@ -171,7 +182,7 @@ function buildQuerySegment(
   }
 
   for (const metricName of segment.query.metrics || []) {
-    const metric = database.getMetric(metricName);
+    const metric = repository.getMetric(metricName);
     const { sql, bindings } = metric.getAggregateSql(dialect, alias);
 
     sqlQuery.select(
@@ -189,7 +200,7 @@ function getAlias(index: number) {
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function buildQuery(
   knex: knex.Knex,
-  database: AnyDatabase,
+  repository: AnyRepository,
   Dialect: typeof BaseDialect,
   query: AnyQuery,
   referencedModels: ReferencedModels,
@@ -197,14 +208,14 @@ function buildQuery(
   segments: QuerySegment[],
 ) {
   const sqlQuerySegments = segments.map((segment) =>
-    buildQuerySegment(client, database, Dialect, joinGraph, segment),
+    buildQuerySegment(client, repository, Dialect, joinGraph, segment),
   );
   const [initialSqlQuerySegment, ...restSqlQuerySegments] = sqlQuerySegments;
 
   invariant(initialSqlQuerySegment, "No initial sql query segment found");
 
   const joinOnDimensions = referencedModels.dimensions.flatMap((modelName) =>
-    database.getModel(modelName).getPrimaryKeyDimensions(),
+    repository.getModel(modelName).getPrimaryKeyDimensions(),
   );
   const rootAlias = getAlias(0);
   const rootSqlQuery = knex(initialSqlQuerySegment.sqlQuery.as(rootAlias));
@@ -212,7 +223,7 @@ function buildQuery(
 
   for (const dimensionName of initialSqlQuerySegment.projectedQuery
     .dimensions || []) {
-    const dimension = database.getDimension(dimensionName);
+    const dimension = repository.getDimension(dimensionName);
 
     rootSqlQuery.select(
       knex.raw(
@@ -225,7 +236,7 @@ function buildQuery(
 
   for (const metricName of initialSqlQuerySegment.projectedQuery.metrics ||
     []) {
-    const metric = database.getMetric(metricName);
+    const metric = repository.getMetric(metricName);
 
     rootSqlQuery.select(
       knex.raw(
@@ -256,7 +267,7 @@ function buildQuery(
 
     for (const metricName of segment.projectedQuery.metrics || []) {
       if ((query.metrics ?? []).includes(metricName)) {
-        const metric = database.getMetric(metricName);
+        const metric = repository.getMetric(metricName);
         rootSqlQuery.select(
           knex.raw(
             `${dialect.asIdentifier(alias)}.${metric.getAlias(
@@ -278,9 +289,9 @@ function buildQuery(
       },
       {},
     );
-    const filter = database
+    const filter = repository
       .getFilterBuilder(
-        database,
+        repository,
         dialect,
         "metric",
         referencedModels.metrics,
@@ -294,7 +305,7 @@ function buildQuery(
 
   const orderBy = Object.entries(query.order || {}).map(
     ([member, direction]) => {
-      const memberSql = database.getMember(member).getAlias(dialect);
+      const memberSql = repository.getMember(member).getAlias(dialect);
       return `${memberSql} ${direction}`;
     },
   );
@@ -309,30 +320,59 @@ function buildQuery(
   return rootSqlQuery;
 }
 
-export function build(
-  database: AnyDatabase,
-  Dialect: typeof BaseDialect,
-  query: AnyQuery,
-) {
-  const { referencedModels, segments } = expandQueryToSegments(database, query);
+export class QueryBuilder<
+  D extends MemberNameToType,
+  M extends MemberNameToType,
+  F,
+> {
+  constructor(
+    private readonly repository: AnyRepository,
+    private readonly Dialect: typeof BaseDialect,
+  ) {}
 
-  const joinGraph = findOptimalJoinGraph(database.graph, referencedModels.all);
+  build<const Q extends { dimensions?: string[]; metrics?: string[] }>(
+    query: Q &
+      Query<
+        string & keyof D,
+        string & keyof M,
+        F & { member: string & (keyof D | keyof M) }
+      >,
+  ) {
+    const { referencedModels, segments } = expandQueryToSegments(
+      this.repository,
+      query,
+    );
 
-  const sqlQuery = buildQuery(
-    client,
-    database,
-    Dialect,
-    query,
-    referencedModels,
-    joinGraph,
-    segments,
-  );
+    const joinGraph = findOptimalJoinGraph(
+      this.repository.graph,
+      referencedModels.all,
+    );
 
-  const result = sqlQuery.toSQL().toNative();
-  const bindings: unknown[] = [...result.bindings];
+    const sqlQuery = buildQuery(
+      client,
+      this.repository,
+      this.Dialect,
+      query,
+      referencedModels,
+      joinGraph,
+      segments,
+    );
 
-  return {
-    sql: result.sql,
-    bindings,
-  };
+    const { sql, bindings } = sqlQuery.toSQL().toNative();
+
+    const result: SqlQueryResult<
+      Simplify<
+        QueryReturnType<
+          D & M,
+          | (QueryMemberName<Q["dimensions"]> & keyof D)
+          | (QueryMemberName<Q["metrics"]> & keyof M)
+        >
+      >
+    > = {
+      sql,
+      bindings: bindings as unknown[],
+    };
+
+    return result;
+  }
 }

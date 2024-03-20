@@ -1,6 +1,8 @@
 import {
   Granularity,
   GranularityByDimensionType,
+  MemberNameToType,
+  MemberType,
   SqlWithBindings,
 } from "../../types.js";
 
@@ -69,15 +71,13 @@ export class SqlWithRefs extends Ref {
   }
 }
 
-export type SqlDef = ColumnRef | SqlWithRefs;
-
 export type SqlFn<DN extends string = string> = (args: {
   model: {
     column: (name: string) => ColumnRef;
     dimension: (name: DN) => DimensionRef;
   };
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
-}) => SqlDef;
+}) => Ref;
 
 function typeHasGranularity(
   type: string,
@@ -85,30 +85,25 @@ function typeHasGranularity(
   return type in GranularityByDimensionType;
 }
 
-export type WithGranularityDimensionNames<
+export type WithGranularityDimensions<
   N extends string,
   T extends string,
 > = T extends keyof GranularityByDimensionType
-  ? N | `${N}.${GranularityByDimensionType[T][number]}`
-  : N;
-
-export type DimensionType =
-  | "string"
-  | "number"
-  | "date"
-  | "time"
-  | "datetime"
-  | "boolean";
+  ? { [k in N]: T } & {
+      [k in `${N}.${GranularityByDimensionType[T][number]}`]: number;
+    }
+  : { [k in N]: T };
 
 export interface DimensionProps<DN extends string = string> {
-  type: DimensionType;
+  type: MemberType;
   sql?: SqlFn<DN>;
   primaryKey?: boolean;
 }
 
 export type MetricType = "count" | "sum" | "avg" | "min" | "max";
 export interface MetricProps<DN extends string = string> {
-  type: MetricType;
+  type: MemberType;
+  aggregateWith: MetricType;
   sql?: SqlFn<DN>;
 }
 
@@ -208,7 +203,7 @@ export class Metric extends Member {
   getAggregateSql(dialect: BaseDialect, modelAlias?: string) {
     const { sql, bindings } = this.getSql(dialect, modelAlias);
     return {
-      sql: `${this.props.type.toUpperCase()}(${sql})`,
+      sql: `${this.props.aggregateWith.toUpperCase()}(${sql})`,
       bindings,
     };
   }
@@ -228,8 +223,8 @@ export type ModelConfig =
 
 export class Model<
   N extends string,
-  DN extends string = never,
-  MN extends string = never,
+  D extends MemberNameToType = MemberNameToType,
+  M extends MemberNameToType = MemberNameToType,
 > {
   public readonly dimensions: Record<string, Dimension> = {};
   public readonly metrics: Record<string, Metric> = {};
@@ -240,10 +235,13 @@ export class Model<
   ) {
     this.name = name;
   }
-  withDimension<DN1 extends string, DP extends DimensionProps<DN>>(
+  withDimension<
+    DN1 extends string,
+    DP extends DimensionProps<string & keyof D>,
+  >(
     name: DN1,
     dimension: DP,
-  ): Model<N, DN | WithGranularityDimensionNames<DN1, DP["type"]>, MN> {
+  ): Model<N, D & WithGranularityDimensions<DN1, DP["type"]>, M> {
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
@@ -258,21 +256,21 @@ export class Model<
     }
     return this;
   }
-  withMetric<MN1 extends string>(
+  withMetric<MN1 extends string, MP extends MetricProps<string & keyof D>>(
     name: MN1,
-    metric: MetricProps<DN>,
-  ): Model<N, DN, MN | MN1> {
+    metric: MP,
+  ): Model<N, D, M & { [k in MN1]: MP["type"] }> {
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
-  getMetric(name: MN) {
+  getMetric(name: string & keyof M) {
     const metric = this.metrics[name];
     if (!metric) {
       throw new Error(`Metric ${name} not found in model ${this.name}`);
     }
     return metric;
   }
-  getDimension(name: DN) {
+  getDimension(name: string & keyof D) {
     const dimension = this.dimensions[name];
     if (!dimension) {
       throw new Error(`Dimension ${name} not found in model ${this.name}`);
@@ -282,7 +280,7 @@ export class Model<
   getPrimaryKeyDimensions() {
     return Object.values(this.dimensions).filter((d) => d.props.primaryKey);
   }
-  getMember(name: DN | MN) {
+  getMember(name: string & (keyof D | keyof M)) {
     const member = this.dimensions[name] || this.metrics[name];
     if (!member) {
       throw new Error(`Member ${name} not found in model ${this.name}`);
