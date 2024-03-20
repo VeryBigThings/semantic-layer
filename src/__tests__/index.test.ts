@@ -257,10 +257,9 @@ await describe("semantic layer", async () => {
         limit: 10,
       });
 
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
+      const result = await client.query<
+        InferSqlQueryResultType<typeof query, { "invoices.total": number }>
+      >(query.sql, query.bindings);
 
       assert.deepEqual(result.rows, [
         {

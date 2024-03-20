@@ -1,4 +1,4 @@
-import { Replace } from "type-fest";
+import { Replace, Simplify } from "type-fest";
 
 export interface AndConnective<F = never> {
   operator: "and";
@@ -101,14 +101,33 @@ export type QueryReturnType<
               : never;
 };
 
+export type ProcessTOverridesNames<T extends Record<string, unknown>> = {
+  [K in keyof T as Replace<string & K, ".", "___">]: T[K];
+};
+
 // biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
-export interface SqlQueryResult<RT extends object> {
+export interface SqlQueryResult<RT extends Record<string, unknown>> {
   sql: string;
   bindings: unknown[];
 }
 
-export type InferSqlQueryResultType<T> = T extends SqlQueryResult<infer RT>
-  ? RT
+export type MergeInferredSqlQueryResultTypeWithOverrides<
+  T extends Record<string, unknown>,
+  RT extends Record<string, unknown>,
+> = Omit<T, keyof RT> & Pick<RT, string & keyof T>;
+
+export type InferSqlQueryResultType<
+  T,
+  TOverrides extends Record<string, unknown> = never,
+> = T extends SqlQueryResult<infer RT>
+  ? [TOverrides] extends [never]
+    ? RT
+    : Simplify<
+        MergeInferredSqlQueryResultTypeWithOverrides<
+          RT,
+          ProcessTOverridesNames<TOverrides>
+        >
+      >
   : never;
 
 export type QueryMemberName<T> = T extends string[] ? T[number] : never;
