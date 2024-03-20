@@ -1,17 +1,17 @@
-import * as C from "../index.js";
 import * as assert from "node:assert/strict";
+import * as C from "../index.js";
 
+import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { after, before, describe, it } from "node:test";
 
-import { InferSqlQueryResultType } from "../index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
@@ -1081,6 +1081,74 @@ await describe("semantic layer", async () => {
         additionalProperties: false,
         $schema: "http://json-schema.org/draft-07/schema#",
       });
+    });
+  });
+
+  await describe("model descriptions", async () => {
+    const customersModel = C.model("customers")
+      .fromSqlQuery('select * from "Customer"')
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
+        description: "The unique identifier of the customer",
+      });
+
+    const invoicesModel = C.model("invoices")
+      .fromSqlQuery('select * from "Invoice"')
+      .withDimension("invoice_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceId"),
+        description: "The unique identifier of the invoice",
+      })
+      .withDimension("customer_id", {
+        type: "number",
+        sql: ({ model }) => model.column("CustomerId"),
+        description: "The unique identifier of the invoice customer",
+      })
+      .withMetric("total", {
+        type: "string",
+        aggregateWith: "sum",
+        format: "percentage",
+        sql: ({ model }) => model.column("Total"),
+      });
+
+    const repository = C.repository()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .joinOneToMany(
+        "customers",
+        "invoices",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+      );
+
+    await it("allows access to the model descriptions", () => {
+      const docs: string[] = [];
+      const dimensions = repository.getDimensions();
+      const metrics = repository.getMetrics();
+      for (const dimension of dimensions) {
+        docs.push(
+          `DIMENSION: ${dimension.getPath()}, TYPE: ${dimension.getType()}, DESCRIPTION: ${
+            dimension.getDescription() ?? "-"
+          }, FORMAT: ${dimension.getFormat() ?? "-"}`,
+        );
+      }
+      for (const metric of metrics) {
+        docs.push(
+          `METRIC: ${metric.getPath()}, TYPE: ${metric.getType()}, DESCRIPTION: ${
+            metric.getDescription() ?? "-"
+          }, FORMAT: ${metric.getFormat() ?? "-"}`,
+        );
+      }
+
+      assert.deepEqual(docs, [
+        "DIMENSION: customers.customer_id, TYPE: number, DESCRIPTION: The unique identifier of the customer, FORMAT: -",
+        "DIMENSION: invoices.invoice_id, TYPE: number, DESCRIPTION: The unique identifier of the invoice, FORMAT: -",
+        "DIMENSION: invoices.customer_id, TYPE: number, DESCRIPTION: The unique identifier of the invoice customer, FORMAT: -",
+        "METRIC: invoices.total, TYPE: string, DESCRIPTION: -, FORMAT: percentage",
+      ]);
     });
   });
 });

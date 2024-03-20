@@ -1,8 +1,8 @@
 import * as chrono from "chrono-node";
 
 import dayjs from "dayjs";
-import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 import { z } from "zod";
+import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const Schema = z.union([
   z.string(),

@@ -77,6 +77,7 @@ export type Granularity =
   GranularityByDimensionType[keyof GranularityByDimensionType][number];
 
 export type MemberType = "string" | "number" | "date" | "datetime" | "boolean";
+export type MemberFormat = "percentage" | "currency";
 
 export type MemberNameToType = { [k in never]: MemberType };
 

@@ -1,6 +1,7 @@
 import {
   Granularity,
   GranularityByDimensionType,
+  MemberFormat,
   MemberNameToType,
   MemberType,
   SqlWithBindings,
@@ -97,20 +98,25 @@ export type WithGranularityDimensions<
 export interface DimensionProps<DN extends string = string> {
   type: MemberType;
   sql?: SqlFn<DN>;
+  format?: MemberFormat;
   primaryKey?: boolean;
+  description?: string;
 }
 
 export type MetricType = "count" | "sum" | "avg" | "min" | "max";
 export interface MetricProps<DN extends string = string> {
   type: MemberType;
+  // TODO: allow custom aggregate functions: ({sql: SqlFn<never>, metric: MetricRef}) => SqlWithRefs
   aggregateWith: MetricType;
   sql?: SqlFn<DN>;
+  format?: MemberFormat;
+  description?: string;
 }
 
 export abstract class Member {
   public abstract readonly name: string;
   public abstract readonly model: AnyModel;
-  public abstract props: { sql?: SqlFn };
+  public abstract props: DimensionProps | MetricProps;
 
   abstract getSql(dialect: BaseDialect, modelAlias?: string): SqlWithBindings;
   abstract isMetric(): this is Metric;
@@ -136,6 +142,15 @@ export abstract class Member {
       });
       return result.render(dialect);
     }
+  }
+  getDescription() {
+    return this.props.description;
+  }
+  getType() {
+    return this.props.type;
+  }
+  getFormat() {
+    return this.props.format;
   }
 }
 
