@@ -1,3 +1,5 @@
+import { Replace } from "type-fest";
+
 export interface AndConnective<F = never> {
   operator: "and";
   filters: QueryFilter<F>[];
@@ -73,3 +75,41 @@ export const GranularityByDimensionType = {
 export type GranularityByDimensionType = typeof GranularityByDimensionType;
 export type Granularity =
   GranularityByDimensionType[keyof GranularityByDimensionType][number];
+
+export type MemberType = "string" | "number" | "date" | "datetime" | "boolean";
+
+export type MemberNameToType = { [k in never]: MemberType };
+
+export type QueryReturnType<
+  M extends MemberNameToType,
+  N extends keyof M,
+  S = Pick<M, N>,
+> = {
+  [K in keyof S as Replace<string & K, ".", "___">]: S[K] extends "string"
+    ? string
+    : S[K] extends "number"
+      ? number
+      : S[K] extends "date"
+        ? Date
+        : S[K] extends "time"
+          ? Date
+          : S[K] extends "datetime"
+            ? Date
+            : S[K] extends "boolean"
+              ? boolean
+              : never;
+};
+
+// biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
+export interface SqlQueryResult<RT extends object> {
+  sql: string;
+  bindings: unknown[];
+}
+
+export type InferSqlQueryResultType<T> = T extends SqlQueryResult<infer RT>
+  ? RT
+  : never;
+
+export type QueryMemberName<T> = T extends string[] ? T[number] : never;
+
+export type AvailableDialects = "postgresql";

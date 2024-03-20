@@ -1,6 +1,6 @@
 import { ZodSchema, z } from "zod";
 
-import { SqlWithBindings } from "../../../types.js";
+import { SqlWithBindings } from "../../types.js";
 import type { FilterBuilder } from "../filter-builder.js";
 
 export class FilterFragmentBuilder<
@@ -11,7 +11,7 @@ export class FilterFragmentBuilder<
   public readonly fragmentBuilderSchema: ZodSchema;
   constructor(
     public readonly operator: string,
-    valueSchema: ZodSchema | null,
+    valueSchema: Z,
     private readonly builder: FilterFragmentBuilderFn<T>,
   ) {
     if (valueSchema) {

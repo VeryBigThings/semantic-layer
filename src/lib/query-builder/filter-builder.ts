@@ -4,7 +4,7 @@ import {
   FilterType,
   OrConnective,
   SqlWithBindings,
-} from "../../types.js";
+} from "../types.js";
 import {
   afterDate as filterAfterDate,
   beforeDate as filterBeforeDate,
@@ -36,8 +36,8 @@ import {
   lte as filterLte,
 } from "./filter-builder/number-comparison-filter-builder.js";
 
-import type { Database } from "../builder/database.js";
 import { BaseDialect } from "../dialect/base.js";
+import type { Repository } from "../repository.js";
 import { equals as filterEquals } from "./filter-builder/equals.js";
 import { notEquals as filterNotEquals } from "./filter-builder/not-equals.js";
 import { sqlAsSqlWithBindings } from "./util.js";
@@ -51,7 +51,7 @@ export class FilterBuilder {
       AnyFilterFragmentBuilder
     >,
     private readonly dialect: BaseDialect,
-    private readonly database: Database,
+    private readonly repository: Repository,
     private readonly filterType: FilterType,
     referencedModels: string[],
     private readonly metricPrefixes?: Record<string, string>,
@@ -59,7 +59,7 @@ export class FilterBuilder {
     this.referencedModels = new Set(referencedModels);
   }
   getMemberSql(memberName: string): SqlWithBindings | undefined {
-    const member = this.database.getMember(memberName);
+    const member = this.repository.getMember(memberName);
     if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
         return member.getSql(this.dialect);
@@ -145,8 +145,11 @@ export class FilterFragmentBuilderRegistry<T = never> {
     this.filterFragmentBuilders[builder.operator] = builder;
     return this;
   }
+  getFilterFragmentBuilders() {
+    return Object.values(this.filterFragmentBuilders);
+  }
   getFilterBuilder(
-    database: Database,
+    repository: Repository,
     dialect: BaseDialect,
     filterType: FilterType,
     referencedModels: string[],
@@ -155,7 +158,7 @@ export class FilterFragmentBuilderRegistry<T = never> {
     return new FilterBuilder(
       this.filterFragmentBuilders,
       dialect,
-      database,
+      repository,
       filterType,
       referencedModels,
       metricPrefixes,

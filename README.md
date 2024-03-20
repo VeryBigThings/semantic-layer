@@ -33,7 +33,10 @@ This library allows you to define models and their respective fields, including 
 **Defining a Model:**
 
 ```typescript
-const customersModel = C.model("customers")
+import * as semanticLayer from "@verybigthings/semantic-layer";
+
+const customersModel = semanticLayer
+  .model("customers")
   .fromTable("Customer")
   .withDimension("customer_id", {
     type: "number",
@@ -49,7 +52,8 @@ const customersModel = C.model("customers")
     sql: ({ model }) => model.column("LastName"),
   });
 
-const invoicesModel = C.model("invoices")
+const invoicesModel = semanticLayer
+  .model("invoices")
   .fromTable("Invoice")
   .withDimension("invoice_id", {
     type: "number",
@@ -57,11 +61,14 @@ const invoicesModel = C.model("invoices")
     sql: ({ model, sql }) => sql`${model.column("InvoiceId")}`,
   })
   .withMetric("total", {
-    type: "sum",
+    // node-postgres returns string types for big integers
+    type: "string",
+    aggregateWith: "sum",
     sql: ({ model }) => model.column("Total"),
   });
 
-const invoiceLinesModel = C.model("invoice_lines")
+const invoiceLinesModel = semanticLayer
+  .model("invoice_lines")
   .fromTable("InvoiceLine")
   .withDimension("invoice_line_id", {
     type: "number",
@@ -77,19 +84,25 @@ const invoiceLinesModel = C.model("invoice_lines")
     sql: ({ model }) => model.column("TrackId"),
   })
   .withMetric("quantity", {
-    type: "sum",
+    // node-postgres returns string types for big integers
+    type: "string",
+    aggregateWith: "sum",
     sql: ({ model }) => model.column("Quantity"),
   })
   .withMetric("total_unit_price", {
-    type: "sum",
+    // node-postgres returns string types for big integers
+
+    type: "string",
+    aggregateWith: "sum"
     sql: ({ model }) => model.column("UnitPrice"),
   });
 ```
 
-**Defining a Database and joining models:**
+**Defining a Repository and joining models:**
 
 ```typescript
-const db = C.database()
+const repository = semanticLayer
+  .repository()
   .withModel(customersModel)
   .withModel(invoicesModel)
   .withModel(invoiceLinesModel)
@@ -105,6 +118,8 @@ const db = C.database()
     ({ sql, dimensions }) =>
       sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`
   );
+
+const queryBuilder = repository.build("postgresql");
 ```
 
 ### Data Querying
@@ -113,7 +128,7 @@ Leverage the library's querying capabilities to fetch dimensions and metrics, ap
 
 ```typescript
 // Dimension and metric query
-const query = db.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.customer_id"],
   metrics: ["invoices.total"],
   order: { "customers.customer_id": "asc" },
@@ -121,7 +136,7 @@ const query = db.query({
 });
 
 // Metric query with filters
-const query = db.query({
+const query = queryBuilder.buildQuery({
   metrics: ["invoices.total", "invoice_lines.quantity"],
   filters: [
     { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -129,7 +144,7 @@ const query = db.query({
 });
 
 // Dimension query with filters
-const query = db.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.first_name", "customers.last_name"],
   filters: [
     { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -137,7 +152,7 @@ const query = db.query({
 });
 
 // Filtering and sorting
-const query = db.query({
+const query = queryBuilder.buildQuery({
   dimensions: ["customers.first_name"],
   metrics: ["invoices.total"],
   filters: [{ operator: "gt", member: "invoices.total", value: [100] }],
