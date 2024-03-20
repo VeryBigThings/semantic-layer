@@ -4,10 +4,10 @@ import {
   MemberNameToType,
   MemberType,
   SqlWithBindings,
-} from "../../types.js";
+} from "./types.js";
 
-import { BaseDialect } from "../dialect/base.js";
-import { sqlAsSqlWithBindings } from "../query/util.js";
+import { BaseDialect } from "./dialect/base.js";
+import { sqlAsSqlWithBindings } from "./query-builder/util.js";
 
 export abstract class Ref {
   public abstract render(dialect: BaseDialect): SqlWithBindings;

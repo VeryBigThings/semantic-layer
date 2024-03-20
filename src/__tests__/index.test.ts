@@ -1,16 +1,16 @@
-import * as assert from "node:assert/strict";
 import * as C from "../index.js";
+import * as assert from "node:assert/strict";
 
-import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
+import { after, before, describe, it } from "node:test";
 
+import { InferSqlQueryResultType } from "../index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
-import { InferSqlQueryResultType } from "../index.js";
 
 //import { format as sqlFormat } from "sql-formatter";
 
@@ -219,7 +219,7 @@ await describe("semantic layer", async () => {
           sql`${dimensions.tracks.album_id} = ${dimensions.albums.album_id}`,
       );
 
-    const queryBuilder = repository.build();
+    const queryBuilder = repository.build("postgresql");
 
     await it("can query one dimension and one metric", async () => {
       const query = queryBuilder.build({
@@ -480,7 +480,7 @@ await describe("semantic layer", async () => {
           sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
       );
 
-    const queryBuilder = repository.build();
+    const queryBuilder = repository.build("postgresql");
 
     await it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.build({

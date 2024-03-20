@@ -1,33 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as graphlib from "@dagrejs/graphlib";
 
-import {
-  AnyQuery,
-  MemberNameToType,
-  ModelQuery,
-  Query,
-  QueryMemberName,
-  QueryReturnType,
-  QuerySegment,
-  SqlQueryResult,
-} from "../../types.js";
+import { AnyQuery, ModelQuery, QuerySegment } from "../types.js";
 
-import knex from "knex";
-import invariant from "tiny-invariant";
-import { Simplify } from "type-fest";
-import type { Join } from "../builder/join.js";
-import type { AnyRepository } from "../builder/repository.js";
+import type { AnyRepository } from "../repository.js";
 import { BaseDialect } from "../dialect/base.js";
-import { expandQueryToSegments } from "./expand-query.js";
-import { findOptimalJoinGraph } from "./optimal-join-graph.js";
+import type { Join } from "../join.js";
+import invariant from "tiny-invariant";
+import knex from "knex";
 
 interface ReferencedModels {
   all: string[];
   dimensions: string[];
   metrics: string[];
 }
-
-const client = knex({ client: "pg" });
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function buildQuerySegmentJoinQuery(
@@ -198,7 +183,7 @@ function getAlias(index: number) {
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
-function buildQuery(
+export function buildQuery(
   knex: knex.Knex,
   repository: AnyRepository,
   Dialect: typeof BaseDialect,
@@ -208,7 +193,7 @@ function buildQuery(
   segments: QuerySegment[],
 ) {
   const sqlQuerySegments = segments.map((segment) =>
-    buildQuerySegment(client, repository, Dialect, joinGraph, segment),
+    buildQuerySegment(knex, repository, Dialect, joinGraph, segment),
   );
   const [initialSqlQuerySegment, ...restSqlQuerySegments] = sqlQuerySegments;
 
@@ -318,61 +303,4 @@ function buildQuery(
   rootSqlQuery.offset(query.offset ?? 0);
 
   return rootSqlQuery;
-}
-
-export class QueryBuilder<
-  D extends MemberNameToType,
-  M extends MemberNameToType,
-  F,
-> {
-  constructor(
-    private readonly repository: AnyRepository,
-    private readonly Dialect: typeof BaseDialect,
-  ) {}
-
-  build<const Q extends { dimensions?: string[]; metrics?: string[] }>(
-    query: Q &
-      Query<
-        string & keyof D,
-        string & keyof M,
-        F & { member: string & (keyof D | keyof M) }
-      >,
-  ) {
-    const { referencedModels, segments } = expandQueryToSegments(
-      this.repository,
-      query,
-    );
-
-    const joinGraph = findOptimalJoinGraph(
-      this.repository.graph,
-      referencedModels.all,
-    );
-
-    const sqlQuery = buildQuery(
-      client,
-      this.repository,
-      this.Dialect,
-      query,
-      referencedModels,
-      joinGraph,
-      segments,
-    );
-
-    const { sql, bindings } = sqlQuery.toSQL().toNative();
-
-    const result: SqlQueryResult<
-      Simplify<
-        QueryReturnType<
-          D & M,
-          | (QueryMemberName<Q["dimensions"]> & keyof D)
-          | (QueryMemberName<Q["metrics"]> & keyof M)
-        >
-      >
-    > = {
-      sql,
-      bindings: bindings as unknown[],
-    };
-
-    return result;
-  }
 }

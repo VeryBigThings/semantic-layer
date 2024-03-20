@@ -1,4 +1,4 @@
-import type { BaseDialect } from "../dialect/base.js";
+import type { BaseDialect } from "./dialect/base.js";
 import type { Repository } from "./repository.js";
 
 export class JoinDimensionRef<N extends string, DN extends string> {

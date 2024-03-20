@@ -1,9 +1,10 @@
-import { FilterType, MemberNameToType } from "../../types.js";
 import {
   AnyFilterFragmentBuilderRegistry,
   GetFilterFragmentBuilderRegistryPayload,
   defaultFilterFragmentBuilderRegistry,
-} from "../query/filter-builder.js";
+} from "./query-builder/filter-builder.js";
+import { AnyModel, Model } from "./model.js";
+import { AvailableDialects, FilterType, MemberNameToType } from "./types.js";
 import {
   JOIN_WEIGHTS,
   Join,
@@ -13,12 +14,12 @@ import {
   JoinOnDef,
   REVERSED_JOIN,
 } from "./join.js";
-import { AnyModel, Model } from "./model.js";
 
+import { BaseDialect } from "./dialect/base.js";
+import { QueryBuilder } from "./query-builder.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
-import { BaseDialect } from "../dialect/base.js";
-import { QueryBuilder } from "../query/builder.js";
+import knex from "knex";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelN<T> = T extends Model<infer N, any, any> ? N : never;
@@ -33,6 +34,20 @@ export type ModelM<T> = T extends Model<infer N, any, infer M>
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type AnyRepository = Repository<any, any, any, any>;
+
+function getClientAndDialect(dialect: AvailableDialects): {
+  client: knex.Knex;
+  Dialect: typeof BaseDialect;
+} {
+  switch (dialect) {
+    case "postgresql":
+      return { client: knex({ client: "pg" }), Dialect: BaseDialect };
+    default:
+      // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
+      const _exhaustiveCheck: never = dialect;
+      throw new Error(`Dialect ${dialect} not supported`);
+  }
+}
 
 export class Repository<
   N extends string = never,
@@ -235,8 +250,9 @@ export class Repository<
     return this.joins[modelName]?.[joinModelName];
   }
 
-  build() {
-    return new QueryBuilder<D, M, F>(this, BaseDialect);
+  build(dialectName: AvailableDialects) {
+    const { client, Dialect } = getClientAndDialect(dialectName);
+    return new QueryBuilder<D, M, F>(this, Dialect, client);
   }
 }
 

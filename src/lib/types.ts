@@ -106,7 +106,7 @@ export type QueryReturnType<
               : never;
 };
 
-// biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can infer the return type later
+// biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
 export interface SqlQueryResult<RT extends object> {
   sql: string;
   bindings: unknown[];
@@ -117,3 +117,5 @@ export type InferSqlQueryResultType<T> = T extends SqlQueryResult<infer RT>
   : never;
 
 export type QueryMemberName<T> = T extends string[] ? T[number] : never;
+
+export type AvailableDialects = "postgresql";

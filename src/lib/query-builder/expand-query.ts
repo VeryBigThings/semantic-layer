@@ -3,9 +3,9 @@ import {
   AnyQueryFilter,
   ModelQuery,
   QuerySegment,
-} from "../../types.js";
+} from "../types.js";
 
-import { Repository } from "../builder/repository.js";
+import { Repository } from "../repository.js";
 
 function analyzeQuery(repository: Repository, query: AnyQuery) {
   const allModels = new Set<string>();
