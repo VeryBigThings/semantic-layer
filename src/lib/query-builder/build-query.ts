@@ -14,6 +14,28 @@ interface ReferencedModels {
   metrics: string[];
 }
 
+function getDefaultOrderBy(repository: AnyRepository, query: AnyQuery) {
+  const firstDimensionName = query.dimensions?.[0];
+  const firstMetricName = query.metrics?.[0];
+
+  for (const dimensionName of query.dimensions ?? []) {
+    const dimension = repository.getDimension(dimensionName);
+    if (dimension.getGranularity()) {
+      return { [dimensionName]: "asc" };
+    }
+  }
+
+  if (firstMetricName) {
+    return { [firstMetricName]: "desc" };
+  }
+
+  if (firstDimensionName) {
+    return { [firstDimensionName]: "asc" };
+  }
+
+  return {};
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function buildQuerySegmentJoinQuery(
   knex: knex.Knex,
@@ -294,12 +316,12 @@ export function buildQuery(
     }
   }
 
-  const orderBy = Object.entries(query.order || {}).map(
-    ([member, direction]) => {
-      const memberSql = repository.getMember(member).getAlias(dialect);
-      return `${memberSql} ${direction}`;
-    },
-  );
+  const orderBy = Object.entries(
+    query.order || getDefaultOrderBy(repository, query),
+  ).map(([member, direction]) => {
+    const memberSql = repository.getMember(member).getAlias(dialect);
+    return `${memberSql} ${direction}`;
+  });
 
   if (orderBy.length > 0) {
     rootSqlQuery.orderByRaw(orderBy.join(", "));

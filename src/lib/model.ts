@@ -184,6 +184,9 @@ export class Dimension extends Member {
     }
     return result;
   }
+  getGranularity() {
+    return this.granularity;
+  }
   isDimension(): this is Dimension {
     return true;
   }

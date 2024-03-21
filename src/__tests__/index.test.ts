@@ -1606,5 +1606,57 @@ await describe("semantic layer", async () => {
         },
       ]);
     });
+
+    await it("should return order results by default", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["artists.name"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+        {
+          artists___name: "Accept",
+        },
+        {
+          artists___name: "Aerosmith",
+        },
+        {
+          artists___name: "Alanis Morissette",
+        },
+        {
+          artists___name: "Alice In Chains",
+        },
+        {
+          artists___name: "Audioslave",
+        },
+        {
+          artists___name: "Creedence Clearwater Revival",
+        },
+        {
+          artists___name: "David Coverdale",
+        },
+        {
+          artists___name: "Deep Purple",
+        },
+        {
+          artists___name: "Def Leppard",
+        },
+      ]);
+    });
   });
 });
