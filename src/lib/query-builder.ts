@@ -11,7 +11,7 @@ import {
 } from "./types.js";
 
 import knex from "knex";
-import { ZodSchema, z } from "zod";
+import { z } from "zod";
 
 import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
@@ -29,7 +29,53 @@ function getMemberNamesSchema(memberPaths: string[]) {
     const [first, ...rest] = memberPaths;
     return z.array(z.enum([first, ...rest])).optional();
   }
-  return z.array(z.never()).optional();
+  return z.array(z.string()).max(0).optional();
+}
+
+export function buildQuerySchema(repository: AnyRepository) {
+  const dimensionPaths = repository.getDimensions().map((d) => d.getPath());
+  const metricPaths = repository.getMetrics().map((m) => m.getPath());
+  const memberPaths = [...dimensionPaths, ...metricPaths];
+
+  const registeredFilterFragmentBuildersSchemas = repository
+    .getFilterFragmentBuilderRegistry()
+    .getFilterFragmentBuilders()
+    .map((builder) => builder.fragmentBuilderSchema);
+
+  const filters: z.ZodType<AnyQueryFilter[]> = z.array(
+    z.union([
+      z.object({
+        operator: z.literal("and"),
+        filters: z.lazy(() => filters),
+      }),
+      z.object({
+        operator: z.literal("or"),
+        filters: z.lazy(() => filters),
+      }),
+      ...registeredFilterFragmentBuildersSchemas.map((schema) =>
+        schema.refine((arg) => memberPaths.includes(arg.member), {
+          path: ["member"],
+          message: "Member not found",
+        }),
+      ),
+    ]),
+  );
+
+  const schema = z
+    .object({
+      dimensions: getMemberNamesSchema(dimensionPaths),
+      metrics: getMemberNamesSchema(metricPaths),
+      filters: filters.optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+      order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
+    })
+    .refine(
+      (arg) => (arg.dimensions?.length ?? 0) + (arg.metrics?.length ?? 0) > 0,
+      "At least one dimension or metric must be selected",
+    );
+
+  return schema;
 }
 
 export class QueryBuilder<
@@ -37,61 +83,13 @@ export class QueryBuilder<
   M extends MemberNameToType,
   F,
 > {
-  public readonly querySchema: ZodSchema;
+  public readonly querySchema: ReturnType<typeof buildQuerySchema>;
   constructor(
     private readonly repository: AnyRepository,
     private readonly Dialect: typeof BaseDialect,
     private readonly client: knex.Knex,
   ) {
-    this.querySchema = this.buildQuerySchema();
-  }
-
-  private buildQuerySchema() {
-    const dimensionPaths = this.repository
-      .getDimensions()
-      .map((d) => d.getPath());
-    const metricPaths = this.repository.getMetrics().map((m) => m.getPath());
-    const memberPaths = [...dimensionPaths, ...metricPaths];
-
-    const registeredFilterFragmentBuildersSchemas = this.repository
-      .getFilterFragmentBuilderRegistry()
-      .getFilterFragmentBuilders()
-      .map((builder) => builder.fragmentBuilderSchema);
-
-    const filters: z.ZodType<AnyQueryFilter[]> = z.array(
-      z.union([
-        z.object({
-          operator: z.literal("and"),
-          filters: z.lazy(() => filters),
-        }),
-        z.object({
-          operator: z.literal("or"),
-          filters: z.lazy(() => filters),
-        }),
-        ...registeredFilterFragmentBuildersSchemas.map((schema) =>
-          schema.refine((arg) => memberPaths.includes(arg.member), {
-            path: ["member"],
-            message: "Member not found",
-          }),
-        ),
-      ]),
-    );
-
-    const schema = z
-      .object({
-        dimensions: getMemberNamesSchema(dimensionPaths),
-        metrics: getMemberNamesSchema(metricPaths),
-        filters: filters.optional(),
-        limit: z.number().optional(),
-        offset: z.number().optional(),
-        order: z.record(z.enum(["asc", "desc"])).optional(),
-      })
-      .refine(
-        (arg) => (arg.dimensions?.length ?? 0) + (arg.metrics?.length ?? 0) > 0,
-        "At least one dimension or metric must be selected",
-      );
-
-    return schema;
+    this.querySchema = buildQuerySchema(repository);
   }
 
   unsafeBuildQuery(payload: unknown) {

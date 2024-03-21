@@ -1,12 +1,12 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -1212,7 +1212,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("fill repository", async () => {
+  await describe("full repository", async () => {
     const customersModel = semanticLayer
       .model("customers")
       .fromTable("Customer")
@@ -1657,6 +1657,25 @@ await describe("semantic layer", async () => {
           artists___name: "Def Leppard",
         },
       ]);
+    });
+
+    await it("should return same query after it's parsed by schema", async () => {
+      const query = {
+        dimensions: ["artists.name"],
+        metrics: ["tracks.sum_unit_price"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        order: { "artists.name": "asc" },
+        limit: 10,
+      };
+
+      const parsedQuery = queryBuilder.querySchema.parse(query);
+      assert.deepEqual(query, parsedQuery);
     });
   });
 });
