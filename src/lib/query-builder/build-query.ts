@@ -2,11 +2,11 @@ import * as graphlib from "@dagrejs/graphlib";
 
 import { AnyQuery, ModelQuery, QuerySegment } from "../types.js";
 
-import knex from "knex";
-import invariant from "tiny-invariant";
+import type { AnyRepository } from "../repository.js";
 import { BaseDialect } from "../dialect/base.js";
 import type { Join } from "../join.js";
-import type { AnyRepository } from "../repository.js";
+import invariant from "tiny-invariant";
+import knex from "knex";
 
 interface ReferencedModels {
   all: string[];
@@ -128,6 +128,12 @@ function buildQuerySegment(
     source,
   );
   const dialect = new Dialect(initialSqlQuery);
+
+  // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
+  // otherwise GROUP BY will take care of it
+  if ((segment.query.metrics?.length ?? 0) === 0) {
+    initialSqlQuery.distinct();
+  }
 
   if (segment.query.filters) {
     const filter = repository

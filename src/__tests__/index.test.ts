@@ -1,12 +1,12 @@
 import * as assert from "node:assert/strict";
-import * as C from "../index.js";
+import * as semanticLayer from "../index.js";
 
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -87,7 +87,8 @@ await describe("semantic layer", async () => {
   });
 
   await describe("models from tables", async () => {
-    const customersModel = C.model("customers")
+    const customersModel = semanticLayer
+      .model("customers")
       .fromTable("Customer")
       .withDimension("customer_id", {
         type: "number",
@@ -114,7 +115,8 @@ await describe("semantic layer", async () => {
           )}`,
       });
 
-    const invoicesModel = C.model("invoices")
+    const invoicesModel = semanticLayer
+      .model("invoices")
       .fromTable("Invoice")
       .withDimension("invoice_id", {
         type: "number",
@@ -135,7 +137,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("Total"),
       });
 
-    const invoiceLinesModel = C.model("invoice_lines")
+    const invoiceLinesModel = semanticLayer
+      .model("invoice_lines")
       .fromTable("InvoiceLine")
       .withDimension("invoice_line_id", {
         type: "number",
@@ -161,7 +164,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("UnitPrice"),
       });
 
-    const tracksModel = C.model("tracks")
+    const tracksModel = semanticLayer
+      .model("tracks")
       .fromTable("Track")
       .withDimension("track_id", {
         type: "number",
@@ -177,7 +181,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("AlbumId"),
       });
 
-    const albumsModel = C.model("albums")
+    const albumsModel = semanticLayer
+      .model("albums")
       .fromTable("Album")
       .withDimension("album_id", {
         type: "number",
@@ -189,7 +194,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("Title"),
       });
 
-    const repository = C.repository()
+    const repository = semanticLayer
+      .repository()
       .withModel(customersModel)
       .withModel(invoicesModel)
       .withModel(invoiceLinesModel)
@@ -445,7 +451,8 @@ await describe("semantic layer", async () => {
   });
 
   await describe("models from sql queries", async () => {
-    const customersModel = C.model("customers")
+    const customersModel = semanticLayer
+      .model("customers")
       .fromSqlQuery('select * from "Customer"')
       .withDimension("customer_id", {
         type: "number",
@@ -453,7 +460,8 @@ await describe("semantic layer", async () => {
         sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
       });
 
-    const invoicesModel = C.model("invoices")
+    const invoicesModel = semanticLayer
+      .model("invoices")
       .fromSqlQuery('select * from "Invoice"')
       .withDimension("invoice_id", {
         type: "number",
@@ -470,7 +478,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("Total"),
       });
 
-    const repository = C.repository()
+    const repository = semanticLayer
+      .repository()
       .withModel(customersModel)
       .withModel(invoicesModel)
       .joinOneToMany(
@@ -542,7 +551,8 @@ await describe("semantic layer", async () => {
 
   await describe("query schema", async () => {
     await it("can parse a valid query", () => {
-      const customersModel = C.model("customers")
+      const customersModel = semanticLayer
+        .model("customers")
         .fromSqlQuery('select * from "Customer"')
         .withDimension("customer_id", {
           type: "number",
@@ -550,7 +560,8 @@ await describe("semantic layer", async () => {
           sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
         });
 
-      const invoicesModel = C.model("invoices")
+      const invoicesModel = semanticLayer
+        .model("invoices")
         .fromSqlQuery('select * from "Invoice"')
         .withDimension("invoice_id", {
           type: "number",
@@ -567,7 +578,8 @@ await describe("semantic layer", async () => {
           sql: ({ model }) => model.column("Total"),
         });
 
-      const repository = C.repository()
+      const repository = semanticLayer
+        .repository()
         .withModel(customersModel)
         .withModel(invoicesModel)
         .joinOneToMany(
@@ -1084,7 +1096,8 @@ await describe("semantic layer", async () => {
   });
 
   await describe("model descriptions and query introspection", async () => {
-    const customersModel = C.model("customers")
+    const customersModel = semanticLayer
+      .model("customers")
       .fromSqlQuery('select * from "Customer"')
       .withDimension("customer_id", {
         type: "number",
@@ -1093,7 +1106,8 @@ await describe("semantic layer", async () => {
         description: "The unique identifier of the customer",
       });
 
-    const invoicesModel = C.model("invoices")
+    const invoicesModel = semanticLayer
+      .model("invoices")
       .fromSqlQuery('select * from "Invoice"')
       .withDimension("invoice_id", {
         type: "number",
@@ -1113,7 +1127,8 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("Total"),
       });
 
-    const repository = C.repository()
+    const repository = semanticLayer
+      .repository()
       .withModel(customersModel)
       .withModel(invoicesModel)
       .joinOneToMany(
@@ -1194,6 +1209,402 @@ await describe("semantic layer", async () => {
           description: undefined,
         },
       });
+    });
+  });
+
+  await describe("fill repository", async () => {
+    const customersModel = semanticLayer
+      .model("customers")
+      .fromTable("Customer")
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
+      })
+      .withDimension("first_name", {
+        type: "string",
+        sql: ({ model }) => model.column("FirstName"),
+      })
+      .withDimension("last_name", {
+        type: "string",
+        sql: ({ model }) => model.column("LastName"),
+      })
+      .withDimension("full_name", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`${model.dimension("first_name")} || ' ' || ${model.dimension(
+            "last_name",
+          )}`,
+      })
+      .withDimension("company", {
+        type: "string",
+        sql: ({ model }) => model.column("Company"),
+      })
+      .withDimension("address", {
+        type: "string",
+        sql: ({ model }) => model.column("Address"),
+      })
+      .withDimension("city", {
+        type: "string",
+        sql: ({ model }) => model.column("City"),
+      })
+      .withDimension("state", {
+        type: "string",
+        sql: ({ model }) => model.column("State"),
+      })
+      .withDimension("country", {
+        type: "string",
+        sql: ({ model }) => model.column("Country"),
+      })
+      .withDimension("postal_code", {
+        type: "string",
+        sql: ({ model }) => model.column("PostalCode"),
+      })
+      .withDimension("phone", {
+        type: "string",
+        sql: ({ model }) => model.column("Phone"),
+      })
+      .withDimension("fax", {
+        type: "string",
+        sql: ({ model }) => model.column("Fax"),
+      })
+      .withDimension("email", {
+        type: "string",
+        sql: ({ model }) => model.column("Email"),
+      });
+
+    const invoicesModel = semanticLayer
+      .model("invoices")
+      .fromTable("Invoice")
+      .withDimension("invoice_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("customer_id", {
+        type: "number",
+        sql: ({ model }) => model.column("CustomerId"),
+      })
+      .withDimension("invoice_date", {
+        type: "date",
+        sql: ({ model }) => model.column("InvoiceDate"),
+      })
+      .withDimension("billing_address", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingAddress"),
+      })
+      .withDimension("billing_city", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingCity"),
+      })
+      .withDimension("billing_state", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingState"),
+      })
+      .withDimension("billing_country", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingCountry"),
+      })
+      .withDimension("billing_postal_code", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingPostalCode"),
+      })
+      .withDimension("total", {
+        type: "string",
+        sql: ({ model }) => model.column("Total"),
+      })
+      .withMetric("sum_total", {
+        type: "number",
+        aggregateWith: "sum",
+        description: "Sum of the invoice totals across dimensions.",
+        sql: ({ model }) => model.dimension("total"),
+      });
+
+    const invoiceLinesModel = semanticLayer
+      .model("invoice_lines")
+      .fromTable("InvoiceLine")
+      .withDimension("invoice_line_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceLineId"),
+      })
+      .withDimension("invoice_id", {
+        type: "number",
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("track_id", {
+        type: "number",
+        sql: ({ model }) => model.column("TrackId"),
+      })
+      .withDimension("unit_price", {
+        type: "string",
+        sql: ({ model }) => model.column("UnitPrice"),
+      })
+      .withDimension("quantity", {
+        type: "string",
+        sql: ({ model }) => model.column("Quantity"),
+      })
+      .withMetric("sum_quantity", {
+        type: "number",
+        aggregateWith: "sum",
+        description: "Sum of the track quantities across dimensions.",
+        sql: ({ model }) => model.dimension("quantity"),
+      })
+      .withMetric("sum_unit_price", {
+        type: "number",
+        aggregateWith: "sum",
+        description: "Sum of the track unit prices across dimensions.",
+        sql: ({ model }) => model.dimension("unit_price"),
+      });
+
+    const tracksModel = semanticLayer
+      .model("tracks")
+      .fromTable("Track")
+      .withDimension("track_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("TrackId"),
+      })
+      .withDimension("album_id", {
+        type: "number",
+        sql: ({ model }) => model.column("AlbumId"),
+      })
+      .withDimension("media_type_id", {
+        type: "number",
+        sql: ({ model }) => model.column("MediaTypeId"),
+      })
+      .withDimension("genre_id", {
+        type: "number",
+        sql: ({ model }) => model.column("GenreId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      })
+      .withDimension("composer", {
+        type: "string",
+        sql: ({ model }) => model.column("Composer"),
+      })
+      .withDimension("milliseconds", {
+        type: "number",
+        sql: ({ model }) => model.column("Milliseconds"),
+      })
+      .withDimension("bytes", {
+        type: "number",
+        sql: ({ model }) => model.column("Bytes"),
+      })
+      .withDimension("unit_price", {
+        type: "string",
+        sql: ({ model }) => model.column("UnitPrice"),
+      })
+      .withMetric("sum_unit_price", {
+        type: "number",
+        aggregateWith: "sum",
+        description: "Sum of the track unit prices across dimensions.",
+        sql: ({ model }) => model.dimension("unit_price"),
+      });
+
+    const albumsModel = semanticLayer
+      .model("albums")
+      .fromTable("Album")
+      .withDimension("album_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("AlbumId"),
+      })
+      .withDimension("artist_id", {
+        type: "number",
+        sql: ({ model }) => model.column("ArtistId"),
+      })
+      .withDimension("title", {
+        type: "string",
+        sql: ({ model }) => model.column("Title"),
+      });
+
+    const artistModel = semanticLayer
+      .model("artists")
+      .fromTable("Artist")
+      .withDimension("artist_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("ArtistId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      });
+
+    const mediaTypeModel = semanticLayer
+      .model("media_types")
+      .fromTable("MediaType")
+      .withDimension("media_type_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("MediaTypeId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      });
+
+    const genreModel = semanticLayer
+      .model("genres")
+      .fromTable("Genre")
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      })
+      .withDimension("genre_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("GenreId"),
+      });
+
+    const playlistModel = semanticLayer
+      .model("playlists")
+      .fromTable("Playlist")
+      .withDimension("playlist_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("PlaylistId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      });
+
+    const playlistTrackModel = semanticLayer
+      .model("playlist_tracks")
+      .fromTable("PlaylistTrack")
+      .withDimension("playlist_id", {
+        type: "number",
+        sql: ({ model }) => model.column("PlaylistId"),
+      })
+      .withDimension("track_id", {
+        type: "number",
+        sql: ({ model }) => model.column("TrackId"),
+      });
+
+    const repository = semanticLayer
+      .repository()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .withModel(invoiceLinesModel)
+      .withModel(tracksModel)
+      .withModel(albumsModel)
+      .withModel(artistModel)
+      .withModel(mediaTypeModel)
+      .withModel(genreModel)
+      .withModel(playlistModel)
+      .withModel(playlistTrackModel)
+      .joinOneToMany(
+        "customers",
+        "invoices",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+      )
+      .joinOneToMany(
+        "invoices",
+        "invoice_lines",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`,
+      )
+      .joinManyToOne(
+        "invoice_lines",
+        "tracks",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.invoice_lines.track_id} = ${dimensions.tracks.track_id}`,
+      )
+      .joinOneToMany(
+        "albums",
+        "tracks",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.tracks.album_id} = ${dimensions.albums.album_id}`,
+      )
+      .joinManyToOne(
+        "albums",
+        "artists",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.albums.artist_id} = ${dimensions.artists.artist_id}`,
+      )
+      .joinOneToOne(
+        "tracks",
+        "media_types",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.tracks.media_type_id} = ${dimensions.media_types.media_type_id}`,
+      )
+      .joinOneToOne(
+        "tracks",
+        "genres",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.tracks.genre_id} = ${dimensions.genres.genre_id}`,
+      )
+      .joinManyToMany(
+        "playlists",
+        "playlist_tracks",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.playlists.playlist_id} = ${dimensions.playlist_tracks.playlist_id}`,
+      )
+      .joinManyToMany(
+        "playlist_tracks",
+        "tracks",
+        ({ sql, dimensions }) =>
+          sql`${dimensions.playlist_tracks.track_id} = ${dimensions.tracks.track_id}`,
+      );
+
+    const queryBuilder = repository.build("postgresql");
+
+    await it("should return distinct results for dimension only query", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["artists.name"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        order: { "artists.name": "asc" },
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+        {
+          artists___name: "Accept",
+        },
+        {
+          artists___name: "Aerosmith",
+        },
+        {
+          artists___name: "Alanis Morissette",
+        },
+        {
+          artists___name: "Alice In Chains",
+        },
+        {
+          artists___name: "Audioslave",
+        },
+        {
+          artists___name: "Creedence Clearwater Revival",
+        },
+        {
+          artists___name: "David Coverdale",
+        },
+        {
+          artists___name: "Deep Purple",
+        },
+        {
+          artists___name: "Def Leppard",
+        },
+      ]);
     });
   });
 });
