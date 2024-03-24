@@ -79,6 +79,7 @@ export function buildQuerySchema(repository: AnyRepository) {
 }
 
 export class QueryBuilder<
+  C,
   D extends MemberNameToType,
   M extends MemberNameToType,
   F,
@@ -86,13 +87,13 @@ export class QueryBuilder<
   public readonly querySchema: ReturnType<typeof buildQuerySchema>;
   constructor(
     private readonly repository: AnyRepository,
-    private readonly Dialect: typeof BaseDialect,
+    private readonly dialect: BaseDialect,
     private readonly client: knex.Knex,
   ) {
     this.querySchema = buildQuerySchema(repository);
   }
 
-  unsafeBuildQuery(payload: unknown) {
+  unsafeBuildQuery(payload: unknown, context: unknown) {
     const query: AnyQuery = this.querySchema.parse(payload);
 
     const { referencedModels, segments } = expandQueryToSegments(
@@ -108,7 +109,8 @@ export class QueryBuilder<
     const sqlQuery = buildQuery(
       this.client,
       this.repository,
-      this.Dialect,
+      this.dialect,
+      context,
       query,
       referencedModels,
       joinGraph,
@@ -130,8 +132,10 @@ export class QueryBuilder<
         string & keyof M,
         F & { member: string & (keyof D | keyof M) }
       >,
+    ...rest: C extends undefined ? [] : [C]
   ) {
-    const { sql, bindings } = this.unsafeBuildQuery(query);
+    const [context] = rest;
+    const { sql, bindings } = this.unsafeBuildQuery(query, context);
 
     const result: SqlQueryResult<
       Simplify<
@@ -180,6 +184,8 @@ export class QueryBuilder<
 }
 
 export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
+  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  any,
   infer D,
   infer M,
   infer F

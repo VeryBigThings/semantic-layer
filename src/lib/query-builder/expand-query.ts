@@ -5,9 +5,9 @@ import {
   QuerySegment,
 } from "../types.js";
 
-import { Repository } from "../repository.js";
+import { AnyRepository } from "../repository.js";
 
-function analyzeQuery(repository: Repository, query: AnyQuery) {
+function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
   const allModels = new Set<string>();
   const dimensionModels = new Set<string>();
   const metricModels = new Set<string>();
@@ -84,7 +84,7 @@ interface PreparedQuery {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function getQuerySegment(
-  repository: Repository,
+  repository: AnyRepository,
   queryAnalysis: ReturnType<typeof analyzeQuery>,
   metricModel: string | null,
   index: number,
@@ -209,7 +209,10 @@ function mergeQuerySegmentWithFilters(
   };
 }
 
-export function expandQueryToSegments(repository: Repository, query: AnyQuery) {
+export function expandQueryToSegments(
+  repository: AnyRepository,
+  query: AnyQuery,
+) {
   const queryAnalysis = analyzeQuery(repository, query);
   const metricModels = Object.keys(queryAnalysis.metricsByModel);
   const segments =

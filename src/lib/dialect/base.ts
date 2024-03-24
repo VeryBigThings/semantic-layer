@@ -1,8 +1,6 @@
-import knex from "knex";
 import { Granularity } from "../types.js";
 
 export class BaseDialect {
-  constructor(private sqlQuery: knex.Knex.QueryBuilder) {}
   withGranularity(granularity: Granularity, sql: string) {
     switch (granularity) {
       case "day":
@@ -28,8 +26,7 @@ export class BaseDialect {
     }
   }
   asIdentifier(value: string) {
-    return this.sqlQuery.client
-      .wrapIdentifier(value, this.sqlQuery.queryContext())
-      .trim();
+    if (value === "*") return value;
+    return `"${value}"`;
   }
 }

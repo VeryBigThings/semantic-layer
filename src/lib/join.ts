@@ -1,31 +1,92 @@
+import invariant from "tiny-invariant";
 import type { BaseDialect } from "./dialect/base.js";
-import type { Repository } from "./repository.js";
+import { AnyModel } from "./model.js";
+import type { AnyRepository } from "./repository.js";
+import { SqlWithBindings } from "./types.js";
 
-export class JoinDimensionRef<N extends string, DN extends string> {
+export abstract class JoinRef {
+  public abstract render(
+    repository: AnyRepository,
+    dialect: BaseDialect,
+  ): SqlWithBindings;
+}
+
+export class JoinDimensionRef<
+  N extends string,
+  DN extends string,
+> extends JoinRef {
   constructor(
     private readonly model: N,
     private readonly dimension: DN,
-  ) {}
-  render(repository: Repository, dialect: BaseDialect) {
+    private readonly context: unknown,
+  ) {
+    super();
+  }
+  render(repository: AnyRepository, dialect: BaseDialect) {
     return repository
       .getModel(this.model)
       .getDimension(this.dimension)
-      .getSql(dialect);
+      .getSql(dialect, this.context);
   }
 }
+
+export class JoinColumnRef<N extends string> extends JoinRef {
+  constructor(
+    private readonly model: N,
+    private readonly column: string,
+  ) {
+    super();
+  }
+  render(repository: AnyRepository, dialect: BaseDialect) {
+    const model = repository.getModel(this.model);
+    return {
+      sql: `${dialect.asIdentifier(model.getAs())}.${dialect.asIdentifier(
+        this.column,
+      )}`,
+      bindings: [],
+    };
+  }
+}
+
+export class JoinIdentifierRef extends JoinRef {
+  constructor(private readonly identifier: string) {
+    super();
+  }
+  render(_repository: AnyRepository, dialect: BaseDialect) {
+    return {
+      sql: dialect.asIdentifier(this.identifier),
+      bindings: [],
+    };
+  }
+}
+
+export function makeModelJoinPayload(model: AnyModel, context: unknown) {
+  return {
+    dimension: (name: string) => {
+      const dimension = model.getDimension(name);
+      invariant(
+        dimension,
+        `Dimension ${name} not found in model ${model.name}`,
+      );
+      return new JoinDimensionRef(model.name, name, context);
+    },
+    column: (name: string) => new JoinColumnRef(model.name, name),
+  };
+}
+
 export class JoinOnDef {
   constructor(
     private readonly strings: string[],
     private readonly values: unknown[],
   ) {}
-  render(repository: Repository, dialect: BaseDialect) {
+  render(repository: AnyRepository, dialect: BaseDialect) {
     const sql: string[] = [];
     const bindings: unknown[] = [];
     for (let i = 0; i < this.strings.length; i++) {
       sql.push(this.strings[i]!);
       if (this.values[i]) {
         const value = this.values[i];
-        if (value instanceof JoinDimensionRef) {
+        if (value instanceof JoinRef) {
           const result = value.render(repository, dialect);
           sql.push(result.sql);
           bindings.push(...result.bindings);
@@ -35,6 +96,7 @@ export class JoinOnDef {
         }
       }
     }
+
     return {
       sql: sql.join(""),
       bindings,
@@ -42,21 +104,26 @@ export class JoinOnDef {
   }
 }
 
-export interface Join {
+export interface Join<C> {
   left: string;
   right: string;
-  joinOnDef: JoinOnDef;
+  joinOnDef: (context: C) => JoinOnDef;
   reversed: boolean;
   type: "oneToOne" | "oneToMany" | "manyToOne" | "manyToMany";
 }
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyJoin = Join<any>;
 
 export type JoinFn<
+  C,
   DN extends string,
   N1 extends string,
   N2 extends string,
 > = (args: {
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => JoinOnDef;
-  dimensions: JoinDimensions<DN, N1, N2>;
+  models: JoinDimensions<DN, N1, N2>;
+  identifier: (name: string) => JoinIdentifierRef;
+  getContext: () => C;
 }) => JoinOnDef;
 
 export type ModelDimensionsWithoutModelPrefix<
@@ -70,22 +137,28 @@ export type JoinDimensions<
   N2 extends string,
 > = {
   [TK in N1]: {
-    [DK in ModelDimensionsWithoutModelPrefix<N1, DN>]: JoinDimensionRef<TK, DK>;
+    dimension: (
+      name: ModelDimensionsWithoutModelPrefix<N1, DN>,
+    ) => JoinDimensionRef<TK, ModelDimensionsWithoutModelPrefix<N1, DN>>;
+    column: (name: string) => JoinColumnRef<TK>;
   };
 } & {
   [TK in N2]: {
-    [DK in ModelDimensionsWithoutModelPrefix<N2, DN>]: JoinDimensionRef<TK, DK>;
+    dimension: (
+      name: ModelDimensionsWithoutModelPrefix<N2, DN>,
+    ) => JoinDimensionRef<TK, ModelDimensionsWithoutModelPrefix<N2, DN>>;
+    column: (name: string) => JoinColumnRef<TK>;
   };
 };
 
-export const JOIN_WEIGHTS: Record<Join["type"], number> = {
+export const JOIN_WEIGHTS: Record<AnyJoin["type"], number> = {
   oneToOne: 1,
   oneToMany: 3,
   manyToOne: 2,
   manyToMany: 4,
 };
 
-export const REVERSED_JOIN: Record<Join["type"], Join["type"]> = {
+export const REVERSED_JOIN: Record<AnyJoin["type"], AnyJoin["type"]> = {
   oneToOne: "oneToOne",
   oneToMany: "manyToOne",
   manyToOne: "oneToMany",
