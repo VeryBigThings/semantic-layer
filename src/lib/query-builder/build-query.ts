@@ -5,7 +5,8 @@ import { AnyQuery, ModelQuery, QuerySegment } from "../types.js";
 import knex from "knex";
 import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
-import type { Join } from "../join.js";
+import type { AnyJoin } from "../join.js";
+import { AnyModel } from "../model.js";
 import type { AnyRepository } from "../repository.js";
 
 interface ReferencedModels {
@@ -36,24 +37,52 @@ function getDefaultOrderBy(repository: AnyRepository, query: AnyQuery) {
   return {};
 }
 
+function initializeQuerySegment(
+  knex: knex.Knex,
+  dialect: BaseDialect,
+  context: unknown,
+  model: AnyModel,
+) {
+  if (model.config.type === "table") {
+    return knex(model.config.name);
+  }
+  const modelSql = model.getSql(dialect, context);
+  return knex(
+    knex.raw(`(${modelSql.sql}) as ${model.config.alias}`, modelSql.bindings),
+  );
+}
+
+function getJoinSubject(
+  knex: knex.Knex,
+  dialect: BaseDialect,
+  context: unknown,
+  model: AnyModel,
+) {
+  if (model.config.type === "table") {
+    return model.config.name;
+  }
+  const modelSql = model.getSql(dialect, context);
+  return knex.raw(
+    `(${modelSql.sql}) as ${model.config.alias}`,
+    modelSql.bindings,
+  );
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function buildQuerySegmentJoinQuery(
   knex: knex.Knex,
   repository: AnyRepository,
-  Dialect: typeof BaseDialect,
+  dialect: BaseDialect,
+  context: unknown,
   joinGraph: graphlib.Graph,
   modelQueries: Record<string, ModelQuery>,
   source: string,
 ) {
   const visitedModels = new Set<string>();
   const model = repository.getModel(source);
-  const sqlQuery =
-    model.config.type === "table"
-      ? knex(model.config.name)
-      : knex(knex.raw(`(${model.config.sql}) as ${model.config.alias}`));
-  const dialect = new Dialect(sqlQuery);
+  const sqlQuery = initializeQuerySegment(knex, dialect, context, model);
 
-  const modelStack: { modelName: string; join?: Join }[] = [
+  const modelStack: { modelName: string; join?: AnyJoin }[] = [
     { modelName: source },
   ];
 
@@ -80,14 +109,9 @@ function buildQuerySegmentJoinQuery(
 
     if (join) {
       const joinType = join.reversed ? "rightJoin" : "leftJoin";
-      const joinOn = join.joinOnDef.render(repository, dialect);
+      const joinOn = join.joinOnDef(context).render(repository, dialect);
       const rightModel = repository.getModel(join.right);
-      const joinSubject =
-        rightModel.config.type === "table"
-          ? rightModel.config.name
-          : knex.raw(
-              `(${rightModel.config.sql}) as ${rightModel.config.alias}`,
-            );
+      const joinSubject = getJoinSubject(knex, dialect, context, rightModel);
 
       sqlQuery[joinType](joinSubject, knex.raw(joinOn.sql, joinOn.bindings));
 
@@ -99,7 +123,7 @@ function buildQuerySegmentJoinQuery(
 
     for (const metricName of modelQuery?.metrics || []) {
       const metric = repository.getMetric(metricName);
-      const { sql, bindings } = metric.getSql(dialect);
+      const { sql, bindings } = metric.getSql(dialect, context);
       sqlQuery.select(
         knex.raw(`${sql} as ${metric.getAlias(dialect)}`, bindings),
       );
@@ -107,7 +131,7 @@ function buildQuerySegmentJoinQuery(
 
     for (const dimensionName of dimensionNames) {
       const dimension = repository.getDimension(dimensionName);
-      const { sql, bindings } = dimension.getSql(dialect);
+      const { sql, bindings } = dimension.getSql(dialect, context);
 
       sqlQuery.select(
         knex.raw(`${sql} as ${dimension.getAlias(dialect)}`, bindings),
@@ -128,7 +152,8 @@ function buildQuerySegmentJoinQuery(
 function buildQuerySegment(
   knex: knex.Knex,
   repository: AnyRepository,
-  Dialect: typeof BaseDialect,
+  dialect: BaseDialect,
+  context: unknown,
   joinGraph: graphlib.Graph,
   segment: QuerySegment,
 ) {
@@ -144,12 +169,12 @@ function buildQuerySegment(
   const initialSqlQuery = buildQuerySegmentJoinQuery(
     knex,
     repository,
-    Dialect,
+    dialect,
+    context,
     joinGraph,
     segment.modelQueries,
     source,
   );
-  const dialect = new Dialect(initialSqlQuery);
 
   // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
   // otherwise GROUP BY will take care of it
@@ -165,7 +190,7 @@ function buildQuerySegment(
         "dimension",
         segment.referencedModels.all,
       )
-      .buildFilters(segment.query.filters, "and");
+      .buildFilters(segment.query.filters, "and", context);
 
     if (filter) {
       initialSqlQuery.where(knex.raw(filter.sql, filter.bindings));
@@ -196,7 +221,7 @@ function buildQuerySegment(
 
   for (const metricName of segment.query.metrics || []) {
     const metric = repository.getMetric(metricName);
-    const { sql, bindings } = metric.getAggregateSql(dialect, alias);
+    const { sql, bindings } = metric.getAggregateSql(dialect, context, alias);
 
     sqlQuery.select(
       knex.raw(`${sql} as ${metric.getAlias(dialect)}`, bindings),
@@ -214,14 +239,15 @@ function getAlias(index: number) {
 export function buildQuery(
   knex: knex.Knex,
   repository: AnyRepository,
-  Dialect: typeof BaseDialect,
+  dialect: BaseDialect,
+  context: unknown,
   query: AnyQuery,
   referencedModels: ReferencedModels,
   joinGraph: graphlib.Graph,
   segments: QuerySegment[],
 ) {
   const sqlQuerySegments = segments.map((segment) =>
-    buildQuerySegment(knex, repository, Dialect, joinGraph, segment),
+    buildQuerySegment(knex, repository, dialect, context, joinGraph, segment),
   );
   const [initialSqlQuerySegment, ...restSqlQuerySegments] = sqlQuerySegments;
 
@@ -232,7 +258,6 @@ export function buildQuery(
   );
   const rootAlias = getAlias(0);
   const rootSqlQuery = knex(initialSqlQuerySegment.sqlQuery.as(rootAlias));
-  const dialect = new Dialect(rootSqlQuery);
 
   for (const dimensionName of initialSqlQuerySegment.projectedQuery
     .dimensions || []) {
@@ -310,7 +335,7 @@ export function buildQuery(
         referencedModels.metrics,
         metricPrefixes,
       )
-      .buildFilters(query.filters, "and");
+      .buildFilters(query.filters, "and", context);
     if (filter) {
       rootSqlQuery.where(knex.raw(filter.sql, filter.bindings));
     }

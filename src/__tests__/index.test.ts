@@ -13,49 +13,9 @@ import path from "node:path";
 import pg from "pg";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
-//import { format as sqlFormat } from "sql-formatter";
+// import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
-
-/*const query = built.query({
-  dimensions: [
-    "customers.customer_id",
-    //'invoice_lines.invoice_line_id',
-    //'invoices.invoice_id',
-    //'Track.track_id,',
-    //'albums.title',
-  ],
-  metrics: ["invoice_lines.total_unit_price", "invoices.total"],
-  filters: [
-    {
-      operator: "inDateRange",
-      member: "invoices.invoice_date",
-      value: "from Jan 1st 2011 at 00:00 to Dec 31th 2012 23:00",
-    },
-    { operator: 'set', member: 'customers.customer_id' },
-    {
-      operator: 'notContains',
-      member: 'invoice_lines.total_unit_price',
-      value: ['0.99', '1'],
-    },
-    { operator: 'notEquals', member: 'invoices.total', value: ['0.99'] },
-    {
-      operator: 'or',
-      filters: [
-        { operator: 'notEquals', member: 'invoices.invoice_id', value: ['1'] },
-        {
-          operator: 'notEquals',
-          member: 'invoice_lines.invoice_line_id',
-          value: ['3'],
-        },
-      ],
-    },
-  ],
-  order: {
-    // 'invoice_lines.unit_price': 'asc',  'customers.customer_id': 'asc',
-    "invoices.invoice_date.year": "desc",
-  },
-});*/
 
 await describe("semantic layer", async () => {
   let container: StartedPostgreSqlContainer;
@@ -88,7 +48,8 @@ await describe("semantic layer", async () => {
 
   await describe("models from tables", async () => {
     const customersModel = semanticLayer
-      .model("customers")
+      .model()
+      .withName("customers")
       .fromTable("Customer")
       .withDimension("customer_id", {
         type: "number",
@@ -116,7 +77,8 @@ await describe("semantic layer", async () => {
       });
 
     const invoicesModel = semanticLayer
-      .model("invoices")
+      .model()
+      .withName("invoices")
       .fromTable("Invoice")
       .withDimension("invoice_id", {
         type: "number",
@@ -138,7 +100,8 @@ await describe("semantic layer", async () => {
       });
 
     const invoiceLinesModel = semanticLayer
-      .model("invoice_lines")
+      .model()
+      .withName("invoice_lines")
       .fromTable("InvoiceLine")
       .withDimension("invoice_line_id", {
         type: "number",
@@ -165,7 +128,8 @@ await describe("semantic layer", async () => {
       });
 
     const tracksModel = semanticLayer
-      .model("tracks")
+      .model()
+      .withName("tracks")
       .fromTable("Track")
       .withDimension("track_id", {
         type: "number",
@@ -182,7 +146,8 @@ await describe("semantic layer", async () => {
       });
 
     const albumsModel = semanticLayer
-      .model("albums")
+      .model()
+      .withName("albums")
       .fromTable("Album")
       .withDimension("album_id", {
         type: "number",
@@ -204,26 +169,34 @@ await describe("semantic layer", async () => {
       .joinOneToMany(
         "customers",
         "invoices",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
       )
       .joinOneToMany(
         "invoices",
         "invoice_lines",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`,
+        ({ sql, models, getContext }) =>
+          sql`${models.invoices.dimension(
+            "invoice_id",
+          )} = ${models.invoice_lines.dimension("invoice_id")} ${getContext()}`,
       )
       .joinOneToMany(
         "invoice_lines",
         "tracks",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.invoice_lines.track_id} = ${dimensions.tracks.track_id}`,
+        ({ sql, models }) =>
+          sql`${models.invoice_lines.dimension(
+            "track_id",
+          )} = ${models.tracks.dimension("track_id")}`,
       )
       .joinManyToMany(
         "tracks",
         "albums",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.tracks.album_id} = ${dimensions.albums.album_id}`,
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension(
+            "album_id",
+          )} = ${models.albums.dimension("album_id")}`,
       );
 
     const queryBuilder = repository.build("postgresql");
@@ -452,8 +425,11 @@ await describe("semantic layer", async () => {
 
   await describe("models from sql queries", async () => {
     const customersModel = semanticLayer
-      .model("customers")
-      .fromSqlQuery('select * from "Customer"')
+      .model()
+      .withName("customers")
+      .fromSqlQuery(
+        ({ sql, identifier }) => sql`select * from ${identifier("Customer")}`,
+      )
       .withDimension("customer_id", {
         type: "number",
         primaryKey: true,
@@ -461,8 +437,11 @@ await describe("semantic layer", async () => {
       });
 
     const invoicesModel = semanticLayer
-      .model("invoices")
-      .fromSqlQuery('select * from "Invoice"')
+      .model()
+      .withName("invoices")
+      .fromSqlQuery(
+        ({ sql, identifier }) => sql`select * from ${identifier("Invoice")}`,
+      )
       .withDimension("invoice_id", {
         type: "number",
         primaryKey: true,
@@ -485,8 +464,10 @@ await describe("semantic layer", async () => {
       .joinOneToMany(
         "customers",
         "invoices",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
       );
 
     const queryBuilder = repository.build("postgresql");
@@ -552,8 +533,11 @@ await describe("semantic layer", async () => {
   await describe("query schema", async () => {
     await it("can parse a valid query", () => {
       const customersModel = semanticLayer
-        .model("customers")
-        .fromSqlQuery('select * from "Customer"')
+        .model()
+        .withName("customers")
+        .fromSqlQuery(
+          ({ sql, identifier }) => sql`select * from ${identifier("Customer")}`,
+        )
         .withDimension("customer_id", {
           type: "number",
           primaryKey: true,
@@ -561,8 +545,11 @@ await describe("semantic layer", async () => {
         });
 
       const invoicesModel = semanticLayer
-        .model("invoices")
-        .fromSqlQuery('select * from "Invoice"')
+        .model()
+        .withName("invoices")
+        .fromSqlQuery(
+          ({ sql, identifier }) => sql`select * from ${identifier("Invoice")}`,
+        )
         .withDimension("invoice_id", {
           type: "number",
           primaryKey: true,
@@ -585,8 +572,10 @@ await describe("semantic layer", async () => {
         .joinOneToMany(
           "customers",
           "invoices",
-          ({ sql, dimensions }) =>
-            sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+          ({ sql, models }) =>
+            sql`${models.customers.dimension(
+              "customer_id",
+            )} = ${models.invoices.dimension("customer_id")}`,
         );
 
       const queryBuilder = repository.build("postgresql");
@@ -1097,8 +1086,9 @@ await describe("semantic layer", async () => {
 
   await describe("model descriptions and query introspection", async () => {
     const customersModel = semanticLayer
-      .model("customers")
-      .fromSqlQuery('select * from "Customer"')
+      .model()
+      .withName("customers")
+      .fromTable("Customer")
       .withDimension("customer_id", {
         type: "number",
         primaryKey: true,
@@ -1107,8 +1097,9 @@ await describe("semantic layer", async () => {
       });
 
     const invoicesModel = semanticLayer
-      .model("invoices")
-      .fromSqlQuery('select * from "Invoice"')
+      .model()
+      .withName("invoices")
+      .fromTable("Invoice")
       .withDimension("invoice_id", {
         type: "number",
         primaryKey: true,
@@ -1134,8 +1125,10 @@ await describe("semantic layer", async () => {
       .joinOneToMany(
         "customers",
         "invoices",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
       );
 
     const queryBuilder = repository.build("postgresql");
@@ -1214,7 +1207,8 @@ await describe("semantic layer", async () => {
 
   await describe("full repository", async () => {
     const customersModel = semanticLayer
-      .model("customers")
+      .model()
+      .withName("customers")
       .fromTable("Customer")
       .withDimension("customer_id", {
         type: "number",
@@ -1274,7 +1268,8 @@ await describe("semantic layer", async () => {
       });
 
     const invoicesModel = semanticLayer
-      .model("invoices")
+      .model()
+      .withName("invoices")
       .fromTable("Invoice")
       .withDimension("invoice_id", {
         type: "number",
@@ -1316,12 +1311,13 @@ await describe("semantic layer", async () => {
       .withMetric("sum_total", {
         type: "number",
         aggregateWith: "sum",
-        description: "Sum of the invoice totals across dimensions.",
+        description: "Sum of the invoice totals across models.",
         sql: ({ model }) => model.dimension("total"),
       });
 
     const invoiceLinesModel = semanticLayer
-      .model("invoice_lines")
+      .model()
+      .withName("invoice_lines")
       .fromTable("InvoiceLine")
       .withDimension("invoice_line_id", {
         type: "number",
@@ -1347,18 +1343,19 @@ await describe("semantic layer", async () => {
       .withMetric("sum_quantity", {
         type: "number",
         aggregateWith: "sum",
-        description: "Sum of the track quantities across dimensions.",
+        description: "Sum of the track quantities across models.",
         sql: ({ model }) => model.dimension("quantity"),
       })
       .withMetric("sum_unit_price", {
         type: "number",
         aggregateWith: "sum",
-        description: "Sum of the track unit prices across dimensions.",
+        description: "Sum of the track unit prices across models.",
         sql: ({ model }) => model.dimension("unit_price"),
       });
 
     const tracksModel = semanticLayer
-      .model("tracks")
+      .model()
+      .withName("tracks")
       .fromTable("Track")
       .withDimension("track_id", {
         type: "number",
@@ -1400,12 +1397,13 @@ await describe("semantic layer", async () => {
       .withMetric("sum_unit_price", {
         type: "number",
         aggregateWith: "sum",
-        description: "Sum of the track unit prices across dimensions.",
+        description: "Sum of the track unit prices across models.",
         sql: ({ model }) => model.dimension("unit_price"),
       });
 
     const albumsModel = semanticLayer
-      .model("albums")
+      .model()
+      .withName("albums")
       .fromTable("Album")
       .withDimension("album_id", {
         type: "number",
@@ -1422,7 +1420,8 @@ await describe("semantic layer", async () => {
       });
 
     const artistModel = semanticLayer
-      .model("artists")
+      .model()
+      .withName("artists")
       .fromTable("Artist")
       .withDimension("artist_id", {
         type: "number",
@@ -1435,7 +1434,8 @@ await describe("semantic layer", async () => {
       });
 
     const mediaTypeModel = semanticLayer
-      .model("media_types")
+      .model()
+      .withName("media_types")
       .fromTable("MediaType")
       .withDimension("media_type_id", {
         type: "number",
@@ -1448,7 +1448,8 @@ await describe("semantic layer", async () => {
       });
 
     const genreModel = semanticLayer
-      .model("genres")
+      .model()
+      .withName("genres")
       .fromTable("Genre")
       .withDimension("name", {
         type: "string",
@@ -1461,7 +1462,8 @@ await describe("semantic layer", async () => {
       });
 
     const playlistModel = semanticLayer
-      .model("playlists")
+      .model()
+      .withName("playlists")
       .fromTable("Playlist")
       .withDimension("playlist_id", {
         type: "number",
@@ -1474,7 +1476,8 @@ await describe("semantic layer", async () => {
       });
 
     const playlistTrackModel = semanticLayer
-      .model("playlist_tracks")
+      .model()
+      .withName("playlist_tracks")
       .fromTable("PlaylistTrack")
       .withDimension("playlist_id", {
         type: "number",
@@ -1500,56 +1503,74 @@ await describe("semantic layer", async () => {
       .joinOneToMany(
         "customers",
         "invoices",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.customers.customer_id} = ${dimensions.invoices.customer_id}`,
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
       )
       .joinOneToMany(
         "invoices",
         "invoice_lines",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.invoices.invoice_id} = ${dimensions.invoice_lines.invoice_id}`,
+        ({ sql, models }) =>
+          sql`${models.invoices.dimension(
+            "invoice_id",
+          )} = ${models.invoice_lines.dimension("invoice_id")}`,
       )
       .joinManyToOne(
         "invoice_lines",
         "tracks",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.invoice_lines.track_id} = ${dimensions.tracks.track_id}`,
+        ({ sql, models }) =>
+          sql`${models.invoice_lines.dimension(
+            "track_id",
+          )} = ${models.tracks.dimension("track_id")}`,
       )
       .joinOneToMany(
         "albums",
         "tracks",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.tracks.album_id} = ${dimensions.albums.album_id}`,
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension(
+            "album_id",
+          )} = ${models.albums.dimension("album_id")}`,
       )
       .joinManyToOne(
         "albums",
         "artists",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.albums.artist_id} = ${dimensions.artists.artist_id}`,
+        ({ sql, models }) =>
+          sql`${models.albums.dimension(
+            "artist_id",
+          )} = ${models.artists.dimension("artist_id")}`,
       )
       .joinOneToOne(
         "tracks",
         "media_types",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.tracks.media_type_id} = ${dimensions.media_types.media_type_id}`,
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension(
+            "media_type_id",
+          )} = ${models.media_types.dimension("media_type_id")}`,
       )
       .joinOneToOne(
         "tracks",
         "genres",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.tracks.genre_id} = ${dimensions.genres.genre_id}`,
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension(
+            "genre_id",
+          )} = ${models.genres.dimension("genre_id")}`,
       )
       .joinManyToMany(
         "playlists",
         "playlist_tracks",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.playlists.playlist_id} = ${dimensions.playlist_tracks.playlist_id}`,
+        ({ sql, models }) =>
+          sql`${models.playlists.dimension(
+            "playlist_id",
+          )} = ${models.playlist_tracks.dimension("playlist_id")}`,
       )
       .joinManyToMany(
         "playlist_tracks",
         "tracks",
-        ({ sql, dimensions }) =>
-          sql`${dimensions.playlist_tracks.track_id} = ${dimensions.tracks.track_id}`,
+        ({ sql, models }) =>
+          sql`${models.playlist_tracks.dimension(
+            "track_id",
+          )} = ${models.tracks.dimension("track_id")}`,
       );
 
     const queryBuilder = repository.build("postgresql");
@@ -1676,6 +1697,81 @@ await describe("semantic layer", async () => {
 
       const parsedQuery = queryBuilder.querySchema.parse(query);
       assert.deepEqual(query, parsedQuery);
+    });
+  });
+
+  describe("repository with context", async () => {
+    await it("propagates context to all sql functions", async () => {
+      type QueryContext = {
+        customerId: number;
+      };
+
+      const customersModel = semanticLayer
+        .model<QueryContext>()
+        .withName("customers")
+        .fromSqlQuery(
+          ({ sql, identifier, getContext }) =>
+            sql`select * from ${identifier("Customer")} where ${identifier(
+              "CustomerId",
+            )} = ${getContext().customerId}`,
+        )
+        .withDimension("customer_id", {
+          type: "number",
+          primaryKey: true,
+          sql: ({ model, sql, getContext }) =>
+            sql`${model.column("CustomerId")} || cast(${
+              getContext().customerId
+            } as text)`,
+        })
+        .withDimension("first_name", {
+          type: "string",
+          sql: ({ model }) => model.column("FirstName"),
+        });
+
+      const invoicesModel = semanticLayer
+        .model<QueryContext>()
+        .withName("invoices")
+        .fromTable("Invoice")
+        .withDimension("invoice_id", {
+          type: "number",
+          primaryKey: true,
+          sql: ({ model }) => model.column("InvoiceId"),
+        })
+        .withDimension("customer_id", {
+          type: "number",
+          sql: ({ model }) => model.column("CustomerId"),
+        });
+
+      const repository = semanticLayer
+        .repository<QueryContext>()
+        .withModel(customersModel)
+        .withModel(invoicesModel)
+        .joinOneToMany(
+          "customers",
+          "invoices",
+          ({ sql, models, getContext }) =>
+            sql`${models.customers.dimension(
+              "customer_id",
+            )} = ${models.invoices.dimension("customer_id")} and ${
+              getContext().customerId
+            } = ${getContext().customerId}`,
+        );
+
+      const queryBuilder = repository.build("postgresql");
+      const query = queryBuilder.buildQuery(
+        {
+          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+        },
+        { customerId: 1 },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as customers on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $6',
+      );
+
+      // First 5 bindings are for the customerId, last one is for the limit
+      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000]);
     });
   });
 });

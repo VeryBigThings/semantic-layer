@@ -7,21 +7,25 @@ import {
   SqlWithBindings,
 } from "./types.js";
 
+import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
 import { sqlAsSqlWithBindings } from "./query-builder/util.js";
 
-export abstract class Ref {
-  public abstract render(dialect: BaseDialect): SqlWithBindings;
+export abstract class ModelRef {
+  public abstract render(
+    dialect: BaseDialect,
+    context: unknown,
+  ): SqlWithBindings;
 }
 
-export class ColumnRef extends Ref {
+export class ColumnRef extends ModelRef {
   constructor(
     public readonly model: AnyModel,
     public readonly name: string,
   ) {
     super();
   }
-  render(dialect: BaseDialect) {
+  render(dialect: BaseDialect, _context: unknown) {
     const sql = `${dialect.asIdentifier(
       this.model.getAs(),
     )}.${dialect.asIdentifier(this.name)}`;
@@ -32,31 +36,43 @@ export class ColumnRef extends Ref {
   }
 }
 
-export class DimensionRef extends Ref {
-  constructor(private readonly dimension: Dimension) {
+export class IdentifierRef extends ModelRef {
+  constructor(private readonly identifier: string) {
     super();
   }
-  render(dialect: BaseDialect) {
-    return this.dimension.getSql(dialect);
+  render(dialect: BaseDialect, _context: unknown) {
+    return {
+      sql: dialect.asIdentifier(this.identifier),
+      bindings: [],
+    };
   }
 }
 
-export class SqlWithRefs extends Ref {
+export class DimensionRef extends ModelRef {
+  constructor(private readonly dimension: Dimension) {
+    super();
+  }
+  render(dialect: BaseDialect, context: unknown) {
+    return this.dimension.getSql(dialect, context);
+  }
+}
+
+export class SqlWithRefs extends ModelRef {
   constructor(
     public readonly strings: string[],
     public readonly values: unknown[],
   ) {
     super();
   }
-  render(dialect: BaseDialect) {
+  render(dialect: BaseDialect, context: unknown) {
     const sql: string[] = [];
     const bindings: unknown[] = [];
     for (let i = 0; i < this.strings.length; i++) {
       sql.push(this.strings[i]!);
       const nextValue = this.values[i];
       if (nextValue) {
-        if (nextValue instanceof Ref) {
-          const result = nextValue.render(dialect);
+        if (nextValue instanceof ModelRef) {
+          const result = nextValue.render(dialect, context);
           sql.push(result.sql);
           bindings.push(...result.bindings);
         } else {
@@ -72,13 +88,21 @@ export class SqlWithRefs extends Ref {
   }
 }
 
-export type SqlFn<DN extends string = string> = (args: {
+export type MemberSqlFn<C, DN extends string = string> = (args: {
+  identifier: (name: string) => IdentifierRef;
   model: {
     column: (name: string) => ColumnRef;
     dimension: (name: DN) => DimensionRef;
   };
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
-}) => Ref;
+  getContext: () => C;
+}) => ModelRef;
+
+export type ModelSqlFn<C> = (args: {
+  identifier: (name: string) => IdentifierRef;
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
+  getContext: () => C;
+}) => ModelRef;
 
 function typeHasGranularity(
   type: string,
@@ -95,30 +119,40 @@ export type WithGranularityDimensions<
     }
   : { [k in N]: T };
 
-export interface DimensionProps<DN extends string = string> {
+export interface DimensionProps<C, DN extends string = string> {
   type: MemberType;
-  sql?: SqlFn<DN>;
+  sql?: MemberSqlFn<C, DN>;
   format?: MemberFormat;
   primaryKey?: boolean;
   description?: string;
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyDimensionProps = DimensionProps<any, string>;
+
 export type MetricType = "count" | "sum" | "avg" | "min" | "max";
-export interface MetricProps<DN extends string = string> {
+export interface MetricProps<C, DN extends string = string> {
   type: MemberType;
   // TODO: allow custom aggregate functions: ({sql: SqlFn<never>, metric: MetricRef}) => SqlWithRefs
   aggregateWith: MetricType;
-  sql?: SqlFn<DN>;
+  sql?: MemberSqlFn<C, DN>;
   format?: MemberFormat;
   description?: string;
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyMetricProps = MetricProps<any, string>;
+
 export abstract class Member {
   public abstract readonly name: string;
   public abstract readonly model: AnyModel;
-  public abstract props: DimensionProps | MetricProps;
+  public abstract props: AnyDimensionProps | AnyMetricProps;
 
-  abstract getSql(dialect: BaseDialect, modelAlias?: string): SqlWithBindings;
+  abstract getSql(
+    dialect: BaseDialect,
+    context: unknown,
+    modelAlias?: string,
+  ): SqlWithBindings;
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
@@ -130,17 +164,22 @@ export abstract class Member {
   getPath() {
     return `${this.model.name}.${this.name}`;
   }
-  renderSql(dialect: BaseDialect): SqlWithBindings | undefined {
+  renderSql(
+    dialect: BaseDialect,
+    context: unknown,
+  ): SqlWithBindings | undefined {
     if (this.props.sql) {
       const result = this.props.sql({
+        identifier: (name: string) => new IdentifierRef(name),
         model: {
           column: (name: string) => new ColumnRef(this.model, name),
           dimension: (name: string) =>
             new DimensionRef(this.model.getDimension(name)),
         },
         sql: (strings, ...values) => new SqlWithRefs([...strings], values),
+        getContext: () => context,
       });
-      return result.render(dialect);
+      return result.render(dialect, context);
     }
   }
   getDescription() {
@@ -158,19 +197,19 @@ export class Dimension extends Member {
   constructor(
     public readonly model: AnyModel,
     public readonly name: string,
-    public readonly props: DimensionProps,
+    public readonly props: AnyDimensionProps,
     public readonly granularity?: Granularity,
   ) {
     super();
   }
-  getSql(dialect: BaseDialect, modelAlias?: string) {
+  getSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
     if (modelAlias) {
       return sqlAsSqlWithBindings(
         `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
     const result =
-      this.renderSql(dialect) ??
+      this.renderSql(dialect, context) ??
       sqlAsSqlWithBindings(
         `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
           this.name,
@@ -199,18 +238,18 @@ export class Metric extends Member {
   constructor(
     public readonly model: AnyModel,
     public readonly name: string,
-    public readonly props: MetricProps,
+    public readonly props: AnyMetricProps,
   ) {
     super();
   }
-  getSql(dialect: BaseDialect, modelAlias?: string) {
+  getSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
     if (modelAlias) {
       return sqlAsSqlWithBindings(
         `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
     return (
-      this.renderSql(dialect) ??
+      this.renderSql(dialect, context) ??
       sqlAsSqlWithBindings(
         `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
           this.name,
@@ -218,8 +257,8 @@ export class Metric extends Member {
       )
     );
   }
-  getAggregateSql(dialect: BaseDialect, modelAlias?: string) {
-    const { sql, bindings } = this.getSql(dialect, modelAlias);
+  getAggregateSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
+    const { sql, bindings } = this.getSql(dialect, context, modelAlias);
     return {
       sql: `${this.props.aggregateWith.toUpperCase()}(${sql})`,
       bindings,
@@ -234,12 +273,13 @@ export class Metric extends Member {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyModel = Model<any, any, any>;
-export type ModelConfig =
+export type AnyModel<C = any> = Model<C, any, any, any>;
+export type ModelConfig<C> =
   | { type: "table"; name: string }
-  | { type: "sqlQuery"; alias: string; sql: string };
+  | { type: "sqlQuery"; alias: string; sql: ModelSqlFn<C> };
 
 export class Model<
+  C,
   N extends string,
   D extends MemberNameToType = MemberNameToType,
   M extends MemberNameToType = MemberNameToType,
@@ -249,17 +289,17 @@ export class Model<
 
   constructor(
     public readonly name: N,
-    public readonly config: ModelConfig,
+    public readonly config: ModelConfig<C>,
   ) {
     this.name = name;
   }
   withDimension<
     DN1 extends string,
-    DP extends DimensionProps<string & keyof D>,
+    DP extends DimensionProps<C, string & keyof D>,
   >(
     name: DN1,
     dimension: DP,
-  ): Model<N, D & WithGranularityDimensions<DN1, DP["type"]>, M> {
+  ): Model<C, N, Simplify<D & WithGranularityDimensions<DN1, DP["type"]>>, M> {
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
@@ -274,10 +314,10 @@ export class Model<
     }
     return this;
   }
-  withMetric<MN1 extends string, MP extends MetricProps<string & keyof D>>(
+  withMetric<MN1 extends string, MP extends MetricProps<C, string & keyof D>>(
     name: MN1,
     metric: MP,
-  ): Model<N, D, M & { [k in MN1]: MP["type"] }> {
+  ): Model<C, N, D, Simplify<M & { [k in MN1]: MP["type"] }>> {
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
@@ -316,21 +356,40 @@ export class Model<
       ? this.config.alias
       : this.config.name;
   }
+  getSql(dialect: BaseDialect, context: C) {
+    if (this.config.type === "sqlQuery") {
+      const result = this.config.sql({
+        identifier: (name: string) => new IdentifierRef(name),
+        sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
+          new SqlWithRefs([...strings], values),
+        getContext: () => context,
+      });
+      return result.render(dialect, context);
+    }
+    throw new Error("Model is not a SQL query");
+  }
 }
 
 const VALID_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
-export function model<N extends string>(name: N) {
-  if (!VALID_NAME_RE.test(name)) {
-    throw new Error(`Invalid model name: ${name}`);
-  }
-
+export function model<C = undefined>() {
   return {
-    fromTable: (tableName: string) => {
-      return new Model<N>(name, { type: "table", name: tableName });
-    },
-    fromSqlQuery: (sql: string) => {
-      return new Model<N>(name, { type: "sqlQuery", alias: name, sql });
+    withName: <N extends string>(name: N) => {
+      if (!VALID_NAME_RE.test(name)) {
+        throw new Error(`Invalid model name: ${name}`);
+      }
+
+      return {
+        fromTable: (tableName?: string) => {
+          return new Model<C, N>(name, {
+            type: "table",
+            name: tableName ?? name,
+          });
+        },
+        fromSqlQuery: (sql: ModelSqlFn<C>) => {
+          return new Model<C, N>(name, { type: "sqlQuery", alias: name, sql });
+        },
+      };
     },
   };
 }

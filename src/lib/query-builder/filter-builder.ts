@@ -37,7 +37,7 @@ import {
 } from "./filter-builder/number-comparison-filter-builder.js";
 
 import { BaseDialect } from "../dialect/base.js";
-import type { Repository } from "../repository.js";
+import type { AnyRepository } from "../repository.js";
 import { equals as filterEquals } from "./filter-builder/equals.js";
 import { notEquals as filterNotEquals } from "./filter-builder/not-equals.js";
 import { sqlAsSqlWithBindings } from "./util.js";
@@ -51,18 +51,21 @@ export class FilterBuilder {
       AnyFilterFragmentBuilder
     >,
     private readonly dialect: BaseDialect,
-    private readonly repository: Repository,
+    private readonly repository: AnyRepository,
     private readonly filterType: FilterType,
     referencedModels: string[],
     private readonly metricPrefixes?: Record<string, string>,
   ) {
     this.referencedModels = new Set(referencedModels);
   }
-  getMemberSql(memberName: string): SqlWithBindings | undefined {
+  getMemberSql(
+    memberName: string,
+    context: unknown,
+  ): SqlWithBindings | undefined {
     const member = this.repository.getMember(memberName);
     if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
-        return member.getSql(this.dialect);
+        return member.getSql(this.dialect, context);
       }
       if (this.filterType === "metric" && member.isMetric()) {
         const prefix = this.metricPrefixes?.[member.model.name];
@@ -74,20 +77,26 @@ export class FilterBuilder {
     }
   }
 
-  buildOr(filter: OrConnective): SqlWithBindings | undefined {
-    return this.buildFilters(filter.filters, "or");
+  buildOr(filter: OrConnective, context: unknown): SqlWithBindings | undefined {
+    return this.buildFilters(filter.filters, "or", context);
   }
-  buildAnd(filter: AndConnective): SqlWithBindings | undefined {
-    return this.buildFilters(filter.filters, "and");
+  buildAnd(
+    filter: AndConnective,
+    context: unknown,
+  ): SqlWithBindings | undefined {
+    return this.buildFilters(filter.filters, "and", context);
   }
-  buildFilter(filter: AnyQueryFilter): SqlWithBindings | undefined {
+  buildFilter(
+    filter: AnyQueryFilter,
+    context: unknown,
+  ): SqlWithBindings | undefined {
     if (filter.operator === "and") {
-      return this.buildAnd(filter);
+      return this.buildAnd(filter, context);
     }
     if (filter.operator === "or") {
-      return this.buildOr(filter);
+      return this.buildOr(filter, context);
     }
-    const memberSql = this.getMemberSql(filter.member);
+    const memberSql = this.getMemberSql(filter.member, context);
     if (memberSql) {
       const builder = this.filterFragmentBuilders[filter.operator];
       if (builder) {
@@ -99,10 +108,11 @@ export class FilterBuilder {
   buildFilters(
     filters: AnyQueryFilter[],
     connective: "and" | "or",
+    context: unknown,
   ): SqlWithBindings | undefined {
     const result = filters.reduce<{ sqls: string[]; bindings: unknown[] }>(
       (acc, filter) => {
-        const result = this.buildFilter(filter);
+        const result = this.buildFilter(filter, context);
         if (result) {
           acc.sqls.push(result.sql);
           acc.bindings.push(...result.bindings);
@@ -149,7 +159,7 @@ export class FilterFragmentBuilderRegistry<T = never> {
     return Object.values(this.filterFragmentBuilders);
   }
   getFilterBuilder(
-    repository: Repository,
+    repository: AnyRepository,
     dialect: BaseDialect,
     filterType: FilterType,
     referencedModels: string[],

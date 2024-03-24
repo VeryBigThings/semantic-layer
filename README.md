@@ -36,7 +36,8 @@ This library allows you to define models and their respective fields, including 
 import * as semanticLayer from "@verybigthings/semantic-layer";
 
 const customersModel = semanticLayer
-  .model("customers")
+  .model()
+	.withName("customers")
   .fromTable("Customer")
   .withDimension("customer_id", {
     type: "number",
@@ -53,7 +54,8 @@ const customersModel = semanticLayer
   });
 
 const invoicesModel = semanticLayer
-  .model("invoices")
+  .model()
+	.withName("invoices")
   .fromTable("Invoice")
   .withDimension("invoice_id", {
     type: "number",
@@ -68,7 +70,8 @@ const invoicesModel = semanticLayer
   });
 
 const invoiceLinesModel = semanticLayer
-  .model("invoice_lines")
+  .model()
+	.withName("invoice_lines")
   .fromTable("InvoiceLine")
   .withDimension("invoice_line_id", {
     type: "number",
