@@ -133,3 +133,14 @@ export type InferSqlQueryResultType<
 export type QueryMemberName<T> = T extends string[] ? T[number] : never;
 
 export type AvailableDialects = "postgresql";
+
+export type IntrospectionResult = Record<
+  string,
+  {
+    memberType: "dimension" | "metric";
+    path: string;
+    format?: MemberFormat | undefined;
+    type: MemberType;
+    description?: string | undefined;
+  }
+>;

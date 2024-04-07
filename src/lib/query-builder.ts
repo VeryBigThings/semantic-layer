@@ -1,6 +1,7 @@
 import {
   AnyQuery,
   AnyQueryFilter,
+  IntrospectionResult,
   MemberFormat,
   MemberNameToType,
   MemberType,
@@ -153,7 +154,7 @@ export class QueryBuilder<
     return result;
   }
 
-  introspect(query: AnyQuery) {
+  introspect(query: AnyQuery): IntrospectionResult {
     const queryDimensions = query.dimensions ?? [];
     const queryMetrics = query.metrics ?? [];
 
