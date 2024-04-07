@@ -260,7 +260,10 @@ export class Metric extends Member {
   getAggregateSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
     const { sql, bindings } = this.getSql(dialect, context, modelAlias);
     return {
-      sql: `${this.props.aggregateWith.toUpperCase()}(${sql})`,
+      sql:
+        this.props.aggregateWith === "sum"
+          ? dialect.aggregateSum(sql)
+          : `${this.props.aggregateWith.toUpperCase()}(${sql})`,
       bindings,
     };
   }

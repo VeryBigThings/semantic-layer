@@ -29,4 +29,7 @@ export class BaseDialect {
     if (value === "*") return value;
     return `"${value}"`;
   }
+  aggregateSum(sql: string) {
+    return `COALESCE(SUM(${sql}), 0)`;
+  }
 }
