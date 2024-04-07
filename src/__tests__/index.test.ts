@@ -68,6 +68,10 @@ await describe("semantic layer", async () => {
         type: "string",
         sql: ({ model }) => model.column("Company"),
       })
+      .withDimension("country", {
+        type: "string",
+        sql: ({ model }) => model.column("Country"),
+      })
       .withDimension("full_name", {
         type: "string",
         sql: ({ model, sql }) =>
@@ -291,6 +295,32 @@ await describe("semantic layer", async () => {
           invoices___total: "37.62",
           invoice_lines___total_unit_price: "37.62",
         },
+      ]);
+    });
+
+    await it("will correctly load distinct dimensions when no metrics are loaded", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["customers.country"],
+        order: { "customers.country": "asc" },
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        { customers___country: "Argentina" },
+        { customers___country: "Australia" },
+        { customers___country: "Austria" },
+        { customers___country: "Belgium" },
+        { customers___country: "Brazil" },
+        { customers___country: "Canada" },
+        { customers___country: "Chile" },
+        { customers___country: "Czech Republic" },
+        { customers___country: "Denmark" },
+        { customers___country: "Finland" },
       ]);
     });
 

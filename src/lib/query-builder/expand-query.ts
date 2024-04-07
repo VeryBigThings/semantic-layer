@@ -88,6 +88,7 @@ function getQuerySegment(
   queryAnalysis: ReturnType<typeof analyzeQuery>,
   metricModel: string | null,
   index: number,
+  hasMultipleSegments: boolean,
 ): QuerySegment {
   const queries: {
     query: PreparedQuery;
@@ -123,9 +124,9 @@ function getQuerySegment(
       referencedModels.all.add(modelName);
       referencedModels.dimensions.add(modelName);
 
-      const primaryKeyDimensionNames = model
-        .getPrimaryKeyDimensions()
-        .map((d) => d.getPath());
+      const primaryKeyDimensionNames = hasMultipleSegments
+        ? model.getPrimaryKeyDimensions().map((d) => d.getPath())
+        : [];
 
       if (index === 0) {
         for (const dimension of dimensions) {
@@ -219,13 +220,13 @@ export function expandQueryToSegments(
     metricModels.length === 0
       ? [
           mergeQuerySegmentWithFilters(
-            getQuerySegment(repository, queryAnalysis, null, 0),
+            getQuerySegment(repository, queryAnalysis, null, 0, false),
             query.filters,
           ),
         ]
       : metricModels.map((model, idx) =>
           mergeQuerySegmentWithFilters(
-            getQuerySegment(repository, queryAnalysis, model, idx),
+            getQuerySegment(repository, queryAnalysis, model, idx, true),
             query.filters,
           ),
         );
