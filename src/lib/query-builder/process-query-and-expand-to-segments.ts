@@ -7,6 +7,7 @@ import {
 
 import { AnyRepository } from "../repository.js";
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
   const allModels = new Set<string>();
   const dimensionModels = new Set<string>();
@@ -15,10 +16,12 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
   const dimensionsByModel: Record<string, Set<string>> = {};
   const projectedMetricsByModel: Record<string, Set<string>> = {};
   const metricsByModel: Record<string, Set<string>> = {};
+  const allMemberNames = new Set<string>();
 
   for (const dimension of query.dimensions || []) {
     const modelName = repository.getDimension(dimension).model.name;
     allModels.add(modelName);
+    allMemberNames.add(dimension);
     dimensionModels.add(modelName);
     dimensionsByModel[modelName] ||= new Set<string>();
     dimensionsByModel[modelName]!.add(dimension);
@@ -29,6 +32,7 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
   for (const metric of query.metrics || []) {
     const modelName = repository.getMetric(metric).model.name;
     allModels.add(modelName);
+    allMemberNames.add(metric);
     metricModels.add(modelName);
     metricsByModel[modelName] ||= new Set<string>();
     metricsByModel[modelName]!.add(metric);
@@ -47,6 +51,7 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
       const modelName = member.model.name;
 
       allModels.add(modelName);
+      allMemberNames.add(filter.member);
 
       if (member.isDimension()) {
         // dimensionModels are used for join of query segments
@@ -65,6 +70,15 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
     }
   }
 
+  const orderByWithoutNonProjectedMembers = Object.entries(
+    query.order ?? {},
+  ).reduce<Record<string, "asc" | "desc">>((acc, [member, direction]) => {
+    if (allMemberNames.has(member)) {
+      acc[member] = direction ?? "asc";
+    }
+    return acc;
+  }, {});
+
   return {
     allModels,
     dimensionModels,
@@ -73,6 +87,10 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
     projectedDimensionsByModel,
     metricsByModel,
     projectedMetricsByModel,
+    order:
+      Object.keys(orderByWithoutNonProjectedMembers).length > 0
+        ? orderByWithoutNonProjectedMembers
+        : undefined,
   };
 }
 
@@ -210,7 +228,7 @@ function mergeQuerySegmentWithFilters(
   };
 }
 
-export function expandQueryToSegments(
+export function processQueryAndExpandToSegments(
   repository: AnyRepository,
   query: AnyQuery,
 ) {
@@ -232,7 +250,7 @@ export function expandQueryToSegments(
         );
 
   return {
-    query,
+    query: { ...query, order: queryAnalysis.order },
     referencedModels: {
       all: Array.from(queryAnalysis.allModels),
       dimensions: Array.from(queryAnalysis.dimensionModels),

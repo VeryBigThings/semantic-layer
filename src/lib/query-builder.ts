@@ -17,8 +17,8 @@ import { z } from "zod";
 import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
 import { buildQuery } from "./query-builder/build-query.js";
-import { expandQueryToSegments } from "./query-builder/expand-query.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
+import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import type { AnyRepository } from "./repository.js";
 
 function isNonEmptyArray<T>(arr: T[]): arr is [T, ...T[]] {
@@ -95,12 +95,10 @@ export class QueryBuilder<
   }
 
   unsafeBuildQuery(payload: unknown, context: unknown) {
-    const query: AnyQuery = this.querySchema.parse(payload);
+    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
 
-    const { referencedModels, segments } = expandQueryToSegments(
-      this.repository,
-      query,
-    );
+    const { query, referencedModels, segments } =
+      processQueryAndExpandToSegments(this.repository, parsedQuery);
 
     const joinGraph = findOptimalJoinGraph(
       this.repository.graph,

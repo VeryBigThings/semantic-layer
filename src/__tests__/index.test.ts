@@ -324,6 +324,77 @@ await describe("semantic layer", async () => {
       ]);
     });
 
+    await it("will remove non projected members from order clause", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: [
+          "customers.customer_id",
+          "customers.full_name",
+          "invoice_lines.invoice_id",
+        ],
+        metrics: [],
+        limit: 10,
+        order: { "invoices.invoice_date": "asc" },
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 121,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 316,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 143,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 195,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 327,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 98,
+        },
+        {
+          customers___customer_id: 1,
+          customers___full_name: "Lu�s Gon�alves",
+          invoice_lines___invoice_id: 382,
+        },
+        {
+          customers___customer_id: 2,
+          customers___full_name: "Leonie K�hler",
+          invoice_lines___invoice_id: 1,
+        },
+        {
+          customers___customer_id: 2,
+          customers___full_name: "Leonie K�hler",
+          invoice_lines___invoice_id: 219,
+        },
+        {
+          customers___customer_id: 2,
+          customers___full_name: "Leonie K�hler",
+          invoice_lines___invoice_id: 67,
+        },
+      ]);
+    });
+
     await it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
         dimensions: ["customers.customer_id"],
