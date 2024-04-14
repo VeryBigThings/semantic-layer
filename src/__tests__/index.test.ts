@@ -35,10 +35,16 @@ await describe("semantic layer", async () => {
       user: container.getUsername(),
       password: container.getPassword(),
       database: container.getDatabase(),
+      options: "-c TimeZone=UTC",
     });
 
     await client.connect();
     await client.query(bootstrapSql);
+
+    const timezoneResult = await client.query("SHOW TIMEZONE");
+    const timezone = timezoneResult.rows[0].TimeZone;
+
+    assert.equal(timezone, "UTC");
   });
 
   after(async () => {
@@ -94,7 +100,7 @@ await describe("semantic layer", async () => {
         sql: ({ model }) => model.column("CustomerId"),
       })
       .withDimension("invoice_date", {
-        type: "date",
+        type: "datetime",
         sql: ({ model }) => model.column("InvoiceDate"),
       })
       .withMetric("total", {
@@ -520,6 +526,58 @@ await describe("semantic layer", async () => {
         },
         { customers___customer_id: 1, albums___title: "Tribute" },
         { customers___customer_id: 1, albums___title: "Use Your Illusion I" },
+      ]);
+    });
+
+    await it("can correctly query datetime granularities", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: [
+          "invoices.invoice_id",
+          "invoices.invoice_date",
+          "invoices.invoice_date.time",
+          "invoices.invoice_date.date",
+          "invoices.invoice_date.year",
+          "invoices.invoice_date.quarter",
+          "invoices.invoice_date.quarter_of_year",
+          "invoices.invoice_date.month",
+          "invoices.invoice_date.month_num",
+          "invoices.invoice_date.week",
+          "invoices.invoice_date.week_num",
+          "invoices.invoice_date.day_of_month",
+          "invoices.invoice_date.hour",
+          "invoices.invoice_date.hour_of_day",
+          "invoices.invoice_date.minute",
+        ],
+        filters: [
+          { operator: "equals", member: "invoices.invoice_id", value: [6] },
+        ],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          invoices___invoice_date: new Date("2009-01-19T00:00:00.000+00:00"),
+          invoices___invoice_date___date: new Date(
+            "2009-01-19T00:00:00.000+00:00",
+          ),
+          invoices___invoice_date___day_of_month: 19,
+          invoices___invoice_date___hour: "2009-01-19 0",
+          invoices___invoice_date___hour_of_day: 0,
+          invoices___invoice_date___minute: "2009-01-19 0:0",
+          invoices___invoice_date___month: "2009-1",
+          invoices___invoice_date___month_num: 1,
+          invoices___invoice_date___quarter: "2009-Q1",
+          invoices___invoice_date___quarter_of_year: 1,
+          invoices___invoice_date___time: "00:00:00",
+          invoices___invoice_date___week: "2009-W4",
+          invoices___invoice_date___week_num: 4,
+          invoices___invoice_date___year: 2009,
+          invoices___invoice_id: 6,
+        },
       ]);
     });
   });

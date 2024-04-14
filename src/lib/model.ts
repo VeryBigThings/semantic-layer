@@ -1,6 +1,8 @@
 import {
+  DimensionWithGranularity,
   Granularity,
   GranularityByDimensionType,
+  GranularityIndex,
   MemberFormat,
   MemberNameToType,
   MemberType,
@@ -114,9 +116,7 @@ export type WithGranularityDimensions<
   N extends string,
   T extends string,
 > = T extends keyof GranularityByDimensionType
-  ? { [k in N]: T } & {
-      [k in `${N}.${GranularityByDimensionType[T][number]}`]: number;
-    }
+  ? { [k in N]: T } & DimensionWithGranularity<N, T>
   : { [k in N]: T };
 
 export interface DimensionProps<C, DN extends string = string> {
@@ -310,7 +310,11 @@ export class Model<
         this.dimensions[`${name}.${g}`] = new Dimension(
           this,
           `${name}.${g}`,
-          { ...dimension, type: "number" },
+          {
+            ...dimension,
+            type: GranularityIndex[g].type,
+            description: GranularityIndex[g].description,
+          },
           g,
         );
       }

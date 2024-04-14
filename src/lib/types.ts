@@ -57,26 +57,122 @@ export interface SqlWithBindings {
   bindings: unknown[];
 }
 
+export const GranularityIndex = {
+  time: {
+    description: "Time of underlying field. Example output: 00:00:00",
+    type: "time",
+  },
+  date: {
+    description: "Date of underlying field. Example output: 2021-01-01",
+    type: "date",
+  },
+  year: {
+    description: "Year of underlying field. Example output: 2021",
+    type: "number",
+  },
+  quarter: {
+    description: "Quarter of underlying field. Example output: 2021-Q1",
+    type: "string",
+  },
+  quarter_of_year: {
+    description: "Quarter of year of underlying field. Example output: 1",
+    type: "number",
+  },
+  month: {
+    description: "Month of underlying field. Example output: 2021-01",
+    type: "string",
+  },
+  month_num: {
+    description: "Month number of underlying field. Example output: 1",
+    type: "number",
+  },
+  week: {
+    description: "Week of underlying field. Example output: 2021-W01",
+    type: "string",
+  },
+  week_num: {
+    description: "Week number of underlying field. Example output: 1",
+    type: "number",
+  },
+  day_of_month: {
+    description: "Day of month of underlying field. Example output: 1",
+    type: "number",
+  },
+  hour: {
+    description:
+      "Datetime of the underlying field truncated to the hour. Example output: 2021-01-01 00",
+    type: "string",
+  },
+  hour_of_day: {
+    description: "Hour of underlying field. Example output: 00",
+    type: "string",
+  },
+  minute: {
+    description:
+      "Datetime of the underlying field truncated to the minute. Example output: 2021-01-01 00:00",
+    type: "string",
+  },
+} as const satisfies Record<string, { description: string; type: MemberType }>;
+
+export type GranularityIndex = typeof GranularityIndex;
+
+export type GranularityToMemberType = {
+  [K in keyof GranularityIndex]: GranularityIndex[K]["type"];
+};
+
+function granularities<T extends (keyof GranularityIndex)[]>(
+  ...granularities: T
+): T[number][] {
+  return granularities;
+}
+
 export const GranularityByDimensionType = {
-  time: ["hour", "minute", "second"],
-  date: ["year", "quarter", "month", "week", "day"],
-  datetime: [
+  time: granularities("hour", "hour_of_day", "minute"),
+  date: granularities(
     "year",
     "quarter",
+    "quarter_of_year",
     "month",
+    "month_num",
     "week",
-    "day",
+    "week_num",
+    "day_of_month",
+  ),
+  datetime: granularities(
+    "time",
+    "date",
+    "year",
+    "quarter",
+    "quarter_of_year",
+    "month",
+    "month_num",
+    "week",
+    "week_num",
+    "day_of_month",
     "hour",
+    "hour_of_day",
     "minute",
-    "second",
-  ],
+  ),
 } as const;
 
 export type GranularityByDimensionType = typeof GranularityByDimensionType;
-export type Granularity =
-  GranularityByDimensionType[keyof GranularityByDimensionType][number];
+export type Granularity = keyof typeof GranularityIndex;
 
-export type MemberType = "string" | "number" | "date" | "datetime" | "boolean";
+export type DimensionWithGranularity<
+  D extends string,
+  T extends keyof GranularityByDimensionType,
+  GT extends keyof GranularityIndex = GranularityByDimensionType[T][number],
+> = {
+  [K in GT as `${D}.${K}`]: GranularityToMemberType[K];
+};
+
+export type MemberType =
+  | "string"
+  | "number"
+  | "date"
+  | "datetime"
+  | "time"
+  | "boolean";
 export type MemberFormat = "percentage" | "currency";
 
 export type MemberNameToType = { [k in never]: MemberType };
@@ -86,14 +182,19 @@ export type QueryReturnType<
   N extends keyof M,
   S = Pick<M, N>,
 > = {
-  [K in keyof S as Replace<string & K, ".", "___">]: S[K] extends "string"
+  [K in keyof S as Replace<
+    string & K,
+    ".",
+    "___",
+    { all: true }
+  >]: S[K] extends "string"
     ? string
     : S[K] extends "number"
       ? number
       : S[K] extends "date"
         ? Date
         : S[K] extends "time"
-          ? Date
+          ? string
           : S[K] extends "datetime"
             ? Date
             : S[K] extends "boolean"
@@ -102,7 +203,7 @@ export type QueryReturnType<
 };
 
 export type ProcessTOverridesNames<T extends Record<string, unknown>> = {
-  [K in keyof T as Replace<string & K, ".", "___">]: T[K];
+  [K in keyof T as Replace<string & K, ".", "___", { all: true }>]: T[K];
 };
 
 // biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
