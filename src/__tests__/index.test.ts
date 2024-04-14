@@ -84,6 +84,11 @@ await describe("semantic layer", async () => {
           sql`${model.dimension("first_name")} || ' ' || ${model.dimension(
             "last_name",
           )}`,
+      })
+      .withMetric("count", {
+        type: "string",
+        aggregateWith: "count",
+        sql: ({ model }) => model.column("CustomerId"),
       });
 
     const invoicesModel = semanticLayer
@@ -301,6 +306,48 @@ await describe("semantic layer", async () => {
           invoices___total: "37.62",
           invoice_lines___total_unit_price: "37.62",
         },
+      ]);
+    });
+
+    await it("can query a metric and slice it correctly by a non primary key dimension", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["customers.country"],
+        metrics: ["customers.count"],
+        order: {
+          "customers.country": "asc",
+        },
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        { customers___country: "Argentina", customers___count: "1" },
+        { customers___country: "Australia", customers___count: "1" },
+        { customers___country: "Austria", customers___count: "1" },
+        { customers___country: "Belgium", customers___count: "1" },
+        { customers___country: "Brazil", customers___count: "5" },
+        { customers___country: "Canada", customers___count: "8" },
+        { customers___country: "Chile", customers___count: "1" },
+        { customers___country: "Czech Republic", customers___count: "2" },
+        { customers___country: "Denmark", customers___count: "1" },
+        { customers___country: "Finland", customers___count: "1" },
+        { customers___country: "France", customers___count: "5" },
+        { customers___country: "Germany", customers___count: "4" },
+        { customers___country: "Hungary", customers___count: "1" },
+        { customers___country: "India", customers___count: "2" },
+        { customers___country: "Ireland", customers___count: "1" },
+        { customers___country: "Italy", customers___count: "1" },
+        { customers___country: "Netherlands", customers___count: "1" },
+        { customers___country: "Norway", customers___count: "1" },
+        { customers___country: "Poland", customers___count: "1" },
+        { customers___country: "Portugal", customers___count: "2" },
+        { customers___country: "Spain", customers___count: "1" },
+        { customers___country: "Sweden", customers___count: "1" },
+        { customers___country: "USA", customers___count: "13" },
+        { customers___country: "United Kingdom", customers___count: "3" },
       ]);
     });
 

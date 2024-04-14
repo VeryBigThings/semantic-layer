@@ -253,9 +253,14 @@ export function buildQuery(
 
   invariant(initialSqlQuerySegment, "No initial sql query segment found");
 
-  const joinOnDimensions = referencedModels.dimensions.flatMap((modelName) =>
+  /*const joinOnDimensions = referencedModels.dimensions.flatMap((modelName) =>
     repository.getModel(modelName).getPrimaryKeyDimensions(),
-  );
+  );*/
+
+  const joinOnDimensions = query.dimensions?.map((dimensionName) => {
+    return repository.getDimension(dimensionName);
+  });
+
   const rootAlias = getAlias(0);
   const rootSqlQuery = knex(initialSqlQuerySegment.sqlQuery.as(rootAlias));
 
@@ -289,7 +294,7 @@ export function buildQuery(
     const segment = restSqlQuerySegments[i]!;
     const alias = getAlias(i + 1);
     const joinOn =
-      (query.dimensions?.length ?? 0) > 0
+      joinOnDimensions && joinOnDimensions.length > 0
         ? joinOnDimensions
             .map((dimension) => {
               return `${dialect.asIdentifier(rootAlias)}.${dimension.getAlias(

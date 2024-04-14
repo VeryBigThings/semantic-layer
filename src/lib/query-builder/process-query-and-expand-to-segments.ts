@@ -102,11 +102,8 @@ interface PreparedQuery {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
 function getQuerySegment(
-  repository: AnyRepository,
   queryAnalysis: ReturnType<typeof analyzeQuery>,
   metricModel: string | null,
-  index: number,
-  hasMultipleSegments: boolean,
 ): QuerySegment {
   const queries: {
     query: PreparedQuery;
@@ -138,32 +135,15 @@ function getQuerySegment(
     for (const [modelName, dimensions] of Object.entries(
       queryAnalysis.projectedDimensionsByModel,
     )) {
-      const model = repository.getModel(modelName);
       referencedModels.all.add(modelName);
       referencedModels.dimensions.add(modelName);
 
-      const primaryKeyDimensionNames = hasMultipleSegments
-        ? model.getPrimaryKeyDimensions().map((d) => d.getPath())
-        : [];
-
-      if (index === 0) {
-        for (const dimension of dimensions) {
-          queries[q].dimensions.add(dimension);
-        }
-      }
-
-      if (q === "query") {
-        for (const dimension of primaryKeyDimensionNames) {
-          queries[q].dimensions.add(dimension);
-        }
+      for (const dimension of dimensions) {
+        queries[q].dimensions.add(dimension);
       }
 
       modelQueries[modelName] = {
-        dimensions: new Set<string>(
-          index === 0
-            ? new Set([...dimensions, ...primaryKeyDimensionNames])
-            : new Set(primaryKeyDimensionNames),
-        ),
+        dimensions: new Set<string>(dimensions),
         metrics: new Set<string>(),
       };
     }
@@ -238,13 +218,13 @@ export function processQueryAndExpandToSegments(
     metricModels.length === 0
       ? [
           mergeQuerySegmentWithFilters(
-            getQuerySegment(repository, queryAnalysis, null, 0, false),
+            getQuerySegment(queryAnalysis, null),
             query.filters,
           ),
         ]
-      : metricModels.map((model, idx) =>
+      : metricModels.map((model) =>
           mergeQuerySegmentWithFilters(
-            getQuerySegment(repository, queryAnalysis, model, idx, true),
+            getQuerySegment(queryAnalysis, model),
             query.filters,
           ),
         );
