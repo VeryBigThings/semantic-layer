@@ -277,6 +277,12 @@ export class Repository<
     return this.joins[modelName]?.[joinModelName];
   }
 
+  getJoins() {
+    return Object.values(this.joins)
+      .flatMap((joins) => Object.values(joins))
+      .filter((join) => !join.reversed);
+  }
+
   build(dialectName: AvailableDialects) {
     const { client, Dialect } = getClientAndDialect(dialectName);
     return new QueryBuilder<C, D, M, F>(this, new Dialect(), client);

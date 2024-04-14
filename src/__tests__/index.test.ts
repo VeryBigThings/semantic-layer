@@ -1238,6 +1238,8 @@ await describe("semantic layer", async () => {
       const docs: string[] = [];
       const dimensions = repository.getDimensions();
       const metrics = repository.getMetrics();
+      const joins = repository.getJoins();
+
       for (const dimension of dimensions) {
         docs.push(
           `DIMENSION: ${dimension.getPath()}, TYPE: ${dimension.getType()}, DESCRIPTION: ${
@@ -1252,12 +1254,16 @@ await describe("semantic layer", async () => {
           }, FORMAT: ${metric.getFormat() ?? "-"}`,
         );
       }
+      for (const join of joins) {
+        docs.push(`JOIN: ${join.left} -> ${join.right}, TYPE: ${join.type}`);
+      }
 
       assert.deepEqual(docs, [
         "DIMENSION: customers.customer_id, TYPE: number, DESCRIPTION: The unique identifier of the customer, FORMAT: -",
         "DIMENSION: invoices.invoice_id, TYPE: number, DESCRIPTION: The unique identifier of the invoice, FORMAT: -",
         "DIMENSION: invoices.customer_id, TYPE: number, DESCRIPTION: The unique identifier of the invoice customer, FORMAT: -",
         "METRIC: invoices.total, TYPE: string, DESCRIPTION: -, FORMAT: percentage",
+        "JOIN: customers -> invoices, TYPE: oneToMany",
       ]);
     });
 
