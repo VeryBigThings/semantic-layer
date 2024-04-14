@@ -2,9 +2,7 @@ import {
   AnyQuery,
   AnyQueryFilter,
   IntrospectionResult,
-  MemberFormat,
   MemberNameToType,
-  MemberType,
   Query,
   QueryMemberName,
   QueryReturnType,
@@ -156,29 +154,25 @@ export class QueryBuilder<
     const queryDimensions = query.dimensions ?? [];
     const queryMetrics = query.metrics ?? [];
 
-    return [...queryDimensions, ...queryMetrics].reduce<
-      Record<
-        string,
-        {
-          memberType: "dimension" | "metric";
-          path: string;
-          format?: MemberFormat;
-          type: MemberType;
-          description?: string;
-        }
-      >
-    >((acc, memberName) => {
-      const member = this.repository.getMember(memberName);
-      acc[memberName.replaceAll(".", "___")] = {
-        memberType: member.isDimension() ? "dimension" : "metric",
-        path: member.getPath(),
-        format: member.getFormat(),
-        type: member.getType(),
-        description: member.getDescription(),
-      };
+    return [...queryDimensions, ...queryMetrics].reduce<IntrospectionResult>(
+      (acc, memberName) => {
+        const member = this.repository.getMember(memberName);
+        const isDimension = member.isDimension();
 
-      return acc;
-    }, {});
+        acc[memberName.replaceAll(".", "___")] = {
+          memberType: isDimension ? "dimension" : "metric",
+          path: member.getPath(),
+          format: member.getFormat(),
+          type: member.getType(),
+          description: member.getDescription(),
+          isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
+          isGranularity: isDimension ? member.isGranularity() : false,
+        };
+
+        return acc;
+      },
+      {},
+    );
   }
 }
 

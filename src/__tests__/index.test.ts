@@ -1405,6 +1405,8 @@ await describe("semantic layer", async () => {
           type: "number",
           description: "The unique identifier of the customer",
           format: undefined,
+          isPrimaryKey: true,
+          isGranularity: false,
         },
         invoices___invoice_id: {
           memberType: "dimension",
@@ -1412,6 +1414,8 @@ await describe("semantic layer", async () => {
           type: "number",
           description: "The unique identifier of the invoice",
           format: undefined,
+          isPrimaryKey: true,
+          isGranularity: false,
         },
         invoices___customer_id: {
           memberType: "dimension",
@@ -1419,6 +1423,8 @@ await describe("semantic layer", async () => {
           type: "number",
           description: "The unique identifier of the invoice customer",
           format: undefined,
+          isPrimaryKey: false,
+          isGranularity: false,
         },
         invoices___total: {
           memberType: "metric",
@@ -1426,6 +1432,8 @@ await describe("semantic layer", async () => {
           format: "percentage",
           type: "string",
           description: undefined,
+          isPrimaryKey: false,
+          isGranularity: false,
         },
       });
     });

@@ -243,5 +243,7 @@ export type IntrospectionResult = Record<
     format?: MemberFormat | undefined;
     type: MemberType;
     description?: string | undefined;
+    isPrimaryKey: boolean;
+    isGranularity: boolean;
   }
 >;
