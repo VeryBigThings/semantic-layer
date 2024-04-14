@@ -226,6 +226,12 @@ export class Dimension extends Member {
   getGranularity() {
     return this.granularity;
   }
+  isGranularity() {
+    return !!this.granularity;
+  }
+  isPrimaryKey() {
+    return !!this.props.primaryKey;
+  }
   isDimension(): this is Dimension {
     return true;
   }

@@ -627,6 +627,20 @@ await describe("semantic layer", async () => {
         },
       ]);
     });
+
+    await it("can introspect if dimension is a primary key", () => {
+      assert.ok(
+        repository.getDimension("customers.customer_id").isPrimaryKey(),
+      );
+    });
+
+    await it("can introspect if dimension is a granularity", () => {
+      assert.ok(
+        repository
+          .getDimension("invoices.invoice_date.day_of_month")
+          .isGranularity(),
+      );
+    });
   });
 
   await describe("models from sql queries", async () => {
