@@ -23,16 +23,10 @@ import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import type { AnyRepository } from "./repository.js";
 
-function isNonEmptyArray<T>(arr: T[]): arr is [T, ...T[]] {
-  return arr.length > 0;
-}
-
 function getDimensionNamesSchema(dimensionPaths: string[]) {
-  if (isNonEmptyArray(dimensionPaths)) {
-    const [first, ...rest] = dimensionPaths;
-    return z.array(z.enum([first, ...rest])).optional();
-  }
-  return z.array(z.string()).max(0).optional();
+  return z
+    .array(z.string().refine((arg) => dimensionPaths.includes(arg)))
+    .optional();
 }
 
 function getMetricNamesSchema(metricPaths: string[]) {
@@ -41,11 +35,14 @@ function getMetricNamesSchema(metricPaths: string[]) {
     dimension: z.string(),
   });
 
-  if (isNonEmptyArray(metricPaths)) {
-    const [first, ...rest] = metricPaths;
-    return z.array(z.enum([first, ...rest]).or(adHocMetricSchema)).optional();
-  }
-  return z.array(adHocMetricSchema).optional();
+  return z
+    .array(
+      z
+        .string()
+        .refine((arg) => metricPaths.includes(arg))
+        .or(adHocMetricSchema),
+    )
+    .optional();
 }
 
 export function buildQuerySchema(repository: AnyRepository) {

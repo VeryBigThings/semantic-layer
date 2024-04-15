@@ -918,22 +918,12 @@ await describe("semantic layer", async () => {
       assert.deepEqual(jsonSchema, {
         type: "object",
         properties: {
-          dimensions: {
-            type: "array",
-            items: {
-              type: "string",
-              enum: [
-                "customers.customer_id",
-                "invoices.invoice_id",
-                "invoices.customer_id",
-              ],
-            },
-          },
+          dimensions: { type: "array", items: { type: "string" } },
           metrics: {
             type: "array",
             items: {
               anyOf: [
-                { type: "string", enum: ["invoices.total"] },
+                { type: "string" },
                 {
                   type: "object",
                   properties: {
