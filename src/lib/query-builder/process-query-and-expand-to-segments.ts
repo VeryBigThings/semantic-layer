@@ -2,6 +2,7 @@ import {
   AnyQuery,
   AnyQueryFilter,
   ModelQuery,
+  QueryAdHocMetric,
   QuerySegment,
 } from "../types.js";
 
@@ -17,6 +18,11 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
   const projectedMetricsByModel: Record<string, Set<string>> = {};
   const metricsByModel: Record<string, Set<string>> = {};
   const allMemberNames = new Set<string>();
+  const adHocMetricsByModel: Record<string, Set<QueryAdHocMetric>> = {};
+  const projectedAdHocMetricsByModel: Record<
+    string,
+    Set<QueryAdHocMetric>
+  > = {};
 
   for (const dimension of query.dimensions || []) {
     const modelName = repository.getDimension(dimension).model.name;
@@ -29,15 +35,28 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
     projectedDimensionsByModel[modelName]!.add(dimension);
   }
 
-  for (const metric of query.metrics || []) {
-    const modelName = repository.getMetric(metric).model.name;
-    allModels.add(modelName);
-    allMemberNames.add(metric);
-    metricModels.add(modelName);
-    metricsByModel[modelName] ||= new Set<string>();
-    metricsByModel[modelName]!.add(metric);
-    projectedMetricsByModel[modelName] ||= new Set<string>();
-    projectedMetricsByModel[modelName]!.add(metric);
+  for (const metricNameOrAdHocMetric of query.metrics || []) {
+    if (typeof metricNameOrAdHocMetric === "string") {
+      const modelName = repository.getMetric(metricNameOrAdHocMetric).model
+        .name;
+      allModels.add(modelName);
+      allMemberNames.add(metricNameOrAdHocMetric);
+      metricModels.add(modelName);
+      metricsByModel[modelName] ||= new Set<string>();
+      metricsByModel[modelName]!.add(metricNameOrAdHocMetric);
+      projectedMetricsByModel[modelName] ||= new Set<string>();
+      projectedMetricsByModel[modelName]!.add(metricNameOrAdHocMetric);
+    } else {
+      const modelName = repository.getDimension(
+        metricNameOrAdHocMetric.dimension,
+      ).model.name;
+      allModels.add(modelName);
+      metricModels.add(modelName);
+      adHocMetricsByModel[modelName] ||= new Set<QueryAdHocMetric>();
+      adHocMetricsByModel[modelName]!.add(metricNameOrAdHocMetric);
+      projectedAdHocMetricsByModel[modelName] ||= new Set<QueryAdHocMetric>();
+      projectedAdHocMetricsByModel[modelName]!.add(metricNameOrAdHocMetric);
+    }
   }
 
   const filterStack: AnyQueryFilter[] = [...(query.filters || [])];
@@ -87,6 +106,8 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
     projectedDimensionsByModel,
     metricsByModel,
     projectedMetricsByModel,
+    adHocMetricsByModel,
+    projectedAdHocMetricsByModel,
     order:
       Object.keys(orderByWithoutNonProjectedMembers).length > 0
         ? orderByWithoutNonProjectedMembers
@@ -97,6 +118,7 @@ function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
 interface PreparedQuery {
   dimensions: Set<string>;
   metrics: Set<string>;
+  adHocMetrics: Set<QueryAdHocMetric>;
   filters: [];
 }
 
@@ -112,11 +134,13 @@ function getQuerySegment(
     query: {
       dimensions: new Set<string>(),
       metrics: new Set<string>(),
+      adHocMetrics: new Set<QueryAdHocMetric>(),
       filters: [],
     },
     projectedQuery: {
       dimensions: new Set<string>(),
       metrics: new Set<string>(),
+      adHocMetrics: new Set<QueryAdHocMetric>(),
       filters: [],
     },
   };
@@ -145,6 +169,7 @@ function getQuerySegment(
       modelQueries[modelName] = {
         dimensions: new Set<string>(dimensions),
         metrics: new Set<string>(),
+        adHocMetrics: new Set<QueryAdHocMetric>(),
       };
     }
   }
@@ -155,6 +180,7 @@ function getQuerySegment(
     modelQueries[metricModel] ||= {
       dimensions: new Set<string>(),
       metrics: new Set<string>(),
+      adHocMetrics: new Set<QueryAdHocMetric>(),
     };
 
     for (const q of queriesKeys) {
@@ -167,6 +193,19 @@ function getQuerySegment(
         queries[q].metrics.add(metric);
         modelQueries[metricModel]!.metrics.add(metric);
       }
+
+      const adHocMetrics = metricModel
+        ? queryAnalysis[
+            q === "query"
+              ? "adHocMetricsByModel"
+              : "projectedAdHocMetricsByModel"
+          ][metricModel] ?? new Set<QueryAdHocMetric>()
+        : new Set<QueryAdHocMetric>();
+
+      for (const adHocMetric of adHocMetrics) {
+        queries[q].adHocMetrics.add(adHocMetric);
+        modelQueries[metricModel]!.adHocMetrics.add(adHocMetric);
+      }
     }
   }
 
@@ -175,11 +214,13 @@ function getQuerySegment(
       ...queries.query,
       dimensions: Array.from(queries.query.dimensions),
       metrics: Array.from(queries.query.metrics),
+      adHocMetrics: Array.from(queries.query.adHocMetrics),
     },
     projectedQuery: {
       ...queries.projectedQuery,
       dimensions: Array.from(queries.projectedQuery.dimensions),
       metrics: Array.from(queries.projectedQuery.metrics),
+      adHocMetrics: Array.from(queries.projectedQuery.adHocMetrics),
     },
     referencedModels: {
       all: Array.from(referencedModels.all),
@@ -213,7 +254,7 @@ export function processQueryAndExpandToSegments(
   query: AnyQuery,
 ) {
   const queryAnalysis = analyzeQuery(repository, query);
-  const metricModels = Object.keys(queryAnalysis.metricsByModel);
+  const metricModels = Array.from(queryAnalysis.metricModels);
   const segments =
     metricModels.length === 0
       ? [

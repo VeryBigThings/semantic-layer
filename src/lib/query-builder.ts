@@ -4,7 +4,11 @@ import {
   IntrospectionResult,
   MemberNameToType,
   Query,
+  QueryAdHocMetricName,
+  QueryAdHocMetricType,
   QueryMemberName,
+  QueryMetric,
+  QueryMetricName,
   QueryReturnType,
   SqlQueryResult,
 } from "./types.js";
@@ -23,12 +27,25 @@ function isNonEmptyArray<T>(arr: T[]): arr is [T, ...T[]] {
   return arr.length > 0;
 }
 
-function getMemberNamesSchema(memberPaths: string[]) {
-  if (isNonEmptyArray(memberPaths)) {
-    const [first, ...rest] = memberPaths;
+function getDimensionNamesSchema(dimensionPaths: string[]) {
+  if (isNonEmptyArray(dimensionPaths)) {
+    const [first, ...rest] = dimensionPaths;
     return z.array(z.enum([first, ...rest])).optional();
   }
   return z.array(z.string()).max(0).optional();
+}
+
+function getMetricNamesSchema(metricPaths: string[]) {
+  const adHocMetricSchema = z.object({
+    aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
+    dimension: z.string(),
+  });
+
+  if (isNonEmptyArray(metricPaths)) {
+    const [first, ...rest] = metricPaths;
+    return z.array(z.enum([first, ...rest]).or(adHocMetricSchema)).optional();
+  }
+  return z.array(adHocMetricSchema).optional();
 }
 
 export function buildQuerySchema(repository: AnyRepository) {
@@ -62,8 +79,8 @@ export function buildQuerySchema(repository: AnyRepository) {
 
   const schema = z
     .object({
-      dimensions: getMemberNamesSchema(dimensionPaths),
-      metrics: getMemberNamesSchema(metricPaths),
+      dimensions: getDimensionNamesSchema(dimensionPaths),
+      metrics: getMetricNamesSchema(metricPaths),
       filters: filters.optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
@@ -122,7 +139,9 @@ export class QueryBuilder<
     };
   }
 
-  buildQuery<const Q extends { dimensions?: string[]; metrics?: string[] }>(
+  buildQuery<
+    const Q extends { dimensions?: string[]; metrics?: QueryMetric[] },
+  >(
     query: Q &
       Query<
         string & keyof D,
@@ -139,8 +158,9 @@ export class QueryBuilder<
         QueryReturnType<
           D & M,
           | (QueryMemberName<Q["dimensions"]> & keyof D)
-          | (QueryMemberName<Q["metrics"]> & keyof M)
-        >
+          | (QueryMetricName<Q["metrics"]> & keyof M)
+        > &
+          QueryAdHocMetricType<QueryAdHocMetricName<Q["metrics"]>>
       >
     > = {
       sql,
@@ -155,19 +175,36 @@ export class QueryBuilder<
     const queryMetrics = query.metrics ?? [];
 
     return [...queryDimensions, ...queryMetrics].reduce<IntrospectionResult>(
-      (acc, memberName) => {
-        const member = this.repository.getMember(memberName);
-        const isDimension = member.isDimension();
+      (acc, memberNameOrAdHoc) => {
+        if (typeof memberNameOrAdHoc === "string") {
+          const member = this.repository.getMember(memberNameOrAdHoc);
+          const isDimension = member.isDimension();
 
-        acc[memberName.replaceAll(".", "___")] = {
-          memberType: isDimension ? "dimension" : "metric",
-          path: member.getPath(),
-          format: member.getFormat(),
-          type: member.getType(),
-          description: member.getDescription(),
-          isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
-          isGranularity: isDimension ? member.isGranularity() : false,
-        };
+          acc[memberNameOrAdHoc.replaceAll(".", "___")] = {
+            memberType: isDimension ? "dimension" : "metric",
+            path: member.getPath(),
+            format: member.getFormat(),
+            type: member.getType(),
+            description: member.getDescription(),
+            isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
+            isGranularity: isDimension ? member.isGranularity() : false,
+          };
+        } else {
+          const aggregateWith = memberNameOrAdHoc.aggregateWith;
+          const dimensionName = memberNameOrAdHoc.dimension;
+          const member = this.repository.getMember(dimensionName);
+          acc[
+            `${dimensionName.replaceAll(".", "___")}___adhoc_${aggregateWith}`
+          ] = {
+            memberType: "metric",
+            path: `${member.getPath()}.adhoc_${aggregateWith}`,
+            format: undefined,
+            type: "unknown",
+            description: undefined,
+            isPrimaryKey: false,
+            isGranularity: false,
+          };
+        }
 
         return acc;
       },
