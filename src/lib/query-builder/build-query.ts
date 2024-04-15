@@ -1,6 +1,12 @@
 import * as graphlib from "@dagrejs/graphlib";
 
-import { AnyQuery, ModelQuery, QuerySegment } from "../types.js";
+import {
+  AnyQuery,
+  ModelQuery,
+  QueryAdHocMetric,
+  QueryMetric,
+  QuerySegment,
+} from "../types.js";
 
 import knex from "knex";
 import invariant from "tiny-invariant";
@@ -15,9 +21,23 @@ interface ReferencedModels {
   metrics: string[];
 }
 
+function adHocMetricAlias(adHocMetric: QueryAdHocMetric) {
+  return `${adHocMetric.dimension.replaceAll(".", "___")}___adhoc_${
+    adHocMetric.aggregateWith
+  }`;
+}
+
+function getSortableMetric(metrics: QueryMetric[] | undefined) {
+  for (const metric of metrics ?? []) {
+    if (typeof metric === "string") {
+      return metric;
+    }
+  }
+}
+
 function getDefaultOrderBy(repository: AnyRepository, query: AnyQuery) {
   const firstDimensionName = query.dimensions?.[0];
-  const firstMetricName = query.metrics?.[0];
+  const firstMetricName = getSortableMetric(query.metrics);
 
   for (const dimensionName of query.dimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
@@ -68,7 +88,7 @@ function getJoinSubject(
   );
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity
 function buildQuerySegmentJoinQuery(
   knex: knex.Knex,
   repository: AnyRepository,
@@ -96,12 +116,14 @@ function buildQuerySegmentJoinQuery(
     const modelQuery = modelQueries[modelName];
     const model = repository.getModel(modelName);
     const hasMetrics = modelQuery?.metrics && modelQuery.metrics.size > 0;
+    const hasAdHocMetrics =
+      modelQuery?.adHocMetrics && modelQuery.adHocMetrics.size > 0;
     const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
       (modelName) => !visitedModels.has(modelName),
     );
     const dimensionNames = new Set(modelQuery?.dimensions || []);
 
-    if (hasMetrics) {
+    if (hasMetrics || hasAdHocMetrics) {
       for (const d of model.getPrimaryKeyDimensions()) {
         dimensionNames.add(d.getPath());
       }
@@ -129,6 +151,17 @@ function buildQuerySegmentJoinQuery(
       );
     }
 
+    for (const adHocMetric of modelQuery?.adHocMetrics || []) {
+      const dimension = repository.getDimension(adHocMetric.dimension);
+      const { sql, bindings } = dimension.getSqlWithoutGranularity(
+        dialect,
+        context,
+      );
+      sqlQuery.select(
+        knex.raw(`${sql} as ${adHocMetricAlias(adHocMetric)}`, bindings),
+      );
+    }
+
     for (const dimensionName of dimensionNames) {
       const dimension = repository.getDimension(dimensionName);
       const { sql, bindings } = dimension.getSql(dialect, context);
@@ -149,6 +182,7 @@ function buildQuerySegmentJoinQuery(
   return sqlQuery;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity
 function buildQuerySegment(
   knex: knex.Knex,
   repository: AnyRepository,
@@ -178,7 +212,10 @@ function buildQuerySegment(
 
   // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
   // otherwise GROUP BY will take care of it
-  if ((segment.query.metrics?.length ?? 0) === 0) {
+  if (
+    (segment.query.metrics?.length ?? 0) === 0 &&
+    (segment.query.adHocMetrics?.length ?? 0) === 0
+  ) {
     initialSqlQuery.distinct();
   }
 
@@ -199,7 +236,9 @@ function buildQuerySegment(
 
   const alias = `${source}_query`;
   const sqlQuery = knex(initialSqlQuery.as(alias));
-  const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;
+  const hasMetrics =
+    (segment.query.metrics && segment.query.metrics.length > 0) ||
+    (segment.query.adHocMetrics && segment.query.adHocMetrics.length > 0);
 
   for (const dimensionName of segment.query.dimensions || []) {
     const dimension = repository.getDimension(dimensionName);
@@ -226,6 +265,20 @@ function buildQuerySegment(
     sqlQuery.select(
       knex.raw(`${sql} as ${metric.getAlias(dialect)}`, bindings),
     );
+  }
+
+  for (const adHocMetric of segment.query.adHocMetrics || []) {
+    const dimension = repository.getDimension(adHocMetric.dimension);
+    const initialSql = dialect.aggregate(
+      adHocMetric.aggregateWith,
+      `${dialect.asIdentifier(alias)}.${adHocMetricAlias(adHocMetric)}`,
+    );
+    const dimensionGranularity = dimension.getGranularity();
+    const sql = dimensionGranularity
+      ? dialect.withGranularity(dimensionGranularity, initialSql)
+      : initialSql;
+
+    sqlQuery.select(knex.raw(`${sql} as ${adHocMetricAlias(adHocMetric)}`));
   }
 
   return { ...segment, sqlQuery };
@@ -286,6 +339,17 @@ export function buildQuery(
         `${dialect.asIdentifier(rootAlias)}.${metric.getAlias(
           dialect,
         )} as ${metric.getAlias(dialect)}`,
+      ),
+    );
+  }
+
+  for (const adHocMetric of initialSqlQuerySegment.projectedQuery
+    .adHocMetrics || []) {
+    rootSqlQuery.select(
+      knex.raw(
+        `${dialect.asIdentifier(rootAlias)}.${adHocMetricAlias(
+          adHocMetric,
+        )} as ${adHocMetricAlias(adHocMetric)}`,
       ),
     );
   }

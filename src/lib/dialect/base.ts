@@ -40,7 +40,11 @@ export class BaseDialect {
     if (value === "*") return value;
     return `"${value}"`;
   }
-  aggregateSum(sql: string) {
-    return `COALESCE(SUM(${sql}), 0)`;
+  aggregate(aggregateWith: string, sql: string) {
+    if (aggregateWith === "sum") {
+      return `COALESCE(SUM(${sql}), 0)`;
+    }
+
+    return `${aggregateWith.toUpperCase()}(${sql})`;
   }
 }

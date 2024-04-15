@@ -17,9 +17,20 @@ export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryFilter = QueryFilter<any>;
 
+export type AggregateWith = "count" | "sum" | "avg" | "min" | "max";
+export interface QueryAdHocMetric<DN extends string = string> {
+  aggregateWith: AggregateWith;
+  dimension: DN;
+}
+
+export type QueryMetric<
+  MN extends string = string,
+  DN extends string = string,
+> = MN | QueryAdHocMetric<DN>;
+
 export type Query<DN extends string, MN extends string, F = never> = {
   dimensions?: DN[];
-  metrics?: MN[];
+  metrics?: QueryMetric<MN, DN>[];
   order?: { [K in DN | MN]?: "asc" | "desc" };
   filters?: QueryFilter<F>[];
   limit?: number;
@@ -32,11 +43,13 @@ export type AnyQuery = Query<string, string, any>;
 export interface ModelQuery {
   dimensions: Set<string>;
   metrics: Set<string>;
+  adHocMetrics: Set<QueryAdHocMetric>;
 }
 
 export interface QuerySegmentQuery {
   dimensions: string[];
   metrics: string[];
+  adHocMetrics: QueryAdHocMetric[];
   filters: AnyQueryFilter[];
 }
 
@@ -232,6 +245,20 @@ export type InferSqlQueryResultType<
   : never;
 
 export type QueryMemberName<T> = T extends string[] ? T[number] : never;
+export type QueryMetricName<T> = Extract<
+  T extends unknown[] ? T[number] : never,
+  string
+>;
+export type QueryAdHocMetricName<
+  T,
+  AM = Extract<T extends unknown[] ? T[number] : never, QueryAdHocMetric>,
+> = AM extends QueryAdHocMetric
+  ? `${AM["dimension"]}.adhoc_${AM["aggregateWith"]}`
+  : never;
+
+export type QueryAdHocMetricType<N extends string> = {
+  [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
+};
 
 export type AvailableDialects = "postgresql";
 
@@ -241,7 +268,7 @@ export type IntrospectionResult = Record<
     memberType: "dimension" | "metric";
     path: string;
     format?: MemberFormat | undefined;
-    type: MemberType;
+    type: MemberType | "unknown";
     description?: string | undefined;
     isPrimaryKey: boolean;
     isGranularity: boolean;

@@ -1,4 +1,5 @@
 import {
+  AggregateWith,
   DimensionWithGranularity,
   Granularity,
   GranularityByDimensionType,
@@ -129,12 +130,10 @@ export interface DimensionProps<C, DN extends string = string> {
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyDimensionProps = DimensionProps<any, string>;
-
-export type MetricType = "count" | "sum" | "avg" | "min" | "max";
 export interface MetricProps<C, DN extends string = string> {
   type: MemberType;
   // TODO: allow custom aggregate functions: ({sql: SqlFn<never>, metric: MetricRef}) => SqlWithRefs
-  aggregateWith: MetricType;
+  aggregateWith: AggregateWith;
   sql?: MemberSqlFn<C, DN>;
   format?: MemberFormat;
   description?: string;
@@ -208,13 +207,8 @@ export class Dimension extends Member {
         `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
-    const result =
-      this.renderSql(dialect, context) ??
-      sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
-          this.name,
-        )}`,
-      );
+    const result = this.getSqlWithoutGranularity(dialect, context);
+
     if (this.granularity) {
       return {
         sql: dialect.withGranularity(this.granularity, result.sql),
@@ -222,6 +216,16 @@ export class Dimension extends Member {
       };
     }
     return result;
+  }
+  getSqlWithoutGranularity(dialect: BaseDialect, context: unknown) {
+    return (
+      this.renderSql(dialect, context) ??
+      sqlAsSqlWithBindings(
+        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
+          this.name,
+        )}`,
+      )
+    );
   }
   getGranularity() {
     return this.granularity;
@@ -266,10 +270,7 @@ export class Metric extends Member {
   getAggregateSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
     const { sql, bindings } = this.getSql(dialect, context, modelAlias);
     return {
-      sql:
-        this.props.aggregateWith === "sum"
-          ? dialect.aggregateSum(sql)
-          : `${this.props.aggregateWith.toUpperCase()}(${sql})`,
+      sql: dialect.aggregate(this.props.aggregateWith, sql),
       bindings,
     };
   }
