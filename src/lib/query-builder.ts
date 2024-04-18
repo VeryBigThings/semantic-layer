@@ -25,14 +25,22 @@ import type { AnyRepository } from "./repository.js";
 
 function getDimensionNamesSchema(dimensionPaths: string[]) {
   return z
-    .array(z.string().refine((arg) => dimensionPaths.includes(arg)))
+    .array(
+      z
+        .string()
+        .refine((arg) => dimensionPaths.includes(arg))
+        .describe("Dimension name"),
+    )
     .optional();
 }
 
-function getMetricNamesSchema(metricPaths: string[]) {
+function getMetricNamesSchema(metricPaths: string[], dimensionPaths: string[]) {
   const adHocMetricSchema = z.object({
     aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
-    dimension: z.string(),
+    dimension: z
+      .string()
+      .refine((arg) => dimensionPaths.includes(arg))
+      .describe("Dimension name"),
   });
 
   return z
@@ -40,6 +48,7 @@ function getMetricNamesSchema(metricPaths: string[]) {
       z
         .string()
         .refine((arg) => metricPaths.includes(arg))
+        .describe("Metric name")
         .or(adHocMetricSchema),
     )
     .optional();
@@ -77,7 +86,7 @@ export function buildQuerySchema(repository: AnyRepository) {
   const schema = z
     .object({
       dimensions: getDimensionNamesSchema(dimensionPaths),
-      metrics: getMetricNamesSchema(metricPaths),
+      metrics: getMetricNamesSchema(metricPaths, dimensionPaths),
       filters: filters.optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),

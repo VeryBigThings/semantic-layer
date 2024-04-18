@@ -918,12 +918,21 @@ await describe("semantic layer", async () => {
       assert.deepEqual(jsonSchema, {
         type: "object",
         properties: {
-          dimensions: { type: "array", items: { type: "string" } },
+          dimensions: {
+            type: "array",
+            items: {
+              type: "string",
+              description: "Dimension name",
+            },
+          },
           metrics: {
             type: "array",
             items: {
               anyOf: [
-                { type: "string" },
+                {
+                  type: "string",
+                  description: "Metric name",
+                },
                 {
                   type: "object",
                   properties: {
@@ -931,12 +940,16 @@ await describe("semantic layer", async () => {
                       type: "string",
                       enum: ["sum", "count", "min", "max", "avg"],
                     },
-                    dimension: { type: "string" },
+                    dimension: {
+                      type: "string",
+                      description: "Dimension name",
+                    },
                   },
                   required: ["aggregateWith", "dimension"],
                   additionalProperties: false,
                 },
               ],
+              description: "Metric name",
             },
           },
           filters: {
@@ -946,8 +959,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "and" },
-                    filters: { $ref: "#/properties/filters" },
+                    operator: {
+                      type: "string",
+                      const: "and",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
@@ -955,8 +973,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "or" },
-                    filters: { $ref: "#/properties/filters" },
+                    operator: {
+                      type: "string",
+                      const: "or",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
@@ -964,17 +987,34 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "equals" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "equals",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
                     },
@@ -985,17 +1025,34 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notEquals" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notEquals",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
                     },
@@ -1006,8 +1063,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notSet" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notSet",
+                    },
+                    member: {
+                      type: "string",
+                    },
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
@@ -1015,8 +1077,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "set" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "set",
+                    },
+                    member: {
+                      type: "string",
+                    },
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
@@ -1024,9 +1091,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "contains" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "contains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1034,9 +1111,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notContains" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notContains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1044,9 +1131,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "startsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "startsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1054,9 +1151,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notStartsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notStartsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1064,9 +1171,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "endsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "endsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1074,9 +1191,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notEndsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notEndsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1084,9 +1211,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "gt" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "gt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1094,9 +1231,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "gte" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "gte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1104,9 +1251,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "lt" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "lt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1114,9 +1271,19 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "lte" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "lte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1124,24 +1291,41 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "inDateRange" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "inDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       anyOf: [
-                        { type: "string" },
+                        {
+                          type: "string",
+                        },
                         {
                           type: "object",
                           properties: {
                             startDate: {
                               anyOf: [
-                                { type: "string" },
-                                { type: "string", format: "date-time" },
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
                               ],
                             },
                             endDate: {
                               anyOf: [
-                                { type: "string" },
-                                { type: "string", format: "date-time" },
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
                               ],
                             },
                           },
@@ -1157,8 +1341,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notInDateRange" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notInDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       $ref: "#/properties/filters/items/anyOf/16/properties/value",
                     },
@@ -1169,12 +1358,22 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "beforeDate" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "beforeDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       anyOf: [
-                        { type: "string" },
-                        { type: "string", format: "date-time" },
+                        {
+                          type: "string",
+                        },
+                        {
+                          type: "string",
+                          format: "date-time",
+                        },
                       ],
                     },
                   },
@@ -1184,8 +1383,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "afterDate" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "afterDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       $ref: "#/properties/filters/items/anyOf/18/properties/value",
                     },
@@ -1196,11 +1400,18 @@ await describe("semantic layer", async () => {
               ],
             },
           },
-          limit: { type: "number" },
-          offset: { type: "number" },
+          limit: {
+            type: "number",
+          },
+          offset: {
+            type: "number",
+          },
           order: {
             type: "object",
-            additionalProperties: { type: "string", enum: ["asc", "desc"] },
+            additionalProperties: {
+              type: "string",
+              enum: ["asc", "desc"],
+            },
           },
         },
         additionalProperties: false,
