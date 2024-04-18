@@ -13,6 +13,7 @@ import {
   inDateRange as filterInDateRange,
   notInDateRange as filterNotInDateRange,
 } from "./filter-builder/date-range-filter-builder.js";
+import { equals as filterEquals, filterIn } from "./filter-builder/equals.js";
 import {
   AnyFilterFragmentBuilder,
   GetFilterFragmentBuilderPayload,
@@ -26,6 +27,10 @@ import {
   startsWith as filterStartsWith,
 } from "./filter-builder/ilike-filter-builder.js";
 import {
+  notEquals as filterNotEquals,
+  notIn as filterNotIn,
+} from "./filter-builder/not-equals.js";
+import {
   notSet as filterSet,
   set as filterNotSet,
 } from "./filter-builder/null-check-filter-builder.js";
@@ -38,8 +43,6 @@ import {
 
 import { BaseDialect } from "../dialect/base.js";
 import type { AnyRepository } from "../repository.js";
-import { equals as filterEquals } from "./filter-builder/equals.js";
-import { notEquals as filterNotEquals } from "./filter-builder/not-equals.js";
 import { sqlAsSqlWithBindings } from "./util.js";
 
 export class FilterBuilder {
@@ -186,7 +189,9 @@ export function defaultFilterFragmentBuilderRegistry() {
   const registry = new FilterFragmentBuilderRegistry();
   return registry
     .register(filterEquals)
+    .register(filterIn)
     .register(filterNotEquals)
+    .register(filterNotIn)
     .register(filterSet)
     .register(filterNotSet)
     .register(filterContains)
