@@ -14,6 +14,7 @@ import { BaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import type { AnyRepository } from "../repository.js";
+import { getAdHocAlias } from "../util.js";
 
 interface ReferencedModels {
   all: string[];
@@ -21,10 +22,8 @@ interface ReferencedModels {
   metrics: string[];
 }
 
-function adHocMetricAlias(adHocMetric: QueryAdHocMetric) {
-  return `${adHocMetric.dimension.replaceAll(".", "___")}___adhoc_${
-    adHocMetric.aggregateWith
-  }`;
+function getAdHocMetricAlias(adHocMetric: QueryAdHocMetric) {
+  return getAdHocAlias(adHocMetric.dimension, adHocMetric.aggregateWith);
 }
 
 function getSortableMetric(metrics: QueryMetric[] | undefined) {
@@ -158,7 +157,7 @@ function buildQuerySegmentJoinQuery(
         context,
       );
       sqlQuery.select(
-        knex.raw(`${sql} as ${adHocMetricAlias(adHocMetric)}`, bindings),
+        knex.raw(`${sql} as ${getAdHocMetricAlias(adHocMetric)}`, bindings),
       );
     }
 
@@ -271,14 +270,14 @@ function buildQuerySegment(
     const dimension = repository.getDimension(adHocMetric.dimension);
     const initialSql = dialect.aggregate(
       adHocMetric.aggregateWith,
-      `${dialect.asIdentifier(alias)}.${adHocMetricAlias(adHocMetric)}`,
+      `${dialect.asIdentifier(alias)}.${getAdHocMetricAlias(adHocMetric)}`,
     );
     const dimensionGranularity = dimension.getGranularity();
     const sql = dimensionGranularity
       ? dialect.withGranularity(dimensionGranularity, initialSql)
       : initialSql;
 
-    sqlQuery.select(knex.raw(`${sql} as ${adHocMetricAlias(adHocMetric)}`));
+    sqlQuery.select(knex.raw(`${sql} as ${getAdHocMetricAlias(adHocMetric)}`));
   }
 
   return { ...segment, sqlQuery };
@@ -347,9 +346,9 @@ export function buildQuery(
     .adHocMetrics || []) {
     rootSqlQuery.select(
       knex.raw(
-        `${dialect.asIdentifier(rootAlias)}.${adHocMetricAlias(
+        `${dialect.asIdentifier(rootAlias)}.${getAdHocMetricAlias(
           adHocMetric,
-        )} as ${adHocMetricAlias(adHocMetric)}`,
+        )} as ${getAdHocMetricAlias(adHocMetric)}`,
       ),
     );
   }

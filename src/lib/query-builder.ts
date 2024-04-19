@@ -22,6 +22,7 @@ import { buildQuery } from "./query-builder/build-query.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import type { AnyRepository } from "./repository.js";
+import { getAdHocAlias, getAdHocPath } from "./util.js";
 
 function getDimensionNamesSchema(dimensionPaths: string[]) {
   return z
@@ -199,11 +200,9 @@ export class QueryBuilder<
           const aggregateWith = memberNameOrAdHoc.aggregateWith;
           const dimensionName = memberNameOrAdHoc.dimension;
           const member = this.repository.getMember(dimensionName);
-          acc[
-            `${dimensionName.replaceAll(".", "___")}___adhoc_${aggregateWith}`
-          ] = {
+          acc[getAdHocAlias(dimensionName, aggregateWith)] = {
             memberType: "metric",
-            path: `${member.getPath()}.adhoc_${aggregateWith}`,
+            path: getAdHocPath(member.getPath(), aggregateWith),
             format: undefined,
             type: "unknown",
             description: undefined,
