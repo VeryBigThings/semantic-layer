@@ -1,5 +1,6 @@
 import {
   AnyQuery,
+  FilterType,
   IntrospectionResult,
   MemberNameToType,
   Query,
@@ -19,8 +20,10 @@ import { BaseDialect } from "./dialect/base.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
-import type { AnyRepository, QuerySchema } from "./repository.js";
+import type { AnyRepository } from "./repository.js";
 import { getAdHocAlias, getAdHocPath } from "./util.js";
+import { FilterBuilder } from "./query-builder/filter-builder.js";
+import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 
 export class QueryBuilder<
   C,
@@ -28,16 +31,19 @@ export class QueryBuilder<
   M extends MemberNameToType,
   F,
 > {
+  public readonly querySchema: QuerySchema;
   constructor(
     public readonly repository: AnyRepository,
-    public readonly querySchema: QuerySchema,
     public readonly dialect: BaseDialect,
     public readonly client: knex.Knex,
-  ) {}
+  ) {
+    this.querySchema = buildQuerySchema(this);
+  }
 
-  unsafeBuildQuery(payload: unknown, context: unknown) {
-    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
-
+  unsafeBuildGenericQueryWithoutSchemaParse(
+    parsedQuery: AnyQuery,
+    context: unknown,
+  ) {
     const { query, referencedModels, segments } =
       processQueryAndExpandToSegments(this.repository, parsedQuery);
 
@@ -55,8 +61,15 @@ export class QueryBuilder<
       segments,
     );
 
-    const { sql, bindings } = sqlQuery.toSQL().toNative();
+    return sqlQuery.toSQL();
+  }
 
+  unsafeBuildQuery(payload: unknown, context: unknown) {
+    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
+    const { sql, bindings } = this.unsafeBuildGenericQueryWithoutSchemaParse(
+      parsedQuery,
+      context,
+    ).toNative();
     return {
       sql,
       bindings: bindings as unknown[],
@@ -92,6 +105,16 @@ export class QueryBuilder<
     };
 
     return result;
+  }
+
+  getFilterBuilder(
+    filterType: FilterType,
+    referencedModels: string[],
+    metricPrefixes?: Record<string, string>,
+  ): FilterBuilder {
+    return this.repository
+      .getFilterFragmentBuilderRegistry()
+      .getFilterBuilder(this, filterType, referencedModels, metricPrefixes);
   }
 
   introspect(query: AnyQuery): IntrospectionResult {

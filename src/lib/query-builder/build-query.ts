@@ -8,14 +8,14 @@ import {
   QuerySegment,
 } from "../types.js";
 
-import knex from "knex";
-import invariant from "tiny-invariant";
-import { BaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
+import { BaseDialect } from "../dialect/base.js";
 import { getAdHocAlias } from "../util.js";
+import invariant from "tiny-invariant";
+import knex from "knex";
 
 interface ReferencedModels {
   all: string[];
@@ -240,12 +240,8 @@ function buildQuerySegment(
   }
 
   if (segment.query.filters) {
-    const filter = queryBuilder.repository
-      .getFilterBuilder(
-        queryBuilder.dialect,
-        "dimension",
-        segment.referencedModels.all,
-      )
+    const filter = queryBuilder
+      .getFilterBuilder("dimension", segment.referencedModels.all)
       .buildFilters(segment.query.filters, "and", context);
 
     if (filter) {
@@ -437,13 +433,8 @@ export function buildQuery(
       },
       {},
     );
-    const filter = queryBuilder.repository
-      .getFilterBuilder(
-        queryBuilder.dialect,
-        "metric",
-        referencedModels.metrics,
-        metricPrefixes,
-      )
+    const filter = queryBuilder
+      .getFilterBuilder("metric", referencedModels.metrics, metricPrefixes)
       .buildFilters(query.filters, "and", context);
     if (filter) {
       rootSqlQuery.where(queryBuilder.client.raw(filter.sql, filter.bindings));

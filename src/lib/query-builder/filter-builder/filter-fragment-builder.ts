@@ -1,25 +1,39 @@
 import { ZodSchema, z } from "zod";
 
-import { SqlWithBindings } from "../../types.js";
+import { AnyQueryBuilder } from "../../query-builder.js";
 import type { FilterBuilder } from "../filter-builder.js";
+import { SqlWithBindings } from "../../types.js";
 
 export class FilterFragmentBuilder<
   N extends string,
-  Z extends ZodSchema | null,
+  Z extends ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
   T extends FilterFragmentBuilderPayload<N, Z>,
 > {
-  public readonly fragmentBuilderSchema: ZodSchema;
+  public readonly fragmentBuilderSchema:
+    | ZodSchema
+    | ((queryBuilder: AnyQueryBuilder) => ZodSchema);
   constructor(
     public readonly operator: string,
     valueSchema: Z,
     private readonly builder: FilterFragmentBuilderFn<T>,
   ) {
     if (valueSchema) {
-      this.fragmentBuilderSchema = z.object({
-        operator: z.literal(operator),
-        member: z.string(),
-        value: valueSchema,
-      });
+      if (typeof valueSchema === "function") {
+        this.fragmentBuilderSchema = (queryBuilder: AnyQueryBuilder) => {
+          const resolvedValueSchema = valueSchema(queryBuilder);
+          return z.object({
+            operator: z.literal(operator),
+            member: z.string(),
+            value: resolvedValueSchema,
+          });
+        };
+      } else {
+        this.fragmentBuilderSchema = z.object({
+          operator: z.literal(operator),
+          member: z.string(),
+          value: valueSchema,
+        });
+      }
     } else {
       this.fragmentBuilderSchema = z.object({
         operator: z.literal(operator),
@@ -27,15 +41,23 @@ export class FilterFragmentBuilder<
       });
     }
   }
+  getFilterFragmentBuilderSchema(queryBuilder: AnyQueryBuilder) {
+    return typeof this.fragmentBuilderSchema === "function"
+      ? this.fragmentBuilderSchema(queryBuilder)
+      : this.fragmentBuilderSchema;
+  }
   build(filterBuilder: FilterBuilder, member: SqlWithBindings, payload: T) {
-    const filter = this.fragmentBuilderSchema.parse(payload);
+    const schema = this.getFilterFragmentBuilderSchema(
+      filterBuilder.queryBuilder,
+    );
+    const filter = schema.parse(payload);
     return this.builder(filterBuilder, member, filter);
   }
 }
 
 export type AnyFilterFragmentBuilder = FilterFragmentBuilder<
   string,
-  ZodSchema | null,
+  ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
   // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any
 >;
@@ -51,8 +73,12 @@ export type GetFilterFragmentBuilderPayload<T> =
 
 export type FilterFragmentBuilderPayload<
   N extends string,
-  Z extends ZodSchema | null,
-  T = Z extends ZodSchema ? z.infer<Z> : null,
+  Z extends ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
+  T = Z extends ZodSchema
+    ? z.infer<Z>
+    : Z extends (queryBuilder: AnyQueryBuilder) => ZodSchema
+      ? z.infer<ReturnType<Z>>
+      : null,
 > = T extends null
   ? { operator: N; member: string }
   : {
@@ -63,7 +89,7 @@ export type FilterFragmentBuilderPayload<
 
 export function filterFragmentBuilder<
   N extends string,
-  Z extends ZodSchema | null,
+  Z extends ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
   T extends FilterFragmentBuilderPayload<N, Z>,
 >(name: N, valueSchema: Z, builder: FilterFragmentBuilderFn<T>) {
   return new FilterFragmentBuilder(name, valueSchema, builder);

@@ -1,19 +1,18 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { format as sqlFormat } from "sql-formatter";
 import { zodToJsonSchema } from "zod-to-json-schema";
-
-// import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -741,6 +740,37 @@ await describe("semantic layer", async () => {
         },
       ]);
     });
+
+    await it("can filter by results of another query", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["customers.country"],
+        order: { "customers.country": "asc" },
+        filters: [
+          {
+            operator: "inQuery",
+            member: "customers.country",
+            value: {
+              dimensions: ["customers.country"],
+              filters: [
+                {
+                  operator: "equals",
+                  member: "customers.country",
+                  value: ["Argentina"],
+                },
+              ],
+            },
+          },
+        ],
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [{ customers___country: "Argentina" }]);
+    });
   });
 
   await describe("models from sql queries", async () => {
@@ -1238,6 +1268,26 @@ await describe("semantic layer", async () => {
                     value: {
                       $ref: "#/properties/filters/items/anyOf/20/properties/value",
                     },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: { type: "string", const: "inQuery" },
+                    member: { type: "string" },
+                    value: { $ref: "#" },
+                  },
+                  required: ["operator", "member", "value"],
+                  additionalProperties: false,
+                },
+                {
+                  type: "object",
+                  properties: {
+                    operator: { type: "string", const: "notInQuery" },
+                    member: { type: "string" },
+                    value: { $ref: "#" },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
