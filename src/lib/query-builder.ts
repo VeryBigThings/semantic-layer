@@ -1,6 +1,6 @@
 import {
   AnyQuery,
-  AnyQueryFilter,
+  FilterType,
   IntrospectionResult,
   MemberNameToType,
   Query,
@@ -14,92 +14,16 @@ import {
 } from "./types.js";
 
 import knex from "knex";
-import { z } from "zod";
 
 import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
 import { buildQuery } from "./query-builder/build-query.js";
+import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
+import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { getAdHocAlias, getAdHocPath } from "./util.js";
-
-function getDimensionNamesSchema(dimensionPaths: string[]) {
-  return z
-    .array(
-      z
-        .string()
-        .refine((arg) => dimensionPaths.includes(arg))
-        .describe("Dimension name"),
-    )
-    .optional();
-}
-
-function getMetricNamesSchema(metricPaths: string[], dimensionPaths: string[]) {
-  const adHocMetricSchema = z.object({
-    aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
-    dimension: z
-      .string()
-      .refine((arg) => dimensionPaths.includes(arg))
-      .describe("Dimension name"),
-  });
-
-  return z
-    .array(
-      z
-        .string()
-        .refine((arg) => metricPaths.includes(arg))
-        .describe("Metric name")
-        .or(adHocMetricSchema),
-    )
-    .optional();
-}
-
-export function buildQuerySchema(repository: AnyRepository) {
-  const dimensionPaths = repository.getDimensions().map((d) => d.getPath());
-  const metricPaths = repository.getMetrics().map((m) => m.getPath());
-  const memberPaths = [...dimensionPaths, ...metricPaths];
-
-  const registeredFilterFragmentBuildersSchemas = repository
-    .getFilterFragmentBuilderRegistry()
-    .getFilterFragmentBuilders()
-    .map((builder) => builder.fragmentBuilderSchema);
-
-  const filters: z.ZodType<AnyQueryFilter[]> = z.array(
-    z.union([
-      z.object({
-        operator: z.literal("and"),
-        filters: z.lazy(() => filters),
-      }),
-      z.object({
-        operator: z.literal("or"),
-        filters: z.lazy(() => filters),
-      }),
-      ...registeredFilterFragmentBuildersSchemas.map((schema) =>
-        schema.refine((arg) => memberPaths.includes(arg.member), {
-          path: ["member"],
-          message: "Member not found",
-        }),
-      ),
-    ]),
-  );
-
-  const schema = z
-    .object({
-      dimensions: getDimensionNamesSchema(dimensionPaths),
-      metrics: getMetricNamesSchema(metricPaths, dimensionPaths),
-      filters: filters.optional(),
-      limit: z.number().optional(),
-      offset: z.number().optional(),
-      order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
-    })
-    .refine(
-      (arg) => (arg.dimensions?.length ?? 0) + (arg.metrics?.length ?? 0) > 0,
-      "At least one dimension or metric must be selected",
-    );
-
-  return schema;
-}
 
 export class QueryBuilder<
   C,
@@ -107,18 +31,19 @@ export class QueryBuilder<
   M extends MemberNameToType,
   F,
 > {
-  public readonly querySchema: ReturnType<typeof buildQuerySchema>;
+  public readonly querySchema: QuerySchema;
   constructor(
-    private readonly repository: AnyRepository,
-    private readonly dialect: BaseDialect,
-    private readonly client: knex.Knex,
+    public readonly repository: AnyRepository,
+    public readonly dialect: BaseDialect,
+    public readonly client: knex.Knex,
   ) {
-    this.querySchema = buildQuerySchema(repository);
+    this.querySchema = buildQuerySchema(this);
   }
 
-  unsafeBuildQuery(payload: unknown, context: unknown) {
-    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
-
+  unsafeBuildGenericQueryWithoutSchemaParse(
+    parsedQuery: AnyQuery,
+    context: unknown,
+  ) {
     const { query, referencedModels, segments } =
       processQueryAndExpandToSegments(this.repository, parsedQuery);
 
@@ -128,9 +53,7 @@ export class QueryBuilder<
     );
 
     const sqlQuery = buildQuery(
-      this.client,
-      this.repository,
-      this.dialect,
+      this,
       context,
       query,
       referencedModels,
@@ -138,8 +61,15 @@ export class QueryBuilder<
       segments,
     );
 
-    const { sql, bindings } = sqlQuery.toSQL().toNative();
+    return sqlQuery.toSQL();
+  }
 
+  unsafeBuildQuery(payload: unknown, context: unknown) {
+    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
+    const { sql, bindings } = this.unsafeBuildGenericQueryWithoutSchemaParse(
+      parsedQuery,
+      context,
+    ).toNative();
     return {
       sql,
       bindings: bindings as unknown[],
@@ -175,6 +105,16 @@ export class QueryBuilder<
     };
 
     return result;
+  }
+
+  getFilterBuilder(
+    filterType: FilterType,
+    referencedModels: string[],
+    metricPrefixes?: Record<string, string>,
+  ): FilterBuilder {
+    return this.repository
+      .getFilterFragmentBuilderRegistry()
+      .getFilterBuilder(this, filterType, referencedModels, metricPrefixes);
   }
 
   introspect(query: AnyQuery): IntrospectionResult {
@@ -227,3 +167,6 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
 >
   ? Query<string & keyof D, string & keyof M, F>
   : never;
+
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyQueryBuilder = QueryBuilder<any, any, any, any>;

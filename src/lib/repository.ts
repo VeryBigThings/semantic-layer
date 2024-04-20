@@ -12,11 +12,10 @@ import { AnyModel, Model } from "./model.js";
 import type { Dimension, Metric } from "./model.js";
 import {
   AnyFilterFragmentBuilderRegistry,
-  FilterBuilder,
   GetFilterFragmentBuilderRegistryPayload,
   defaultFilterFragmentBuilderRegistry,
 } from "./query-builder/filter-builder.js";
-import { AvailableDialects, FilterType, MemberNameToType } from "./types.js";
+import { AvailableDialects, MemberNameToType } from "./types.js";
 
 import graphlib from "@dagrejs/graphlib";
 import knex from "knex";
@@ -121,22 +120,6 @@ export class Repository<
 
   getFilterFragmentBuilderRegistry() {
     return this.filterFragmentBuilderRegistry;
-  }
-
-  getFilterBuilder(
-    repository: AnyRepository,
-    dialect: BaseDialect,
-    filterType: FilterType,
-    referencedModels: string[],
-    metricPrefixes?: Record<string, string>,
-  ): FilterBuilder {
-    return this.filterFragmentBuilderRegistry.getFilterBuilder(
-      repository,
-      dialect,
-      filterType,
-      referencedModels,
-      metricPrefixes,
-    );
   }
 
   join<N1 extends string, N2 extends string>(

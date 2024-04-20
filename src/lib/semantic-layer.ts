@@ -1,6 +1,7 @@
 export * from "./repository.js";
 export * from "./model.js";
 export * from "./join.js";
+export * from "./query-schema.js";
 export * from "./query-builder.js";
 export * from "./query-builder/filter-builder.js";
 export { BaseDialect } from "./dialect/base.js";

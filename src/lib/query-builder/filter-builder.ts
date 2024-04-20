@@ -40,9 +40,12 @@ import {
   lt as filterLt,
   lte as filterLte,
 } from "./filter-builder/number-comparison-filter-builder.js";
+import {
+  inQuery as filterInQuery,
+  notInQuery as filterNotInQuery,
+} from "./filter-builder/query-filter-builder.js";
 
-import { BaseDialect } from "../dialect/base.js";
-import type { AnyRepository } from "../repository.js";
+import { AnyQueryBuilder } from "../query-builder.js";
 import { sqlAsSqlWithBindings } from "./util.js";
 
 export class FilterBuilder {
@@ -53,8 +56,7 @@ export class FilterBuilder {
       string,
       AnyFilterFragmentBuilder
     >,
-    private readonly dialect: BaseDialect,
-    private readonly repository: AnyRepository,
+    public readonly queryBuilder: AnyQueryBuilder,
     private readonly filterType: FilterType,
     referencedModels: string[],
     private readonly metricPrefixes?: Record<string, string>,
@@ -65,16 +67,18 @@ export class FilterBuilder {
     memberName: string,
     context: unknown,
   ): SqlWithBindings | undefined {
-    const member = this.repository.getMember(memberName);
+    const member = this.queryBuilder.repository.getMember(memberName);
     if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
-        return member.getSql(this.dialect, context);
+        return member.getSql(this.queryBuilder.dialect, context);
       }
       if (this.filterType === "metric" && member.isMetric()) {
         const prefix = this.metricPrefixes?.[member.model.name];
-        const sql = member.getAlias(this.dialect);
+        const sql = member.getAlias(this.queryBuilder.dialect);
         return sqlAsSqlWithBindings(
-          prefix ? `${this.dialect.asIdentifier(prefix)}.${sql}` : sql,
+          prefix
+            ? `${this.queryBuilder.dialect.asIdentifier(prefix)}.${sql}`
+            : sql,
         );
       }
     }
@@ -103,7 +107,7 @@ export class FilterBuilder {
     if (memberSql) {
       const builder = this.filterFragmentBuilders[filter.operator];
       if (builder) {
-        return builder.build(this, memberSql, filter);
+        return builder.build(this, context, memberSql, filter);
       }
       throw new Error(`Unknown filter operator: ${filter.operator}`);
     }
@@ -162,16 +166,14 @@ export class FilterFragmentBuilderRegistry<T = never> {
     return Object.values(this.filterFragmentBuilders);
   }
   getFilterBuilder(
-    repository: AnyRepository,
-    dialect: BaseDialect,
+    queryBuilder: AnyQueryBuilder,
     filterType: FilterType,
     referencedModels: string[],
     metricPrefixes?: Record<string, string>,
   ): FilterBuilder {
     return new FilterBuilder(
       this.filterFragmentBuilders,
-      dialect,
-      repository,
+      queryBuilder,
       filterType,
       referencedModels,
       metricPrefixes,
@@ -207,5 +209,7 @@ export function defaultFilterFragmentBuilderRegistry() {
     .register(filterInDateRange)
     .register(filterNotInDateRange)
     .register(filterBeforeDate)
-    .register(filterAfterDate);
+    .register(filterAfterDate)
+    .register(filterInQuery)
+    .register(filterNotInQuery);
 }

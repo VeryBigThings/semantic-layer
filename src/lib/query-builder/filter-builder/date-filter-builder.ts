@@ -21,15 +21,19 @@ function parseDate(value: Schema) {
 }
 
 function makeDateFilterBuilder<T extends "beforeDate" | "afterDate">(name: T) {
-  return filterFragmentBuilder(name, Schema, (_builder, member, filter) => {
-    const date = parseDate(filter.value);
-    const sql = `${member.sql} ${name === "beforeDate" ? "<" : ">"} ?`;
-    const bindings: unknown[] = [...member.bindings, date];
-    return {
-      sql,
-      bindings,
-    };
-  });
+  return filterFragmentBuilder(
+    name,
+    Schema,
+    (_builder, _context, member, filter) => {
+      const date = parseDate(filter.value);
+      const sql = `${member.sql} ${name === "beforeDate" ? "<" : ">"} ?`;
+      const bindings: unknown[] = [...member.bindings, date];
+      return {
+        sql,
+        bindings,
+      };
+    },
+  );
 }
 
 export const beforeDate = makeDateFilterBuilder("beforeDate" as const);
