@@ -1,19 +1,23 @@
 import {
   AndConnective,
-  AnyQuery,
   AnyQueryFilter,
   FilterType,
   OrConnective,
   SqlWithBindings,
 } from "../types.js";
 import {
-  AnyFilterFragmentBuilder,
-  GetFilterFragmentBuilderPayload,
-} from "./filter-builder/filter-fragment-builder.js";
-import {
   afterDate as filterAfterDate,
   beforeDate as filterBeforeDate,
 } from "./filter-builder/date-filter-builder.js";
+import {
+  inDateRange as filterInDateRange,
+  notInDateRange as filterNotInDateRange,
+} from "./filter-builder/date-range-filter-builder.js";
+import { equals as filterEquals, filterIn } from "./filter-builder/equals.js";
+import {
+  AnyFilterFragmentBuilder,
+  GetFilterFragmentBuilderPayload,
+} from "./filter-builder/filter-fragment-builder.js";
 import {
   contains as filterContains,
   endsWith as filterEndsWith,
@@ -22,7 +26,14 @@ import {
   notStartsWith as filterNotStartsWith,
   startsWith as filterStartsWith,
 } from "./filter-builder/ilike-filter-builder.js";
-import { equals as filterEquals, filterIn } from "./filter-builder/equals.js";
+import {
+  notEquals as filterNotEquals,
+  notIn as filterNotIn,
+} from "./filter-builder/not-equals.js";
+import {
+  notSet as filterSet,
+  set as filterNotSet,
+} from "./filter-builder/null-check-filter-builder.js";
 import {
   gt as filterGt,
   gte as filterGte,
@@ -30,21 +41,9 @@ import {
   lte as filterLte,
 } from "./filter-builder/number-comparison-filter-builder.js";
 import {
-  inDateRange as filterInDateRange,
-  notInDateRange as filterNotInDateRange,
-} from "./filter-builder/date-range-filter-builder.js";
-import {
   inQuery as filterInQuery,
   notInQuery as filterNotInQuery,
 } from "./filter-builder/query-filter-builder.js";
-import {
-  notEquals as filterNotEquals,
-  notIn as filterNotIn,
-} from "./filter-builder/not-equals.js";
-import {
-  set as filterNotSet,
-  notSet as filterSet,
-} from "./filter-builder/null-check-filter-builder.js";
 
 import { AnyQueryBuilder } from "../query-builder.js";
 import { sqlAsSqlWithBindings } from "./util.js";
@@ -108,7 +107,7 @@ export class FilterBuilder {
     if (memberSql) {
       const builder = this.filterFragmentBuilders[filter.operator];
       if (builder) {
-        return builder.build(this, memberSql, filter);
+        return builder.build(this, context, memberSql, filter);
       }
       throw new Error(`Unknown filter operator: ${filter.operator}`);
     }
@@ -188,64 +187,7 @@ export type AnyFilterFragmentBuilderRegistry =
 export type GetFilterFragmentBuilderRegistryPayload<T> =
   T extends FilterFragmentBuilderRegistry<infer P> ? P : never;
 
-export function defaultFilterFragmentBuilderRegistry(): FilterFragmentBuilderRegistry<
-  | {
-      operator: "equals";
-      member: string;
-      value: (string | number | bigint | boolean | Date)[];
-    }
-  | {
-      operator: "in";
-      member: string;
-      value: (string | number | bigint | boolean | Date)[];
-    }
-  | {
-      operator: "notEquals";
-      member: string;
-      value: (string | number | bigint | boolean | Date)[];
-    }
-  | {
-      operator: "notIn";
-      member: string;
-      value: (string | number | bigint | boolean | Date)[];
-    }
-  | { operator: "notSet"; member: string }
-  | { operator: "set"; member: string }
-  | { operator: "contains"; member: string; value: string[] }
-  | { operator: "notContains"; member: string; value: string[] }
-  | { operator: "startsWith"; member: string; value: string[] }
-  | { operator: "notStartsWith"; member: string; value: string[] }
-  | { operator: "endsWith"; member: string; value: string[] }
-  | { operator: "notEndsWith"; member: string; value: string[] }
-  | { operator: "gt"; member: string; value: number[] }
-  | { operator: "gte"; member: string; value: number[] }
-  | { operator: "lt"; member: string; value: number[] }
-  | { operator: "lte"; member: string; value: number[] }
-  | { operator: "inDateRange"; member: string; value: string }
-  | {
-      operator: "inDateRange";
-      member: string;
-      value: {
-        startDate: (string | Date) & (string | Date | undefined);
-        endDate: (string | Date) & (string | Date | undefined);
-      };
-    }
-  | { operator: "notInDateRange"; member: string; value: string }
-  | {
-      operator: "notInDateRange";
-      member: string;
-      value: {
-        startDate: (string | Date) & (string | Date | undefined);
-        endDate: (string | Date) & (string | Date | undefined);
-      };
-    }
-  | { operator: "beforeDate"; member: string; value: string }
-  | { operator: "beforeDate"; member: string; value: Date }
-  | { operator: "afterDate"; member: string; value: string }
-  | { operator: "afterDate"; member: string; value: Date }
-  | { operator: "inQuery"; member: string; value: AnyQuery }
-  | { operator: "notInQuery"; member: string; value: AnyQuery }
-> {
+export function defaultFilterFragmentBuilderRegistry() {
   const registry = new FilterFragmentBuilderRegistry();
   return registry
     .register(filterEquals)

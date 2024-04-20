@@ -8,14 +8,14 @@ import {
   QuerySegment,
 } from "../types.js";
 
+import knex from "knex";
+import invariant from "tiny-invariant";
+import { BaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import { BaseDialect } from "../dialect/base.js";
 import { getAdHocAlias } from "../util.js";
-import invariant from "tiny-invariant";
-import knex from "knex";
 
 interface ReferencedModels {
   all: string[];

@@ -41,15 +41,19 @@ function parseDateRange(value: Schema) {
 }
 
 function makeDateRangeFilterBuilder<T extends string>(name: T, isNot: boolean) {
-  return filterFragmentBuilder(name, Schema, (_builder, member, filter) => {
-    const [firstDate, lastDate] = parseDateRange(filter.value);
-    const sql = `${member.sql} ${isNot ? "not between" : "between"} ? and ?`;
-    const bindings: unknown[] = [...member.bindings, firstDate, lastDate];
-    return {
-      sql,
-      bindings,
-    };
-  });
+  return filterFragmentBuilder(
+    name,
+    Schema,
+    (_builder, _context, member, filter) => {
+      const [firstDate, lastDate] = parseDateRange(filter.value);
+      const sql = `${member.sql} ${isNot ? "not between" : "between"} ? and ?`;
+      const bindings: unknown[] = [...member.bindings, firstDate, lastDate];
+      return {
+        sql,
+        bindings,
+      };
+    },
+  );
 }
 
 export const inDateRange = makeDateRangeFilterBuilder(

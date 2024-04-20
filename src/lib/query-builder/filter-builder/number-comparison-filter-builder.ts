@@ -14,7 +14,7 @@ function makeNumberComparisonFilterBuilder<
   return filterFragmentBuilder(
     operator,
     z.array(z.number()),
-    (_builder, member, filter) => {
+    (_builder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{
         sqls: string[];
         bindings: unknown[];

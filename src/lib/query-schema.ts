@@ -1,6 +1,6 @@
+import { z } from "zod";
 import { AnyQueryBuilder } from "./query-builder.js";
 import { AnyQueryFilter } from "./types.js";
-import { z } from "zod";
 
 function getDimensionNamesSchema(dimensionPaths: string[]) {
   return z

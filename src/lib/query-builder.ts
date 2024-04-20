@@ -18,12 +18,12 @@ import knex from "knex";
 import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
 import { buildQuery } from "./query-builder/build-query.js";
+import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
+import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { getAdHocAlias, getAdHocPath } from "./util.js";
-import { FilterBuilder } from "./query-builder/filter-builder.js";
-import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 
 export class QueryBuilder<
   C,

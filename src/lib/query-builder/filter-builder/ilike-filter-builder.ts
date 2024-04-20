@@ -29,7 +29,7 @@ function makeILikeFilterBuilder<T extends string>(
   return filterFragmentBuilder(
     name,
     z.array(z.string()),
-    (_filterBuilder, member, filter) => {
+    (_filterBuilder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{
         sqls: string[];
         bindings: unknown[];

@@ -7,7 +7,7 @@ function makeEqualsFilterFragmentBuilder<T extends string>(name: T) {
     z.array(
       z.union([z.string(), z.number(), z.bigint(), z.boolean(), z.date()]),
     ),
-    (_builder, member, filter) => {
+    (_builder, _context, member, filter) => {
       if (filter.value.length === 1) {
         return {
           sql: `${member.sql} = ?`,

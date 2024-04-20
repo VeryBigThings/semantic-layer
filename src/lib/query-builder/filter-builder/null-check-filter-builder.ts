@@ -4,7 +4,7 @@ function makeNullCheckFilterBuilder<T extends string>(
   name: T,
   isNull: boolean,
 ) {
-  return filterFragmentBuilder(name, null, (_builder, member) => {
+  return filterFragmentBuilder(name, null, (_builder, _context, member) => {
     const sql = `${member.sql} is ${isNull ? "" : "not"} null`;
     return {
       sql,

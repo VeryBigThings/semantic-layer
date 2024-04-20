@@ -1,8 +1,8 @@
 import { ZodSchema, z } from "zod";
 
 import { AnyQueryBuilder } from "../../query-builder.js";
-import type { FilterBuilder } from "../filter-builder.js";
 import { SqlWithBindings } from "../../types.js";
+import type { FilterBuilder } from "../filter-builder.js";
 
 export class FilterFragmentBuilder<
   N extends string,
@@ -46,12 +46,14 @@ export class FilterFragmentBuilder<
       ? this.fragmentBuilderSchema(queryBuilder)
       : this.fragmentBuilderSchema;
   }
-  build(filterBuilder: FilterBuilder, member: SqlWithBindings, payload: T) {
-    const schema = this.getFilterFragmentBuilderSchema(
-      filterBuilder.queryBuilder,
-    );
-    const filter = schema.parse(payload);
-    return this.builder(filterBuilder, member, filter);
+  build(
+    filterBuilder: FilterBuilder,
+    context: unknown,
+    member: SqlWithBindings,
+    payload: unknown,
+  ) {
+    // We can directly pass payload as T because the schema is already validated in the QueryBuilder
+    return this.builder(filterBuilder, context, member, payload as T);
   }
 }
 
@@ -64,6 +66,7 @@ export type AnyFilterFragmentBuilder = FilterFragmentBuilder<
 
 export type FilterFragmentBuilderFn<T> = (
   builder: FilterBuilder,
+  context: unknown,
   member: SqlWithBindings,
   filter: T,
 ) => SqlWithBindings;

@@ -1,18 +1,19 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
-import { format as sqlFormat } from "sql-formatter";
 import { zodToJsonSchema } from "zod-to-json-schema";
+
+// import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -1939,62 +1940,62 @@ await describe("semantic layer", async () => {
   });
 
   describe("repository with context", async () => {
+    type QueryContext = {
+      customerId: number;
+    };
+
+    const customersModel = semanticLayer
+      .model<QueryContext>()
+      .withName("customers")
+      .fromSqlQuery(
+        ({ sql, identifier, getContext }) =>
+          sql`select * from ${identifier("Customer")} where ${identifier(
+            "CustomerId",
+          )} = ${getContext().customerId}`,
+      )
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model, sql, getContext }) =>
+          sql`${model.column("CustomerId")} || cast(${
+            getContext().customerId
+          } as text)`,
+      })
+      .withDimension("first_name", {
+        type: "string",
+        sql: ({ model }) => model.column("FirstName"),
+      });
+
+    const invoicesModel = semanticLayer
+      .model<QueryContext>()
+      .withName("invoices")
+      .fromTable("Invoice")
+      .withDimension("invoice_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("customer_id", {
+        type: "number",
+        sql: ({ model }) => model.column("CustomerId"),
+      });
+
+    const repository = semanticLayer
+      .repository<QueryContext>()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .joinOneToMany(
+        "customers",
+        "invoices",
+        ({ sql, models, getContext }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")} and ${
+            getContext().customerId
+          } = ${getContext().customerId}`,
+      );
+
     await it("propagates context to all sql functions", async () => {
-      type QueryContext = {
-        customerId: number;
-      };
-
-      const customersModel = semanticLayer
-        .model<QueryContext>()
-        .withName("customers")
-        .fromSqlQuery(
-          ({ sql, identifier, getContext }) =>
-            sql`select * from ${identifier("Customer")} where ${identifier(
-              "CustomerId",
-            )} = ${getContext().customerId}`,
-        )
-        .withDimension("customer_id", {
-          type: "number",
-          primaryKey: true,
-          sql: ({ model, sql, getContext }) =>
-            sql`${model.column("CustomerId")} || cast(${
-              getContext().customerId
-            } as text)`,
-        })
-        .withDimension("first_name", {
-          type: "string",
-          sql: ({ model }) => model.column("FirstName"),
-        });
-
-      const invoicesModel = semanticLayer
-        .model<QueryContext>()
-        .withName("invoices")
-        .fromTable("Invoice")
-        .withDimension("invoice_id", {
-          type: "number",
-          primaryKey: true,
-          sql: ({ model }) => model.column("InvoiceId"),
-        })
-        .withDimension("customer_id", {
-          type: "number",
-          sql: ({ model }) => model.column("CustomerId"),
-        });
-
-      const repository = semanticLayer
-        .repository<QueryContext>()
-        .withModel(customersModel)
-        .withModel(invoicesModel)
-        .joinOneToMany(
-          "customers",
-          "invoices",
-          ({ sql, models, getContext }) =>
-            sql`${models.customers.dimension(
-              "customer_id",
-            )} = ${models.invoices.dimension("customer_id")} and ${
-              getContext().customerId
-            } = ${getContext().customerId}`,
-        );
-
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2010,6 +2011,42 @@ await describe("semantic layer", async () => {
 
       // First 5 bindings are for the customerId, last one is for the limit
       assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000]);
+    });
+
+    await it("propagates context to query filters", async () => {
+      const queryBuilder = repository.build("postgresql");
+      const query = queryBuilder.buildQuery(
+        {
+          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+          filters: [
+            {
+              operator: "inQuery",
+              member: "customers.customer_id",
+              value: {
+                dimensions: ["customers.customer_id"],
+                filters: [
+                  {
+                    operator: "equals",
+                    member: "customers.customer_id",
+                    value: [1],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { customerId: 1 },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as customers on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers_query"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as customers where "customers"."CustomerId" || cast($9 as text) = $10) as "customers_query") as "q0" order by "customers___customer_id" asc limit $11)) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $12',
+      );
+
+      assert.deepEqual(
+        query.bindings,
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 5000],
+      );
     });
   });
 });

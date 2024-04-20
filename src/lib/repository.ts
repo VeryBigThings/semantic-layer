@@ -1,9 +1,4 @@
 import {
-  AnyFilterFragmentBuilderRegistry,
-  GetFilterFragmentBuilderRegistryPayload,
-  defaultFilterFragmentBuilderRegistry,
-} from "./query-builder/filter-builder.js";
-import {
   AnyJoin,
   JOIN_WEIGHTS,
   JoinDimensions,
@@ -14,14 +9,19 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import { AvailableDialects, MemberNameToType } from "./types.js";
 import type { Dimension, Metric } from "./model.js";
+import {
+  AnyFilterFragmentBuilderRegistry,
+  GetFilterFragmentBuilderRegistryPayload,
+  defaultFilterFragmentBuilderRegistry,
+} from "./query-builder/filter-builder.js";
+import { AvailableDialects, MemberNameToType } from "./types.js";
 
+import graphlib from "@dagrejs/graphlib";
+import knex from "knex";
+import invariant from "tiny-invariant";
 import { BaseDialect } from "./dialect/base.js";
 import { QueryBuilder } from "./query-builder.js";
-import graphlib from "@dagrejs/graphlib";
-import invariant from "tiny-invariant";
-import knex from "knex";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelC<T> = T extends Model<infer C, any, any, any> ? C : never;
