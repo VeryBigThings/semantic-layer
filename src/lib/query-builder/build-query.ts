@@ -421,6 +421,16 @@ export function buildQuery(
         );
       }
     }
+
+    for (const adHocMetric of segment.projectedQuery.adHocMetrics || []) {
+      rootSqlQuery.select(
+        queryBuilder.client.raw(
+          `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
+            adHocMetric,
+          )} as ${getAdHocMetricAlias(adHocMetric)}`,
+        ),
+      );
+    }
   }
 
   if (query.filters) {

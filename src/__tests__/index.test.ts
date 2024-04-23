@@ -1937,6 +1937,144 @@ await describe("semantic layer", async () => {
       const parsedQuery = queryBuilder.querySchema.parse(query);
       assert.deepEqual(query, parsedQuery);
     });
+
+    await it("should correctly perform a query with multiple ad hoc metrics", async () => {
+      const query = queryBuilder.buildQuery({
+        dimensions: ["genres.name"],
+        metrics: [
+          { aggregateWith: "count", dimension: "invoice_lines.invoice_id" },
+          { aggregateWith: "sum", dimension: "tracks.unit_price" },
+        ],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          genres___name: "Alternative",
+          invoice_lines___invoice_id___adhoc_count: "14",
+          tracks___unit_price___adhoc_sum: "13.86",
+        },
+        {
+          genres___name: "Alternative & Punk",
+          invoice_lines___invoice_id___adhoc_count: "244",
+          tracks___unit_price___adhoc_sum: "200.97",
+        },
+        {
+          genres___name: "Blues",
+          invoice_lines___invoice_id___adhoc_count: "61",
+          tracks___unit_price___adhoc_sum: "52.47",
+        },
+        {
+          genres___name: "Bossa Nova",
+          invoice_lines___invoice_id___adhoc_count: "15",
+          tracks___unit_price___adhoc_sum: "13.86",
+        },
+        {
+          genres___name: "Classical",
+          invoice_lines___invoice_id___adhoc_count: "41",
+          tracks___unit_price___adhoc_sum: "35.64",
+        },
+        {
+          genres___name: "Comedy",
+          invoice_lines___invoice_id___adhoc_count: "9",
+          tracks___unit_price___adhoc_sum: "15.92",
+        },
+        {
+          genres___name: "Drama",
+          invoice_lines___invoice_id___adhoc_count: "29",
+          tracks___unit_price___adhoc_sum: "53.73",
+        },
+        {
+          genres___name: "Easy Listening",
+          invoice_lines___invoice_id___adhoc_count: "10",
+          tracks___unit_price___adhoc_sum: "9.90",
+        },
+        {
+          genres___name: "Electronica/Dance",
+          invoice_lines___invoice_id___adhoc_count: "12",
+          tracks___unit_price___adhoc_sum: "10.89",
+        },
+        {
+          genres___name: "Heavy Metal",
+          invoice_lines___invoice_id___adhoc_count: "12",
+          tracks___unit_price___adhoc_sum: "11.88",
+        },
+        {
+          genres___name: "Hip Hop/Rap",
+          invoice_lines___invoice_id___adhoc_count: "17",
+          tracks___unit_price___adhoc_sum: "14.85",
+        },
+        {
+          genres___name: "Jazz",
+          invoice_lines___invoice_id___adhoc_count: "80",
+          tracks___unit_price___adhoc_sum: "67.32",
+        },
+        {
+          genres___name: "Latin",
+          invoice_lines___invoice_id___adhoc_count: "386",
+          tracks___unit_price___adhoc_sum: "336.60",
+        },
+        {
+          genres___name: "Metal",
+          invoice_lines___invoice_id___adhoc_count: "264",
+          tracks___unit_price___adhoc_sum: "228.69",
+        },
+        {
+          genres___name: "Pop",
+          invoice_lines___invoice_id___adhoc_count: "28",
+          tracks___unit_price___adhoc_sum: "25.74",
+        },
+        {
+          genres___name: "R&B/Soul",
+          invoice_lines___invoice_id___adhoc_count: "41",
+          tracks___unit_price___adhoc_sum: "36.63",
+        },
+        {
+          genres___name: "Reggae",
+          invoice_lines___invoice_id___adhoc_count: "30",
+          tracks___unit_price___adhoc_sum: "27.72",
+        },
+        {
+          genres___name: "Rock",
+          invoice_lines___invoice_id___adhoc_count: "835",
+          tracks___unit_price___adhoc_sum: "737.55",
+        },
+        {
+          genres___name: "Rock And Roll",
+          invoice_lines___invoice_id___adhoc_count: "6",
+          tracks___unit_price___adhoc_sum: "5.94",
+        },
+        {
+          genres___name: "Sci Fi & Fantasy",
+          invoice_lines___invoice_id___adhoc_count: "20",
+          tracks___unit_price___adhoc_sum: "39.80",
+        },
+        {
+          genres___name: "Science Fiction",
+          invoice_lines___invoice_id___adhoc_count: "6",
+          tracks___unit_price___adhoc_sum: "9.95",
+        },
+        {
+          genres___name: "Soundtrack",
+          invoice_lines___invoice_id___adhoc_count: "20",
+          tracks___unit_price___adhoc_sum: "18.81",
+        },
+        {
+          genres___name: "TV Shows",
+          invoice_lines___invoice_id___adhoc_count: "47",
+          tracks___unit_price___adhoc_sum: "85.57",
+        },
+        {
+          genres___name: "World",
+          invoice_lines___invoice_id___adhoc_count: "13",
+          tracks___unit_price___adhoc_sum: "12.87",
+        },
+      ]);
+    });
   });
 
   describe("repository with context", async () => {
