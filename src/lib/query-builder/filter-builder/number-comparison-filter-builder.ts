@@ -8,11 +8,19 @@ const OPERATOR_MAPPING = {
   lte: "<=",
 } as const;
 
+const DOCUMENTATION: Record<keyof typeof OPERATOR_MAPPING, string> = {
+  gt: "Filter for values that are greater than the given value.",
+  gte: "Filter for values that are greater than or equal to the given value.",
+  lt: "Filter for values that are less than the given value.",
+  lte: "Filter for values that are less than or equal to the given value.",
+} as const;
+
 function makeNumberComparisonFilterBuilder<
   T extends keyof typeof OPERATOR_MAPPING,
 >(operator: T) {
   return filterFragmentBuilder(
     operator,
+    DOCUMENTATION[operator],
     z.array(z.number({ coerce: true })),
     (_builder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{

@@ -972,6 +972,7 @@ await describe("semantic layer", async () => {
                   },
                   required: ["aggregateWith", "dimension"],
                   additionalProperties: false,
+                  description: "Ad hoc metric",
                 },
               ],
               description: "Metric name",
@@ -989,6 +990,7 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
+                  description: "AND connective for filters",
                 },
                 {
                   type: "object",
@@ -998,6 +1000,7 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
+                  description: "OR connective for filters",
                 },
                 {
                   type: "object",
@@ -1019,6 +1022,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are equal to the given value. Accepts an array of values. If the array contains more than one value, the filter will return rows where the member is equal to any of the values.",
                 },
                 {
                   type: "object",
@@ -1040,6 +1045,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are equal to the given value. Accepts an array of values. If the array contains more than one value, the filter will return rows where the member is equal to any of the values.",
                 },
                 {
                   type: "object",
@@ -1061,6 +1068,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are not equal to the given value. Accepts an array of values. If the array contains more than one value, the filter will return rows where the member is not equal to any of the values.",
                 },
                 {
                   type: "object",
@@ -1082,6 +1091,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are not equal to the given value. Accepts an array of values. If the array contains more than one value, the filter will return rows where the member is not equal to any of the values.",
                 },
                 {
                   type: "object",
@@ -1091,6 +1102,7 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
+                  description: "Filter for values that are not set.",
                 },
                 {
                   type: "object",
@@ -1100,6 +1112,7 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
+                  description: "Filter for values that are set.",
                 },
                 {
                   type: "object",
@@ -1110,6 +1123,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that contain the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1120,6 +1135,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that do not contain the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1130,6 +1147,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that start with the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1140,6 +1159,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that do not start with the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1150,6 +1171,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that end with the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1160,6 +1183,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that do not end with the given string. Accepts an array of strings.",
                 },
                 {
                   type: "object",
@@ -1170,6 +1195,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are greater than the given value.",
                 },
                 {
                   type: "object",
@@ -1180,6 +1207,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are greater than or equal to the given value.",
                 },
                 {
                   type: "object",
@@ -1190,6 +1219,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are less than the given value.",
                 },
                 {
                   type: "object",
@@ -1200,6 +1231,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are less than or equal to the given value.",
                 },
                 {
                   type: "object",
@@ -1233,6 +1266,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for dates in the given range. Accepts a value as date range, date range formatted as a string or an object with startDate and endDate properties.",
                 },
                 {
                   type: "object",
@@ -1245,6 +1280,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for dates not in the given range. Accepts a value as date range, date range formatted as a string or an object with startDate and endDate properties.",
                 },
                 {
                   type: "object",
@@ -1260,6 +1297,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    'Filter for dates before the given date. Accepts a value as date, date formatted as a string or a string with relative time like "start of last year".',
                 },
                 {
                   type: "object",
@@ -1272,6 +1311,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    'Filter for dates after the given date. Accepts a value as date, date formatted as a string or a string with relative time like "start of last year".',
                 },
                 {
                   type: "object",
@@ -1282,6 +1323,8 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are in the result of the given query.",
                 },
                 {
                   type: "object",
@@ -1292,8 +1335,12 @@ await describe("semantic layer", async () => {
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
+                  description:
+                    "Filter for values that are not in the result of the given query.",
                 },
               ],
+              description:
+                "Query filters. Top level filters are connected with AND connective. Filters can be nested with AND and OR connectives.",
             },
           },
           limit: { type: "number" },
@@ -1304,6 +1351,7 @@ await describe("semantic layer", async () => {
           },
         },
         additionalProperties: false,
+        description: "Query schema",
         $schema: "http://json-schema.org/draft-07/schema#",
       });
     });

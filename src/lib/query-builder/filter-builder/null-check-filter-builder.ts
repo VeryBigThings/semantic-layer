@@ -1,16 +1,26 @@
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
-function makeNullCheckFilterBuilder<T extends string>(
+const DOCUMENTATION = {
+  set: "Filter for values that are set.",
+  notSet: "Filter for values that are not set.",
+} as const;
+
+function makeNullCheckFilterBuilder<T extends keyof typeof DOCUMENTATION>(
   name: T,
   isNull: boolean,
 ) {
-  return filterFragmentBuilder(name, null, (_builder, _context, member) => {
-    const sql = `${member.sql} is ${isNull ? "" : "not"} null`;
-    return {
-      sql,
-      bindings: [...member.bindings],
-    };
-  });
+  return filterFragmentBuilder(
+    name,
+    DOCUMENTATION[name],
+    null,
+    (_builder, _context, member) => {
+      const sql = `${member.sql} is ${isNull ? "" : "not"} null`;
+      return {
+        sql,
+        bindings: [...member.bindings],
+      };
+    },
+  );
 }
 
 export const set = makeNullCheckFilterBuilder("set" as const, false);

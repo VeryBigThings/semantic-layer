@@ -19,7 +19,23 @@ function renderILike(
   }
   return `${memberSql} ilike ${like}`;
 }
-function makeILikeFilterBuilder<T extends string>(
+
+const DOCUMENTATION = {
+  contains:
+    "Filter for values that contain the given string. Accepts an array of strings.",
+  notContains:
+    "Filter for values that do not contain the given string. Accepts an array of strings.",
+  startsWith:
+    "Filter for values that start with the given string. Accepts an array of strings.",
+  notStartsWith:
+    "Filter for values that do not start with the given string. Accepts an array of strings.",
+  endsWith:
+    "Filter for values that end with the given string. Accepts an array of strings.",
+  notEndsWith:
+    "Filter for values that do not end with the given string. Accepts an array of strings.",
+} as const;
+
+function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
   name: T,
   startsWith: boolean,
   endsWith: boolean,
@@ -28,6 +44,7 @@ function makeILikeFilterBuilder<T extends string>(
 ) {
   return filterFragmentBuilder(
     name,
+    DOCUMENTATION[name],
     z.array(z.string()),
     (_filterBuilder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{

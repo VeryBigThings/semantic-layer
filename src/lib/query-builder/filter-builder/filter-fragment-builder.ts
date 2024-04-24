@@ -14,6 +14,7 @@ export class FilterFragmentBuilder<
     | ((queryBuilder: AnyQueryBuilder) => ZodSchema);
   constructor(
     public readonly operator: string,
+    filterSchemaDescription: string,
     valueSchema: Z,
     private readonly builder: FilterFragmentBuilderFn<T>,
   ) {
@@ -21,24 +22,30 @@ export class FilterFragmentBuilder<
       if (typeof valueSchema === "function") {
         this.fragmentBuilderSchema = (queryBuilder: AnyQueryBuilder) => {
           const resolvedValueSchema = valueSchema(queryBuilder);
-          return z.object({
-            operator: z.literal(operator),
-            member: z.string(),
-            value: resolvedValueSchema,
-          });
+          return z
+            .object({
+              operator: z.literal(operator),
+              member: z.string(),
+              value: resolvedValueSchema,
+            })
+            .describe(filterSchemaDescription);
         };
       } else {
-        this.fragmentBuilderSchema = z.object({
-          operator: z.literal(operator),
-          member: z.string(),
-          value: valueSchema,
-        });
+        this.fragmentBuilderSchema = z
+          .object({
+            operator: z.literal(operator),
+            member: z.string(),
+            value: valueSchema,
+          })
+          .describe(filterSchemaDescription);
       }
     } else {
-      this.fragmentBuilderSchema = z.object({
-        operator: z.literal(operator),
-        member: z.string(),
-      });
+      this.fragmentBuilderSchema = z
+        .object({
+          operator: z.literal(operator),
+          member: z.string(),
+        })
+        .describe(filterSchemaDescription);
     }
   }
   getFilterFragmentBuilderSchema(queryBuilder: AnyQueryBuilder) {
@@ -94,6 +101,16 @@ export function filterFragmentBuilder<
   N extends string,
   Z extends ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
   T extends FilterFragmentBuilderPayload<N, Z>,
->(name: N, valueSchema: Z, builder: FilterFragmentBuilderFn<T>) {
-  return new FilterFragmentBuilder(name, valueSchema, builder);
+>(
+  name: N,
+  filterSchemaDescription: string,
+  valueSchema: Z,
+  builder: FilterFragmentBuilderFn<T>,
+) {
+  return new FilterFragmentBuilder(
+    name,
+    filterSchemaDescription,
+    valueSchema,
+    builder,
+  );
 }

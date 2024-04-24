@@ -13,8 +13,14 @@ const inOrNotInToSQL = {
   notIn: "not in",
 } as const;
 
+const DOCUMENTATION = {
+  inQuery: "Filter for values that are in the result of the given query.",
+  notInQuery:
+    "Filter for values that are not in the result of the given query.",
+} as const;
+
 // Return type here is intentionally simplified, but we make it exact later in the QueryBuilder class
-function makeQueryFilterFragmentBuilder<T extends string>(
+function makeQueryFilterFragmentBuilder<T extends keyof typeof DOCUMENTATION>(
   name: T,
   inOrNotIn: InOrNotIn,
 ): FilterFragmentBuilder<
@@ -28,6 +34,7 @@ function makeQueryFilterFragmentBuilder<T extends string>(
 > {
   return filterFragmentBuilder(
     name,
+    DOCUMENTATION[name],
     (queryBuilder) => {
       return z.lazy(() => queryBuilder.querySchema);
     },

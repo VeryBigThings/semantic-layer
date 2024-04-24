@@ -14,13 +14,15 @@ function getDimensionNamesSchema(dimensionPaths: string[]) {
 }
 
 function getMetricNamesSchema(metricPaths: string[], dimensionPaths: string[]) {
-  const adHocMetricSchema = z.object({
-    aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
-    dimension: z
-      .string()
-      .refine((arg) => dimensionPaths.includes(arg))
-      .describe("Dimension name"),
-  });
+  const adHocMetricSchema = z
+    .object({
+      aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
+      dimension: z
+        .string()
+        .refine((arg) => dimensionPaths.includes(arg))
+        .describe("Dimension name"),
+    })
+    .describe("Ad hoc metric");
 
   return z
     .array(
@@ -48,22 +50,30 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
     .map((builder) => builder.getFilterFragmentBuilderSchema(queryBuilder));
 
   const filters: z.ZodType<AnyQueryFilter[]> = z.array(
-    z.union([
-      z.object({
-        operator: z.literal("and"),
-        filters: z.lazy(() => filters),
-      }),
-      z.object({
-        operator: z.literal("or"),
-        filters: z.lazy(() => filters),
-      }),
-      ...registeredFilterFragmentBuildersSchemas.map((schema) =>
-        schema.refine((arg) => memberPaths.includes(arg.member), {
-          path: ["member"],
-          message: "Member not found",
-        }),
+    z
+      .union([
+        z
+          .object({
+            operator: z.literal("and"),
+            filters: z.lazy(() => filters),
+          })
+          .describe("AND connective for filters"),
+        z
+          .object({
+            operator: z.literal("or"),
+            filters: z.lazy(() => filters),
+          })
+          .describe("OR connective for filters"),
+        ...registeredFilterFragmentBuildersSchemas.map((schema) =>
+          schema.refine((arg) => memberPaths.includes(arg.member), {
+            path: ["member"],
+            message: "Member not found",
+          }),
+        ),
+      ])
+      .describe(
+        "Query filters. Top level filters are connected with AND connective. Filters can be nested with AND and OR connectives.",
       ),
-    ]),
   );
 
   const schema = z
@@ -75,6 +85,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       offset: z.number().optional(),
       order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
     })
+    .describe("Query schema")
     .refine(
       (arg) => (arg.dimensions?.length ?? 0) + (arg.metrics?.length ?? 0) > 0,
       "At least one dimension or metric must be selected",

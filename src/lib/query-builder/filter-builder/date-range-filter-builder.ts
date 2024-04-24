@@ -40,9 +40,20 @@ function parseDateRange(value: Schema) {
   return [startDate, endDate];
 }
 
-function makeDateRangeFilterBuilder<T extends string>(name: T, isNot: boolean) {
+const DOCUMENTATION = {
+  inDateRange:
+    "Filter for dates in the given range. Accepts a value as date range, date range formatted as a string or an object with startDate and endDate properties.",
+  notInDateRange:
+    "Filter for dates not in the given range. Accepts a value as date range, date range formatted as a string or an object with startDate and endDate properties.",
+} as const;
+
+function makeDateRangeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
+  name: T,
+  isNot: boolean,
+) {
   return filterFragmentBuilder(
     name,
+    DOCUMENTATION[name],
     Schema,
     (_builder, _context, member, filter) => {
       const [firstDate, lastDate] = parseDateRange(filter.value);

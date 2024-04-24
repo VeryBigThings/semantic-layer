@@ -20,9 +20,17 @@ function parseDate(value: Schema) {
   return value;
 }
 
-function makeDateFilterBuilder<T extends "beforeDate" | "afterDate">(name: T) {
+const DOCUMENTATION = {
+  beforeDate:
+    'Filter for dates before the given date. Accepts a value as date, date formatted as a string or a string with relative time like "start of last year".',
+  afterDate:
+    'Filter for dates after the given date. Accepts a value as date, date formatted as a string or a string with relative time like "start of last year".',
+} as const;
+
+function makeDateFilterBuilder<T extends keyof typeof DOCUMENTATION>(name: T) {
   return filterFragmentBuilder(
     name,
+    DOCUMENTATION[name],
     Schema,
     (_builder, _context, member, filter) => {
       const date = parseDate(filter.value);
