@@ -18,6 +18,7 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
   const projectedMetricsByModel: Record<string, Set<string>> = {};
   const metricsByModel: Record<string, Set<string>> = {};
   const allMemberNames = new Set<string>();
+  const allProjectedMemberNames = new Set<string>();
   const adHocMetricsByModel: Record<string, Set<QueryAdHocMetric>> = {};
   const projectedAdHocMetricsByModel: Record<
     string,
@@ -28,6 +29,7 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
     const modelName = repository.getDimension(dimension).model.name;
     allModels.add(modelName);
     allMemberNames.add(dimension);
+    allProjectedMemberNames.add(dimension);
     dimensionModels.add(modelName);
     dimensionsByModel[modelName] ||= new Set<string>();
     dimensionsByModel[modelName]!.add(dimension);
@@ -41,6 +43,7 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
         .name;
       allModels.add(modelName);
       allMemberNames.add(metricNameOrAdHocMetric);
+      allProjectedMemberNames.add(metricNameOrAdHocMetric);
       metricModels.add(modelName);
       metricsByModel[modelName] ||= new Set<string>();
       metricsByModel[modelName]!.add(metricNameOrAdHocMetric);
@@ -92,7 +95,7 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
   const orderByWithoutNonProjectedMembers = Object.entries(
     query.order ?? {},
   ).reduce<Record<string, "asc" | "desc">>((acc, [member, direction]) => {
-    if (allMemberNames.has(member)) {
+    if (allProjectedMemberNames.has(member)) {
       acc[member] = direction ?? "asc";
     }
     return acc;

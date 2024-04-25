@@ -497,6 +497,129 @@ await describe("semantic layer", async () => {
       assert.deepEqual(result.rows, [{ invoices___total: "39.62" }]);
     });
 
+    await it("can use a dimension in ad hoc metric and filters at the same time", async () => {
+      const query = queryBuilder.buildQuery({
+        members: [
+          "customers.customer_id",
+          { aggregateWith: "count", dimension: "invoices.invoice_id" },
+        ],
+        filters: [
+          { operator: "gt", member: "invoices.invoice_id", value: [1] },
+        ],
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          customers___customer_id: 1,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 2,
+          invoices___invoice_id___adhoc_count: "6",
+        },
+        {
+          customers___customer_id: 3,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 4,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 5,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 6,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 7,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 8,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 9,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 10,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+      ]);
+    });
+
+    await it("will not break if dimension used in ad hoc metric and filters (and not projected otherwise) is used in order", async () => {
+      const query = queryBuilder.buildQuery({
+        members: [
+          "customers.customer_id",
+          { aggregateWith: "count", dimension: "invoices.invoice_id" },
+        ],
+        filters: [
+          { operator: "gt", member: "invoices.invoice_id", value: [1] },
+        ],
+        order: { "invoices.invoice_id": "asc" },
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          customers___customer_id: 1,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 2,
+          invoices___invoice_id___adhoc_count: "6",
+        },
+        {
+          customers___customer_id: 3,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 4,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 5,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 6,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 7,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 8,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 9,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+        {
+          customers___customer_id: 10,
+          invoices___invoice_id___adhoc_count: "7",
+        },
+      ]);
+    });
+
     await it("can query multiple metrics and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
         members: ["invoices.total", "invoice_lines.quantity"],
