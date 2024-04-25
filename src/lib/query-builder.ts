@@ -1,6 +1,7 @@
 import {
-  AnyQuery,
+  AnyInputQuery,
   FilterType,
+  InputQuery,
   IntrospectionResult,
   MemberNameToType,
   Query,
@@ -8,7 +9,6 @@ import {
   QueryAdHocMetricType,
   QueryMemberName,
   QueryMetric,
-  QueryMetricName,
   QueryReturnType,
   SqlQueryResult,
 } from "./types.js";
@@ -41,7 +41,7 @@ export class QueryBuilder<
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(
-    parsedQuery: AnyQuery,
+    parsedQuery: Query,
     context: unknown,
   ) {
     const { query, referencedModels, segments } =
@@ -65,7 +65,7 @@ export class QueryBuilder<
   }
 
   unsafeBuildQuery(payload: unknown, context: unknown) {
-    const parsedQuery: AnyQuery = this.querySchema.parse(payload);
+    const parsedQuery: Query = this.querySchema.parse(payload);
     const { sql, bindings } = this.unsafeBuildGenericQueryWithoutSchemaParse(
       parsedQuery,
       context,
@@ -76,11 +76,9 @@ export class QueryBuilder<
     };
   }
 
-  buildQuery<
-    const Q extends { dimensions?: string[]; metrics?: QueryMetric[] },
-  >(
+  buildQuery<const Q extends { members: (string | QueryMetric)[] }>(
     query: Q &
-      Query<
+      InputQuery<
         string & keyof D,
         string & keyof M,
         F & { member: string & (keyof D | keyof M) }
@@ -94,10 +92,9 @@ export class QueryBuilder<
       Simplify<
         QueryReturnType<
           D & M,
-          | (QueryMemberName<Q["dimensions"]> & keyof D)
-          | (QueryMetricName<Q["metrics"]> & keyof M)
+          QueryMemberName<Q["members"]> & (keyof D | keyof M)
         > &
-          QueryAdHocMetricType<QueryAdHocMetricName<Q["metrics"]>>
+          QueryAdHocMetricType<QueryAdHocMetricName<Q["members"]>>
       >
     > = {
       sql,
@@ -117,11 +114,8 @@ export class QueryBuilder<
       .getFilterBuilder(this, filterType, referencedModels, metricPrefixes);
   }
 
-  introspect(query: AnyQuery): IntrospectionResult {
-    const queryDimensions = query.dimensions ?? [];
-    const queryMetrics = query.metrics ?? [];
-
-    return [...queryDimensions, ...queryMetrics].reduce<IntrospectionResult>(
+  introspect(query: AnyInputQuery): IntrospectionResult {
+    return query.members.reduce<IntrospectionResult>(
       (acc, memberNameOrAdHoc) => {
         if (typeof memberNameOrAdHoc === "string") {
           const member = this.repository.getMember(memberNameOrAdHoc);
@@ -165,7 +159,7 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   infer M,
   infer F
 >
-  ? Query<string & keyof D, string & keyof M, F>
+  ? InputQuery<string & keyof D, string & keyof M, F>
   : never;
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>

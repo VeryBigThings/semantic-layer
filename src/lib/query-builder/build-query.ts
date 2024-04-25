@@ -1,8 +1,8 @@
 import * as graphlib from "@dagrejs/graphlib";
 
 import {
-  AnyQuery,
   ModelQuery,
+  Query,
   QueryAdHocMetric,
   QueryMetric,
   QuerySegment,
@@ -35,7 +35,7 @@ function getSortableMetric(metrics: QueryMetric[] | undefined) {
   }
 }
 
-function getDefaultOrderBy(repository: AnyRepository, query: AnyQuery) {
+function getDefaultOrderBy(repository: AnyRepository, query: Query) {
   const firstDimensionName = query.dimensions?.[0];
   const firstMetricName = getSortableMetric(query.metrics);
 
@@ -324,7 +324,7 @@ function getAlias(index: number) {
 export function buildQuery(
   queryBuilder: AnyQueryBuilder,
   context: unknown,
-  query: AnyQuery,
+  query: Query,
   referencedModels: ReferencedModels,
   joinGraph: graphlib.Graph,
   segments: QuerySegment[],

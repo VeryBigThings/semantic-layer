@@ -1,39 +1,7 @@
+import { AnyQueryFilter, QueryAdHocMetric } from "./types.js";
+
 import { z } from "zod";
 import { AnyQueryBuilder } from "./query-builder.js";
-import { AnyQueryFilter } from "./types.js";
-
-function getDimensionNamesSchema(dimensionPaths: string[]) {
-  return z
-    .array(
-      z
-        .string()
-        .refine((arg) => dimensionPaths.includes(arg))
-        .describe("Dimension name"),
-    )
-    .optional();
-}
-
-function getMetricNamesSchema(metricPaths: string[], dimensionPaths: string[]) {
-  const adHocMetricSchema = z
-    .object({
-      aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
-      dimension: z
-        .string()
-        .refine((arg) => dimensionPaths.includes(arg))
-        .describe("Dimension name"),
-    })
-    .describe("Ad hoc metric");
-
-  return z
-    .array(
-      z
-        .string()
-        .refine((arg) => metricPaths.includes(arg))
-        .describe("Metric name")
-        .or(adHocMetricSchema),
-    )
-    .optional();
-}
 
 export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const dimensionPaths = queryBuilder.repository
@@ -76,20 +44,55 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       ),
   );
 
+  const adHocMetricSchema = z
+    .object({
+      aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
+      dimension: z
+        .string()
+        .refine((arg) => dimensionPaths.includes(arg))
+        .describe("Dimension name"),
+    })
+    .describe("Ad hoc metric");
+
   const schema = z
     .object({
-      dimensions: getDimensionNamesSchema(dimensionPaths),
-      metrics: getMetricNamesSchema(metricPaths, dimensionPaths),
+      members: z
+        .array(
+          z.string().describe("Dimension or metric name").or(adHocMetricSchema),
+        )
+        .min(1),
       filters: filters.optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
       order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
     })
     .describe("Query schema")
-    .refine(
-      (arg) => (arg.dimensions?.length ?? 0) + (arg.metrics?.length ?? 0) > 0,
-      "At least one dimension or metric must be selected",
-    );
+    .transform((query) => {
+      const { members, ...restQuery } = query;
+      const dimensionsAndMetrics = members.reduce<{
+        dimensions: string[];
+        metrics: (string | QueryAdHocMetric)[];
+      }>(
+        (acc, memberNameOrAdHoc) => {
+          if (typeof memberNameOrAdHoc === "string") {
+            if (dimensionPaths.includes(memberNameOrAdHoc)) {
+              acc.dimensions.push(memberNameOrAdHoc);
+            } else if (metricPaths.includes(memberNameOrAdHoc)) {
+              acc.metrics.push(memberNameOrAdHoc);
+            }
+          } else {
+            acc.metrics.push(memberNameOrAdHoc);
+          }
+          return acc;
+        },
+        { dimensions: [], metrics: [] },
+      );
+
+      return {
+        ...dimensionsAndMetrics,
+        ...restQuery,
+      };
+    });
 
   return schema;
 }

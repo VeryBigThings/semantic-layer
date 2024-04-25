@@ -28,42 +28,40 @@ export type QueryMetric<
   DN extends string = string,
 > = MN | QueryAdHocMetric<DN>;
 
-export type WithInQueryFilter<F extends AnyQueryFilter, Q extends AnyQuery> = [
-  Extract<F, { operator: "inQuery" }>,
-] extends [never]
+export type WithInQueryFilter<
+  F extends AnyQueryFilter,
+  Q extends AnyInputQuery,
+> = [Extract<F, { operator: "inQuery" }>] extends [never]
   ? F
   :
       | Exclude<F, { operator: "inQuery" }>
-      | { operator: "inQuery"; member: QueryDN<Q> | QueryMN<Q>; value: Q };
+      | {
+          operator: "inQuery";
+          member: InputQueryDN<Q> | InputQueryMN<Q>;
+          value: Q;
+        };
 
 export type WithNotInQueryFilter<
   F extends AnyQueryFilter,
-  Q extends AnyQuery,
+  Q extends AnyInputQuery,
 > = [Extract<F, { operator: "notInQuery" }>] extends [never]
   ? F
   :
       | Exclude<F, { operator: "notInQuery" }>
-      | { operator: "notInQuery"; member: QueryDN<Q> | QueryMN<Q>; value: Q };
+      | {
+          operator: "notInQuery";
+          member: InputQueryDN<Q> | InputQueryMN<Q>;
+          value: Q;
+        };
 
-export type Query<DN extends string, MN extends string, F = never> = {
-  dimensions?: DN[];
-  metrics?: QueryMetric<MN, DN>[];
-  order?: { [K in DN | MN]?: "asc" | "desc" };
-  filters?: WithNotInQueryFilter<
-    WithInQueryFilter<QueryFilter<F>, Query<DN, MN, F>>,
-    Query<DN, MN, F>
-  >[];
+export type Query = {
+  dimensions?: string[];
+  metrics?: QueryMetric<string, string>[];
+  order?: Record<string, "asc" | "desc">;
+  filters?: AnyQueryFilter;
   limit?: number;
   offset?: number;
 };
-
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type QueryDN<Q> = Q extends Query<infer DN, any, any> ? DN : never;
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type QueryMN<Q> = Q extends Query<any, infer MN, any> ? MN : never;
-
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type AnyQuery = Query<string, string, any>;
 
 export interface ModelQuery {
   dimensions: Set<string>;
@@ -269,7 +267,7 @@ export type InferSqlQueryResultType<
       >
   : never;
 
-export type QueryMemberName<T> = T extends string[] ? T[number] : never;
+export type QueryMemberName<T extends unknown[]> = T[number] & string;
 export type QueryMetricName<T> = Extract<
   T extends unknown[] ? T[number] : never,
   string
@@ -299,3 +297,26 @@ export type IntrospectionResult = Record<
     isGranularity: boolean;
   }
 >;
+
+export type InputQuery<DN extends string, MN extends string, F = never> = {
+  members: (DN | QueryMetric<MN, DN>)[];
+  order?: { [K in DN | MN]?: "asc" | "desc" };
+  filters?: WithNotInQueryFilter<
+    WithInQueryFilter<QueryFilter<F>, InputQuery<DN, MN, F>>,
+    InputQuery<DN, MN, F>
+  >[];
+  limit?: number;
+  offset?: number;
+};
+
+// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
+export type InputQueryDN<Q> = Q extends InputQuery<infer DN, any, any>
+  ? DN
+  : never;
+// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
+export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
+  ? MN
+  : never;
+
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyInputQuery = InputQuery<string, string, any>;

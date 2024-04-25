@@ -218,8 +218,7 @@ await describe("semantic layer", async () => {
 
     await it("can query one dimension and one metric", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
+        members: ["customers.customer_id", "invoices.total"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
@@ -245,8 +244,11 @@ await describe("semantic layer", async () => {
 
     await it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total", "invoice_lines.total_unit_price"],
+        members: [
+          "customers.customer_id",
+          "invoices.total",
+          "invoice_lines.total_unit_price",
+        ],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
@@ -311,8 +313,7 @@ await describe("semantic layer", async () => {
 
     await it("can query a metric and slice it correctly by a non primary key dimension", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
-        metrics: ["customers.count"],
+        members: ["customers.country", "customers.count"],
         order: {
           "customers.country": "asc",
         },
@@ -353,7 +354,7 @@ await describe("semantic layer", async () => {
 
     await it("will correctly load distinct dimensions when no metrics are loaded", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
+        members: ["customers.country"],
         order: { "customers.country": "asc" },
         limit: 10,
       });
@@ -379,12 +380,11 @@ await describe("semantic layer", async () => {
 
     await it("will remove non projected members from order clause", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: [
+        members: [
           "customers.customer_id",
           "customers.full_name",
           "invoice_lines.invoice_id",
         ],
-        metrics: [],
         limit: 10,
         order: { "invoices.invoice_date": "asc" },
       });
@@ -450,8 +450,7 @@ await describe("semantic layer", async () => {
 
     await it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
+        members: ["customers.customer_id", "invoices.total"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
         filters: [
@@ -484,7 +483,7 @@ await describe("semantic layer", async () => {
 
     await it("can query a metric and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
-        metrics: ["invoices.total"],
+        members: ["invoices.total"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -500,7 +499,7 @@ await describe("semantic layer", async () => {
 
     await it("can query multiple metrics and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
-        metrics: ["invoices.total", "invoice_lines.quantity"],
+        members: ["invoices.total", "invoice_lines.quantity"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -518,7 +517,7 @@ await describe("semantic layer", async () => {
 
     await it("can query dimensions only", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id", "albums.title"],
+        members: ["customers.customer_id", "albums.title"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -578,7 +577,7 @@ await describe("semantic layer", async () => {
 
     await it("can correctly query datetime granularities", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: [
+        members: [
           "invoices.invoice_id",
           "invoices.invoice_date",
           "invoices.invoice_date.time",
@@ -644,8 +643,8 @@ await describe("semantic layer", async () => {
 
     await it("can query adhoc metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: [
+        members: [
+          "customers.customer_id",
           { aggregateWith: "count", dimension: "invoices.invoice_id" },
           "invoice_lines.total_unit_price",
         ],
@@ -689,8 +688,8 @@ await describe("semantic layer", async () => {
 
     await it("can query adhoc metrics on date/time granularity column", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: [
+        members: [
+          "customers.customer_id",
           { aggregateWith: "min", dimension: "invoices.invoice_date.quarter" },
           { aggregateWith: "min", dimension: "invoices.invoice_date" },
         ],
@@ -744,14 +743,14 @@ await describe("semantic layer", async () => {
 
     await it("can filter by results of another query", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
+        members: ["customers.country"],
         order: { "customers.country": "asc" },
         filters: [
           {
             operator: "inQuery",
             member: "customers.country",
             value: {
-              dimensions: ["customers.country"],
+              members: ["customers.country"],
               filters: [
                 {
                   operator: "equals",
@@ -825,8 +824,7 @@ await describe("semantic layer", async () => {
 
     await it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
+        members: ["customers.customer_id", "invoices.total"],
         order: { "customers.customer_id": "asc" },
         limit: 10,
       });
@@ -932,8 +930,7 @@ await describe("semantic layer", async () => {
       const queryBuilder = repository.build("postgresql");
 
       const query = {
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
+        members: ["customers.customer_id", "invoices.total"],
         order: { "customers.customer_id": "asc" },
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
@@ -949,15 +946,11 @@ await describe("semantic layer", async () => {
       assert.deepEqual(jsonSchema, {
         type: "object",
         properties: {
-          dimensions: {
-            type: "array",
-            items: { type: "string", description: "Dimension name" },
-          },
-          metrics: {
+          members: {
             type: "array",
             items: {
               anyOf: [
-                { type: "string", description: "Metric name" },
+                { type: "string", description: "Dimension or metric name" },
                 {
                   type: "object",
                   properties: {
@@ -975,8 +968,9 @@ await describe("semantic layer", async () => {
                   description: "Ad hoc metric",
                 },
               ],
-              description: "Metric name",
+              description: "Dimension or metric name",
             },
+            minItems: 1,
           },
           filters: {
             type: "array",
@@ -1350,6 +1344,7 @@ await describe("semantic layer", async () => {
             additionalProperties: { type: "string", enum: ["asc", "desc"] },
           },
         },
+        required: ["members"],
         additionalProperties: false,
         description: "Query schema",
         $schema: "http://json-schema.org/draft-07/schema#",
@@ -1441,12 +1436,12 @@ await describe("semantic layer", async () => {
 
     await it("allows introspection of a query", () => {
       const query: QueryBuilderQuery<typeof queryBuilder> = {
-        dimensions: [
+        members: [
           "customers.customer_id",
           "invoices.invoice_id",
           "invoices.customer_id",
+          "invoices.total",
         ],
-        metrics: ["invoices.total"],
       };
 
       const introspection = queryBuilder.introspect(query);
@@ -1864,7 +1859,7 @@ await describe("semantic layer", async () => {
 
     await it("should return distinct results for dimension only query", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["artists.name"],
+        members: ["artists.name"],
         filters: [
           {
             operator: "equals",
@@ -1917,7 +1912,7 @@ await describe("semantic layer", async () => {
 
     await it("should return order results by default", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["artists.name"],
+        members: ["artists.name"],
         filters: [
           {
             operator: "equals",
@@ -1967,10 +1962,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("should return same query after it's parsed by schema", async () => {
+    await it("parsed query should differentiate between dimensions and metrics", async () => {
       const query = {
-        dimensions: ["artists.name"],
-        metrics: ["tracks.sum_unit_price"],
+        members: ["artists.name", "tracks.sum_unit_price"],
         filters: [
           {
             operator: "equals",
@@ -1983,13 +1977,26 @@ await describe("semantic layer", async () => {
       };
 
       const parsedQuery = queryBuilder.querySchema.parse(query);
-      assert.deepEqual(query, parsedQuery);
+
+      assert.deepEqual(parsedQuery, {
+        dimensions: ["artists.name"],
+        metrics: ["tracks.sum_unit_price"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        order: { "artists.name": "asc" },
+        limit: 10,
+      });
     });
 
     await it("should correctly perform a query with multiple ad hoc metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["genres.name"],
-        metrics: [
+        members: [
+          "genres.name",
           { aggregateWith: "count", dimension: "invoice_lines.invoice_id" },
           { aggregateWith: "sum", dimension: "tracks.unit_price" },
         ],
@@ -2185,7 +2192,7 @@ await describe("semantic layer", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
-          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+          members: ["customers.customer_id", "invoices.invoice_id"],
         },
         { customerId: 1 },
       );
@@ -2203,13 +2210,13 @@ await describe("semantic layer", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
-          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+          members: ["customers.customer_id", "invoices.invoice_id"],
           filters: [
             {
               operator: "inQuery",
               member: "customers.customer_id",
               value: {
-                dimensions: ["customers.customer_id"],
+                members: ["customers.customer_id"],
                 filters: [
                   {
                     operator: "equals",

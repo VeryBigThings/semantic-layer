@@ -1,7 +1,7 @@
 import {
-  AnyQuery,
   AnyQueryFilter,
   ModelQuery,
+  Query,
   QueryAdHocMetric,
   QuerySegment,
 } from "../types.js";
@@ -9,7 +9,7 @@ import {
 import { AnyRepository } from "../repository.js";
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
-function analyzeQuery(repository: AnyRepository, query: AnyQuery) {
+function analyzeQuery(repository: AnyRepository, query: Query) {
   const allModels = new Set<string>();
   const dimensionModels = new Set<string>();
   const metricModels = new Set<string>();
@@ -251,7 +251,7 @@ function mergeQuerySegmentWithFilters(
 
 export function processQueryAndExpandToSegments(
   repository: AnyRepository,
-  query: AnyQuery,
+  query: Query,
 ) {
   const queryAnalysis = analyzeQuery(repository, query);
   const metricModels = Array.from(queryAnalysis.metricModels);
