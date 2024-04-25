@@ -1962,7 +1962,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("parsed query should differentiate between dimensions and metrics", async () => {
+    await it("parsed query should equal original query", async () => {
       const query = {
         members: ["artists.name", "tracks.sum_unit_price"],
         filters: [
@@ -1978,19 +1978,7 @@ await describe("semantic layer", async () => {
 
       const parsedQuery = queryBuilder.querySchema.parse(query);
 
-      assert.deepEqual(parsedQuery, {
-        dimensions: ["artists.name"],
-        metrics: ["tracks.sum_unit_price"],
-        filters: [
-          {
-            operator: "equals",
-            member: "genres.name",
-            value: ["Rock"],
-          },
-        ],
-        order: { "artists.name": "asc" },
-        limit: 10,
-      });
+      assert.deepEqual(parsedQuery, query);
     });
 
     await it("should correctly perform a query with multiple ad hoc metrics", async () => {

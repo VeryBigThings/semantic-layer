@@ -5,6 +5,7 @@ import {
   IntrospectionResult,
   MemberNameToType,
   Query,
+  QueryAdHocMetric,
   QueryAdHocMetricName,
   QueryAdHocMetricType,
   QueryMemberName,
@@ -25,6 +26,36 @@ import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { getAdHocAlias, getAdHocPath } from "./util.js";
 
+function transformInputQueryToQuery(
+  queryBuilder: AnyQueryBuilder,
+  parsedQuery: AnyInputQuery,
+) {
+  const { members, ...restQuery } = parsedQuery;
+  const dimensionsAndMetrics = members.reduce<{
+    dimensions: string[];
+    metrics: (string | QueryAdHocMetric)[];
+  }>(
+    (acc, memberNameOrAdHoc) => {
+      if (typeof memberNameOrAdHoc === "string") {
+        const member = queryBuilder.repository.getMember(memberNameOrAdHoc);
+        if (member.isDimension()) {
+          acc.dimensions.push(memberNameOrAdHoc);
+        } else {
+          acc.metrics.push(memberNameOrAdHoc);
+        }
+      } else {
+        acc.metrics.push(memberNameOrAdHoc);
+      }
+      return acc;
+    },
+    { dimensions: [], metrics: [] },
+  );
+
+  return {
+    ...dimensionsAndMetrics,
+    ...restQuery,
+  } as Query & { order?: Record<string, "asc" | "desc"> }; // TODO: remove this when order format is changed to array of tuples
+}
 export class QueryBuilder<
   C,
   D extends MemberNameToType,
@@ -41,11 +72,12 @@ export class QueryBuilder<
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(
-    parsedQuery: Query,
+    parsedQuery: AnyInputQuery,
     context: unknown,
   ) {
+    const transformedQuery = transformInputQueryToQuery(this, parsedQuery);
     const { query, referencedModels, segments } =
-      processQueryAndExpandToSegments(this.repository, parsedQuery);
+      processQueryAndExpandToSegments(this.repository, transformedQuery);
 
     const joinGraph = findOptimalJoinGraph(
       this.repository.graph,
@@ -65,7 +97,7 @@ export class QueryBuilder<
   }
 
   unsafeBuildQuery(payload: unknown, context: unknown) {
-    const parsedQuery: Query = this.querySchema.parse(payload);
+    const parsedQuery: AnyInputQuery = this.querySchema.parse(payload);
     const { sql, bindings } = this.unsafeBuildGenericQueryWithoutSchemaParse(
       parsedQuery,
       context,

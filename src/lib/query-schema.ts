@@ -1,7 +1,6 @@
-import { AnyQueryFilter, QueryAdHocMetric } from "./types.js";
-
 import { z } from "zod";
 import { AnyQueryBuilder } from "./query-builder.js";
+import { AnyQueryFilter } from "./types.js";
 
 export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const dimensionPaths = queryBuilder.repository
@@ -58,7 +57,11 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
     .object({
       members: z
         .array(
-          z.string().describe("Dimension or metric name").or(adHocMetricSchema),
+          z
+            .string()
+            .refine((arg) => memberPaths.includes(arg))
+            .describe("Dimension or metric name")
+            .or(adHocMetricSchema),
         )
         .min(1),
       filters: filters.optional(),
@@ -66,33 +69,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       offset: z.number().optional(),
       order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
     })
-    .describe("Query schema")
-    .transform((query) => {
-      const { members, ...restQuery } = query;
-      const dimensionsAndMetrics = members.reduce<{
-        dimensions: string[];
-        metrics: (string | QueryAdHocMetric)[];
-      }>(
-        (acc, memberNameOrAdHoc) => {
-          if (typeof memberNameOrAdHoc === "string") {
-            if (dimensionPaths.includes(memberNameOrAdHoc)) {
-              acc.dimensions.push(memberNameOrAdHoc);
-            } else if (metricPaths.includes(memberNameOrAdHoc)) {
-              acc.metrics.push(memberNameOrAdHoc);
-            }
-          } else {
-            acc.metrics.push(memberNameOrAdHoc);
-          }
-          return acc;
-        },
-        { dimensions: [], metrics: [] },
-      );
-
-      return {
-        ...dimensionsAndMetrics,
-        ...restQuery,
-      };
-    });
+    .describe("Query schema");
 
   return schema;
 }
