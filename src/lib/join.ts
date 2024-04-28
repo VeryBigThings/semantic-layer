@@ -34,16 +34,16 @@ export class JoinColumnRef<N extends string> extends JoinRef {
   constructor(
     private readonly model: N,
     private readonly column: string,
+    private readonly context: unknown,
   ) {
     super();
   }
   render(repository: AnyRepository, dialect: BaseDialect) {
     const model = repository.getModel(this.model);
+    const { sql: asSql, bindings } = model.getAs(dialect, this.context);
     return {
-      sql: `${dialect.asIdentifier(model.getAs())}.${dialect.asIdentifier(
-        this.column,
-      )}`,
-      bindings: [],
+      sql: `${asSql}.${dialect.asIdentifier(this.column)}`,
+      bindings,
     };
   }
 }
@@ -70,7 +70,7 @@ export function makeModelJoinPayload(model: AnyModel, context: unknown) {
       );
       return new JoinDimensionRef(model.name, name, context);
     },
-    column: (name: string) => new JoinColumnRef(model.name, name),
+    column: (name: string) => new JoinColumnRef(model.name, name, context),
   };
 }
 

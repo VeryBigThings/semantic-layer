@@ -62,12 +62,13 @@ function initializeQuerySegment(
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return dialect.from(dialect.asIdentifier(model.config.name));
+    const { sql, bindings } = model.getTableName(dialect, context);
+    return dialect.from(dialect.fragment(sql, bindings));
   }
   const modelSql = model.getSql(dialect, context);
   return dialect.from(
     dialect.fragment(
-      `(${modelSql.sql}) as ${model.config.alias}`,
+      `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
       modelSql.bindings,
     ),
   );
@@ -79,11 +80,13 @@ function getJoinSubject(
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return dialect.asIdentifier(model.config.name);
+    const { sql, bindings } = model.getTableName(dialect, context);
+    return dialect.fragment(sql, bindings);
   }
+
   const modelSql = model.getSql(dialect, context);
   return dialect.fragment(
-    `(${modelSql.sql}) as ${model.config.alias}`,
+    `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
     modelSql.bindings,
   );
 }

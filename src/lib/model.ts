@@ -28,13 +28,12 @@ export class ColumnRef extends ModelRef {
   ) {
     super();
   }
-  render(dialect: BaseDialect, _context: unknown) {
-    const sql = `${dialect.asIdentifier(
-      this.model.getAs(),
-    )}.${dialect.asIdentifier(this.name)}`;
+  render(dialect: BaseDialect, context: unknown) {
+    const { sql: asSql, bindings } = this.model.getAs(dialect, context);
+    const sql = `${asSql}.${dialect.asIdentifier(this.name)}`;
     return {
       sql,
-      bindings: [],
+      bindings,
     };
   }
 }
@@ -218,14 +217,18 @@ export class Dimension extends Member {
     return result;
   }
   getSqlWithoutGranularity(dialect: BaseDialect, context: unknown) {
-    return (
-      this.renderSql(dialect, context) ??
-      sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
-          this.name,
-        )}`,
-      )
-    );
+    const result = this.renderSql(dialect, context);
+
+    if (result) {
+      return result;
+    }
+
+    const { sql: asSql, bindings } = this.model.getAs(dialect, context);
+    const sql = `${dialect.asIdentifier(asSql)}.${dialect.asIdentifier(
+      this.name,
+    )}`;
+
+    return { sql, bindings };
   }
   getGranularity() {
     return this.granularity;
@@ -258,14 +261,20 @@ export class Metric extends Member {
         `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
       );
     }
-    return (
-      this.renderSql(dialect, context) ??
-      sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(this.model.getAs())}.${dialect.asIdentifier(
-          this.name,
-        )}`,
-      )
-    );
+
+    const result = this.renderSql(dialect, context);
+
+    if (result) {
+      return result;
+    }
+
+    const { sql: asSql, bindings } = this.model.getAs(dialect, context);
+    const sql = `${asSql}.${dialect.asIdentifier(this.name)}`;
+
+    return {
+      sql,
+      bindings,
+    };
   }
   getAggregateSql(dialect: BaseDialect, context: unknown, modelAlias?: string) {
     const { sql, bindings } = this.getSql(dialect, context, modelAlias);
@@ -285,7 +294,7 @@ export class Metric extends Member {
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyModel<C = any> = Model<C, any, any, any>;
 export type ModelConfig<C> =
-  | { type: "table"; name: string }
+  | { type: "table"; name: string | ModelSqlFn<C> }
   | { type: "sqlQuery"; alias: string; sql: ModelSqlFn<C> };
 
 export class Model<
@@ -300,9 +309,7 @@ export class Model<
   constructor(
     public readonly name: N,
     public readonly config: ModelConfig<C>,
-  ) {
-    this.name = name;
-  }
+  ) {}
   withDimension<
     DN1 extends string,
     DP extends DimensionProps<C, string & keyof D>,
@@ -365,10 +372,36 @@ export class Model<
   getMetrics() {
     return Object.values(this.metrics);
   }
-  getAs() {
-    return this.config.type === "sqlQuery"
-      ? this.config.alias
-      : this.config.name;
+  getTableName(dialect: BaseDialect, context: C) {
+    if (this.config.type === "table") {
+      if (typeof this.config.name === "string") {
+        return {
+          sql: this.config.name
+            .split(".")
+            .map((v) => dialect.asIdentifier(v))
+            .join("."),
+          bindings: [],
+        };
+      }
+
+      const result = this.config.name({
+        identifier: (name: string) => new IdentifierRef(name),
+        sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
+          new SqlWithRefs([...strings], values),
+        getContext: () => context,
+      });
+
+      return result.render(dialect, context);
+    }
+
+    throw new Error("Model is not a table");
+  }
+  getAs(dialect: BaseDialect, context: C) {
+    if (this.config.type === "sqlQuery") {
+      return { sql: dialect.asIdentifier(this.config.alias), bindings: [] };
+    }
+
+    return this.getTableName(dialect, context);
   }
   getSql(dialect: BaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
@@ -394,7 +427,7 @@ export function model<C = undefined>() {
       }
 
       return {
-        fromTable: (tableName?: string) => {
+        fromTable: (tableName?: string | ModelSqlFn<C>) => {
           return new Model<C, N>(name, {
             type: "table",
             name: tableName ?? name,

@@ -70,7 +70,9 @@ export function toSQL(sqlQueryBuilder: SqlQueryBuilder) {
       sql.push(`(${joinSql})`);
       bindings.push(...joinBindings);
       if (join.table.query.alias) {
-        sql.push(`as ${join.table.query.alias}`);
+        sql.push(
+          `as ${sqlQueryBuilder.dialect.asIdentifier(join.table.query.alias)}`,
+        );
       }
     } else if (join.table instanceof SqlFragment) {
       sql.push(join.table.sql);
