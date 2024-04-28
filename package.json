@@ -36,7 +36,6 @@
     "@dagrejs/graphlib": "github:dagrejs/graphlib",
     "chrono-node": "^2.7.5",
     "dayjs": "^1.11.10",
-    "knex": "^3.1.0",
     "sql-formatter": "^15.2.0",
     "tiny-invariant": "^1.3.3",
     "type-fest": "^4.12.0",

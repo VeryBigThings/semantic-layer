@@ -14,10 +14,9 @@ import {
   SqlQueryResult,
 } from "./types.js";
 
-import knex from "knex";
-
 import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
+import { SqlQuery } from "./dialect/sql-query-builder/to-sql.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
@@ -66,7 +65,6 @@ export class QueryBuilder<
   constructor(
     public readonly repository: AnyRepository,
     public readonly dialect: BaseDialect,
-    public readonly client: knex.Knex,
   ) {
     this.querySchema = buildQuerySchema(this);
   }
@@ -74,7 +72,7 @@ export class QueryBuilder<
   unsafeBuildGenericQueryWithoutSchemaParse(
     parsedQuery: AnyInputQuery,
     context: unknown,
-  ) {
+  ): SqlQuery {
     const transformedQuery = transformInputQueryToQuery(this, parsedQuery);
     const { query, referencedModels, segments } =
       processQueryAndExpandToSegments(this.repository, transformedQuery);

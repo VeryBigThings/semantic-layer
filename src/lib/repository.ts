@@ -18,7 +18,6 @@ import {
 import { AvailableDialects, MemberNameToType } from "./types.js";
 
 import graphlib from "@dagrejs/graphlib";
-import knex from "knex";
 import invariant from "tiny-invariant";
 import { BaseDialect } from "./dialect/base.js";
 import { QueryBuilder } from "./query-builder.js";
@@ -46,13 +45,10 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type AnyRepository = Repository<any, any, any, any>;
 
-function getClientAndDialect(dialect: AvailableDialects): {
-  client: knex.Knex;
-  Dialect: typeof BaseDialect;
-} {
+function getDialect(dialect: AvailableDialects): BaseDialect {
   switch (dialect) {
     case "postgresql":
-      return { client: knex({ client: "pg" }), Dialect: BaseDialect };
+      return new BaseDialect();
     default:
       // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
       const _exhaustiveCheck: never = dialect;
@@ -269,8 +265,8 @@ export class Repository<
   }
 
   build(dialectName: AvailableDialects) {
-    const { client, Dialect } = getClientAndDialect(dialectName);
-    return new QueryBuilder<C, D, M, F>(this, new Dialect(), client);
+    const dialect = getDialect(dialectName);
+    return new QueryBuilder<C, D, M, F>(this, dialect);
   }
 }
 
