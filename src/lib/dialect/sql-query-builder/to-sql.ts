@@ -90,38 +90,46 @@ export function toSQL(sqlQueryBuilder: SqlQueryBuilder) {
     }
   }
 
-  for (const where of sqlQueryBuilder.query.where) {
+  if (sqlQueryBuilder.query.where.length) {
     sql.push("where");
-    if (where instanceof SqlFragment) {
-      sql.push(where.sql);
-      bindings.push(...where.bindings);
-    } else {
-      sql.push(where);
+    const whereSql: string[] = [];
+    for (const where of sqlQueryBuilder.query.where) {
+      if (where instanceof SqlFragment) {
+        whereSql.push(where.sql);
+        bindings.push(...where.bindings);
+      } else {
+        whereSql.push(where);
+      }
     }
+    sql.push(whereSql.join(" and "));
   }
 
   if (sqlQueryBuilder.query.groupBy.length) {
     sql.push("group by");
+    const groupBySql: string[] = [];
     for (const groupBy of sqlQueryBuilder.query.groupBy) {
       if (groupBy instanceof SqlFragment) {
-        sql.push(groupBy.sql);
+        groupBySql.push(groupBy.sql);
         bindings.push(...groupBy.bindings);
       } else {
-        sql.push(groupBy);
+        groupBySql.push(groupBy);
       }
     }
+    sql.push(groupBySql.join(", "));
   }
 
   if (sqlQueryBuilder.query.orderBy.length) {
     sql.push("order by");
+    const orderBySql: string[] = [];
     for (const orderBy of sqlQueryBuilder.query.orderBy) {
       if (orderBy instanceof SqlFragment) {
-        sql.push(orderBy.sql);
+        orderBySql.push(orderBy.sql);
         bindings.push(...orderBy.bindings);
       } else {
-        sql.push(orderBy);
+        orderBySql.push(orderBy);
       }
     }
+    sql.push(orderBySql.join(", "));
   }
 
   if (sqlQueryBuilder.query.limit) {
