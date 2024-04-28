@@ -8,7 +8,6 @@ import {
   QuerySegment,
 } from "../types.js";
 
-import knex from "knex";
 import invariant from "tiny-invariant";
 import { BaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
@@ -58,31 +57,32 @@ function getDefaultOrderBy(repository: AnyRepository, query: Query) {
 }
 
 function initializeQuerySegment(
-  client: knex.Knex,
   dialect: BaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return client(model.config.name);
+    return dialect.from(dialect.asIdentifier(model.config.name));
   }
   const modelSql = model.getSql(dialect, context);
-  return client(
-    client.raw(`(${modelSql.sql}) as ${model.config.alias}`, modelSql.bindings),
+  return dialect.from(
+    dialect.fragment(
+      `(${modelSql.sql}) as ${model.config.alias}`,
+      modelSql.bindings,
+    ),
   );
 }
 
 function getJoinSubject(
-  client: knex.Knex,
   dialect: BaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return model.config.name;
+    return dialect.asIdentifier(model.config.name);
   }
   const modelSql = model.getSql(dialect, context);
-  return client.raw(
+  return dialect.fragment(
     `(${modelSql.sql}) as ${model.config.alias}`,
     modelSql.bindings,
   );
@@ -98,12 +98,7 @@ function buildQuerySegmentJoinQuery(
 ) {
   const visitedModels = new Set<string>();
   const model = queryBuilder.repository.getModel(source);
-  const sqlQuery = initializeQuerySegment(
-    queryBuilder.client,
-    queryBuilder.dialect,
-    context,
-    model,
-  );
+  const sqlQuery = initializeQuerySegment(queryBuilder.dialect, context, model);
 
   const modelStack: { modelName: string; join?: AnyJoin }[] = [
     { modelName: source },
@@ -139,7 +134,6 @@ function buildQuerySegmentJoinQuery(
         .render(queryBuilder.repository, queryBuilder.dialect);
       const rightModel = queryBuilder.repository.getModel(join.right);
       const joinSubject = getJoinSubject(
-        queryBuilder.client,
         queryBuilder.dialect,
         context,
         rightModel,
@@ -147,7 +141,7 @@ function buildQuerySegmentJoinQuery(
 
       sqlQuery[joinType](
         joinSubject,
-        queryBuilder.client.raw(joinOn.sql, joinOn.bindings),
+        queryBuilder.dialect.fragment(joinOn.sql, joinOn.bindings),
       );
 
       // We have a join that is multiplying the rows, so we need to use DISTINCT
@@ -160,7 +154,7 @@ function buildQuerySegmentJoinQuery(
       const metric = queryBuilder.repository.getMetric(metricName);
       const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
       sqlQuery.select(
-        queryBuilder.client.raw(
+        queryBuilder.dialect.fragment(
           `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
           bindings,
         ),
@@ -176,7 +170,7 @@ function buildQuerySegmentJoinQuery(
         context,
       );
       sqlQuery.select(
-        queryBuilder.client.raw(
+        queryBuilder.dialect.fragment(
           `${sql} as ${getAdHocMetricAlias(adHocMetric)}`,
           bindings,
         ),
@@ -188,7 +182,7 @@ function buildQuerySegmentJoinQuery(
       const { sql, bindings } = dimension.getSql(queryBuilder.dialect, context);
 
       sqlQuery.select(
-        queryBuilder.client.raw(
+        queryBuilder.dialect.fragment(
           `${sql} as ${dimension.getAlias(queryBuilder.dialect)}`,
           bindings,
         ),
@@ -246,13 +240,13 @@ function buildQuerySegment(
 
     if (filter) {
       initialSqlQuery.where(
-        queryBuilder.client.raw(filter.sql, filter.bindings),
+        queryBuilder.dialect.fragment(filter.sql, filter.bindings),
       );
     }
   }
 
   const alias = `${source}_query`;
-  const sqlQuery = queryBuilder.client(initialSqlQuery.as(alias));
+  const sqlQuery = queryBuilder.dialect.from(initialSqlQuery.as(alias));
   const hasMetrics =
     (segment.query.metrics && segment.query.metrics.length > 0) ||
     (segment.query.adHocMetrics && segment.query.adHocMetrics.length > 0);
@@ -260,7 +254,7 @@ function buildQuerySegment(
   for (const dimensionName of segment.query.dimensions || []) {
     const dimension = queryBuilder.repository.getDimension(dimensionName);
     sqlQuery.select(
-      queryBuilder.client.raw(
+      queryBuilder.dialect.fragment(
         `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
           queryBuilder.dialect,
         )} as ${dimension.getAlias(queryBuilder.dialect)}`,
@@ -268,7 +262,7 @@ function buildQuerySegment(
     );
     if (hasMetrics) {
       sqlQuery.groupBy(
-        queryBuilder.client.raw(
+        queryBuilder.dialect.fragment(
           `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
             queryBuilder.dialect,
           )}`,
@@ -286,7 +280,7 @@ function buildQuerySegment(
     );
 
     sqlQuery.select(
-      queryBuilder.client.raw(
+      queryBuilder.dialect.fragment(
         `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
         bindings,
       ),
@@ -309,7 +303,9 @@ function buildQuerySegment(
       : initialSql;
 
     sqlQuery.select(
-      queryBuilder.client.raw(`${sql} as ${getAdHocMetricAlias(adHocMetric)}`),
+      queryBuilder.dialect.fragment(
+        `${sql} as ${getAdHocMetricAlias(adHocMetric)}`,
+      ),
     );
   }
 
@@ -345,7 +341,7 @@ export function buildQuery(
   });
 
   const rootAlias = getAlias(0);
-  const rootSqlQuery = queryBuilder.client(
+  const rootSqlQuery = queryBuilder.dialect.from(
     initialSqlQuerySegment.sqlQuery.as(rootAlias),
   );
 
@@ -354,7 +350,7 @@ export function buildQuery(
     const dimension = queryBuilder.repository.getDimension(dimensionName);
 
     rootSqlQuery.select(
-      queryBuilder.client.raw(
+      queryBuilder.dialect.fragment(
         `${queryBuilder.dialect.asIdentifier(rootAlias)}.${dimension.getAlias(
           queryBuilder.dialect,
         )} as ${dimension.getAlias(queryBuilder.dialect)}`,
@@ -367,7 +363,7 @@ export function buildQuery(
     const metric = queryBuilder.repository.getMetric(metricName);
 
     rootSqlQuery.select(
-      queryBuilder.client.raw(
+      queryBuilder.dialect.fragment(
         `${queryBuilder.dialect.asIdentifier(rootAlias)}.${metric.getAlias(
           queryBuilder.dialect,
         )} as ${metric.getAlias(queryBuilder.dialect)}`,
@@ -378,7 +374,7 @@ export function buildQuery(
   for (const adHocMetric of initialSqlQuerySegment.projectedQuery
     .adHocMetrics || []) {
     rootSqlQuery.select(
-      queryBuilder.client.raw(
+      queryBuilder.dialect.fragment(
         `${queryBuilder.dialect.asIdentifier(rootAlias)}.${getAdHocMetricAlias(
           adHocMetric,
         )} as ${getAdHocMetricAlias(adHocMetric)}`,
@@ -406,14 +402,14 @@ export function buildQuery(
 
     rootSqlQuery.innerJoin(
       segment.sqlQuery.as(alias),
-      queryBuilder.client.raw(joinOn),
+      queryBuilder.dialect.fragment(joinOn),
     );
 
     for (const metricName of segment.projectedQuery.metrics || []) {
       if ((query.metrics ?? []).includes(metricName)) {
         const metric = queryBuilder.repository.getMetric(metricName);
         rootSqlQuery.select(
-          queryBuilder.client.raw(
+          queryBuilder.dialect.fragment(
             `${queryBuilder.dialect.asIdentifier(alias)}.${metric.getAlias(
               queryBuilder.dialect,
             )} as ${metric.getAlias(queryBuilder.dialect)}`,
@@ -424,7 +420,7 @@ export function buildQuery(
 
     for (const adHocMetric of segment.projectedQuery.adHocMetrics || []) {
       rootSqlQuery.select(
-        queryBuilder.client.raw(
+        queryBuilder.dialect.fragment(
           `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
             adHocMetric,
           )} as ${getAdHocMetricAlias(adHocMetric)}`,
@@ -447,7 +443,9 @@ export function buildQuery(
       .getFilterBuilder("metric", referencedModels.metrics, metricPrefixes)
       .buildFilters(query.filters, "and", context);
     if (filter) {
-      rootSqlQuery.where(queryBuilder.client.raw(filter.sql, filter.bindings));
+      rootSqlQuery.where(
+        queryBuilder.dialect.fragment(filter.sql, filter.bindings),
+      );
     }
   }
 
@@ -461,7 +459,7 @@ export function buildQuery(
   });
 
   if (orderBy.length > 0) {
-    rootSqlQuery.orderByRaw(orderBy.join(", "));
+    rootSqlQuery.orderBy(orderBy.join(", "));
   }
 
   rootSqlQuery.limit(query.limit ?? 5000);

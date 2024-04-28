@@ -1,3 +1,5 @@
+import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
+
 import { Granularity } from "../types.js";
 
 export class BaseDialect {
@@ -46,5 +48,28 @@ export class BaseDialect {
     }
 
     return `${aggregateWith.toUpperCase()}(${sql})`;
+  }
+
+  from(from: From) {
+    return new SqlQueryBuilder(this, from);
+  }
+
+  fragment(string: string, bindings: unknown[] = []) {
+    return new SqlFragment(string, bindings);
+  }
+
+  sqlToNative(sql: string) {
+    return this.positionBindings(sql);
+  }
+
+  positionBindings(sql: string) {
+    let questionCount = 0;
+    return sql.replace(/(\\*)(\?)/g, (_match, escapes) => {
+      if (escapes.length % 2) {
+        return "?";
+      }
+      questionCount++;
+      return `$${questionCount}`;
+    });
   }
 }
