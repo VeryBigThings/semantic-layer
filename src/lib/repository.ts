@@ -20,6 +20,7 @@ import { AvailableDialects, MemberNameToType } from "./types.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
 import { AnsiDialect } from "./dialect/ansi.js";
+import { BaseDialect } from "./dialect/base.js";
 import { DatabricksDialect } from "./dialect/databricks.js";
 import { PostgresqlDialect } from "./dialect/postgresql.js";
 import { QueryBuilder } from "./query-builder.js";
@@ -47,7 +48,7 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type AnyRepository = Repository<any, any, any, any>;
 
-function getDialect(dialect: AvailableDialects): AnsiDialect {
+function getDialect(dialect: AvailableDialects): BaseDialect {
   switch (dialect) {
     case "ansi":
       return new AnsiDialect();

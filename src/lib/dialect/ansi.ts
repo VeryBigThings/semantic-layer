@@ -1,8 +1,9 @@
 import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
 
 import { Granularity } from "../types.js";
+import { BaseDialect } from "./base.js";
 
-export class AnsiDialect {
+export class AnsiDialect extends BaseDialect {
   withGranularity(granularity: Granularity, sql: string) {
     switch (granularity) {
       case "time":
@@ -63,7 +64,7 @@ export class AnsiDialect {
     return `${memberSql} ilike ${like}`;
   }
 
-  from(from: From) {
+  from(from: From): SqlQueryBuilder {
     return new SqlQueryBuilder(this, from);
   }
 

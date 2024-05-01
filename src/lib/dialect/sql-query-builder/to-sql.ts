@@ -1,10 +1,10 @@
 import { SqlFragment, SqlQueryBuilder } from "../sql-query-builder.js";
 
-import { AnsiDialect } from "../ansi.js";
+import { BaseDialect } from "../base.js";
 
 export class SqlQuery {
   constructor(
-    private readonly dialect: AnsiDialect,
+    private readonly dialect: BaseDialect,
     public readonly sql: string,
     public readonly bindings: unknown[],
   ) {}

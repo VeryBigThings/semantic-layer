@@ -3,7 +3,7 @@ import * as graphlib from "@dagrejs/graphlib";
 import { ModelQuery, Order, Query, QuerySegment } from "../types.js";
 
 import invariant from "tiny-invariant";
-import { AnsiDialect } from "../dialect/ansi.js";
+import { BaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
@@ -38,7 +38,7 @@ function getDefaultOrderBy(repository: AnyRepository, query: Query): Order[] {
 }
 
 function initializeQuerySegment(
-  dialect: AnsiDialect,
+  dialect: BaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
@@ -56,7 +56,7 @@ function initializeQuerySegment(
 }
 
 function getJoinSubject(
-  dialect: AnsiDialect,
+  dialect: BaseDialect,
   context: unknown,
   model: AnyModel,
 ) {

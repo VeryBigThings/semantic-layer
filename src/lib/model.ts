@@ -10,13 +10,13 @@ import {
 } from "./types.js";
 
 import { Simplify } from "type-fest";
-import { AnsiDialect } from "./dialect/ansi.js";
+import { BaseDialect } from "./dialect/base.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
 
 export abstract class ModelRef {
   public abstract render(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ): SqlWithBindings;
@@ -30,7 +30,7 @@ export class ColumnRef extends ModelRef {
     super();
   }
   render(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ) {
@@ -54,7 +54,7 @@ export class IdentifierRef extends ModelRef {
     super();
   }
   render(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     _context: unknown,
     _nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ) {
@@ -70,7 +70,7 @@ export class DimensionRef extends ModelRef {
     super();
   }
   render(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ) {
@@ -92,7 +92,7 @@ export class SqlWithRefs extends ModelRef {
     super();
   }
   render(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ) {
@@ -122,7 +122,7 @@ export class SqlWithRefs extends ModelRef {
     };
   }
   getRefsSqls(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias: NextColumnRefOrDimensionRefAlias,
   ) {
@@ -213,11 +213,11 @@ export abstract class Member {
   public abstract readonly model: AnyModel;
   public abstract props: AnyDimensionProps | AnyMetricProps;
 
-  abstract getSql(dialect: AnsiDialect, context: unknown): SqlWithBindings;
+  abstract getSql(dialect: BaseDialect, context: unknown): SqlWithBindings;
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
-  getAlias(dialect: AnsiDialect) {
+  getAlias(dialect: BaseDialect) {
     return dialect.asIdentifier(
       `${this.model.name}___${this.name.replaceAll(".", "___")}`,
     );
@@ -240,7 +240,7 @@ export abstract class Member {
     }
   }
   renderSql(
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
     context: unknown,
     nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ): SqlWithBindings | undefined {
@@ -269,7 +269,7 @@ export class Dimension extends Member {
   ) {
     super();
   }
-  getSql(dialect: AnsiDialect, context: unknown) {
+  getSql(dialect: BaseDialect, context: unknown) {
     const result = this.getSqlWithoutGranularity(dialect, context);
 
     if (this.granularity) {
@@ -280,7 +280,7 @@ export class Dimension extends Member {
     }
     return result;
   }
-  getSqlWithoutGranularity(dialect: AnsiDialect, context: unknown) {
+  getSqlWithoutGranularity(dialect: BaseDialect, context: unknown) {
     const result = this.renderSql(dialect, context);
 
     if (result) {
@@ -325,7 +325,7 @@ export class Metric extends Member {
       `${this.name}___metric_ref_${columnRefOrDimensionRefAliasCounter++}`;
   }
 
-  getSql(dialect: AnsiDialect, context: unknown) {
+  getSql(dialect: BaseDialect, context: unknown) {
     const result = this.renderSql(
       dialect,
       context,
@@ -345,7 +345,7 @@ export class Metric extends Member {
     };
   }
 
-  getRefsSqls(dialect: AnsiDialect, context: unknown) {
+  getRefsSqls(dialect: BaseDialect, context: unknown) {
     const sqlFnResult = this.callSqlFn(context);
 
     if (sqlFnResult && sqlFnResult instanceof SqlWithRefs) {
@@ -446,7 +446,7 @@ export class Model<
   getMetrics() {
     return Object.values(this.metrics);
   }
-  getTableName(dialect: AnsiDialect, context: C) {
+  getTableName(dialect: BaseDialect, context: C) {
     if (this.config.type === "table") {
       if (typeof this.config.name === "string") {
         return {
@@ -470,14 +470,14 @@ export class Model<
 
     throw new Error("Model is not a table");
   }
-  getAs(dialect: AnsiDialect, context: C) {
+  getAs(dialect: BaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
       return { sql: dialect.asIdentifier(this.config.alias), bindings: [] };
     }
 
     return this.getTableName(dialect, context);
   }
-  getSql(dialect: AnsiDialect, context: C) {
+  getSql(dialect: BaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
       const result = this.config.sql({
         identifier: (name: string) => new IdentifierRef(name),

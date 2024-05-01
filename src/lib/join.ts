@@ -1,5 +1,5 @@
 import invariant from "tiny-invariant";
-import type { AnsiDialect } from "./dialect/ansi.js";
+import type { BaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
 import type { AnyRepository } from "./repository.js";
 import { SqlWithBindings } from "./types.js";
@@ -7,7 +7,7 @@ import { SqlWithBindings } from "./types.js";
 export abstract class JoinRef {
   public abstract render(
     repository: AnyRepository,
-    dialect: AnsiDialect,
+    dialect: BaseDialect,
   ): SqlWithBindings;
 }
 
@@ -22,7 +22,7 @@ export class JoinDimensionRef<
   ) {
     super();
   }
-  render(repository: AnyRepository, dialect: AnsiDialect) {
+  render(repository: AnyRepository, dialect: BaseDialect) {
     return repository
       .getModel(this.model)
       .getDimension(this.dimension)
@@ -38,7 +38,7 @@ export class JoinColumnRef<N extends string> extends JoinRef {
   ) {
     super();
   }
-  render(repository: AnyRepository, dialect: AnsiDialect) {
+  render(repository: AnyRepository, dialect: BaseDialect) {
     const model = repository.getModel(this.model);
     const { sql: asSql, bindings } = model.getAs(dialect, this.context);
     return {
@@ -52,7 +52,7 @@ export class JoinIdentifierRef extends JoinRef {
   constructor(private readonly identifier: string) {
     super();
   }
-  render(_repository: AnyRepository, dialect: AnsiDialect) {
+  render(_repository: AnyRepository, dialect: BaseDialect) {
     return {
       sql: dialect.asIdentifier(this.identifier),
       bindings: [],
@@ -79,7 +79,7 @@ export class JoinOnDef {
     private readonly strings: string[],
     private readonly values: unknown[],
   ) {}
-  render(repository: AnyRepository, dialect: AnsiDialect) {
+  render(repository: AnyRepository, dialect: BaseDialect) {
     const sql: string[] = [];
     const bindings: unknown[] = [];
     for (let i = 0; i < this.strings.length; i++) {

@@ -11,7 +11,7 @@ import {
 } from "./types.js";
 
 import { Simplify } from "type-fest";
-import { AnsiDialect } from "./dialect/ansi.js";
+import { BaseDialect } from "./dialect/base.js";
 import { SqlQuery } from "./dialect/sql-query-builder/to-sql.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
@@ -56,7 +56,7 @@ export class QueryBuilder<
   public readonly querySchema: QuerySchema;
   constructor(
     public readonly repository: AnyRepository,
-    public readonly dialect: AnsiDialect,
+    public readonly dialect: BaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
   }

@@ -1,6 +1,6 @@
 import { SqlQuery, toSQL } from "./sql-query-builder/to-sql.js";
 
-import { AnsiDialect } from "./ansi.js";
+import { BaseDialect } from "./base.js";
 
 export interface QueryJoin {
   table: string | SqlFragment | SqlQueryBuilder;
@@ -35,7 +35,7 @@ export class SqlQueryBuilder {
     joins: [],
   };
   constructor(
-    public readonly dialect: AnsiDialect,
+    public readonly dialect: BaseDialect,
     public readonly from: From,
   ) {}
 
