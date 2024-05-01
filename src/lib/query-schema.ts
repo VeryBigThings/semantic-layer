@@ -1,6 +1,6 @@
+import { z } from "zod";
 import { AnyQueryBuilder } from "./query-builder.js";
 import { AnyQueryFilter } from "./types.js";
-import { z } from "zod";
 
 export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const dimensionPaths = queryBuilder.repository

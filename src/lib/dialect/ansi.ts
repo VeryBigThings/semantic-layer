@@ -44,14 +44,6 @@ export class AnsiDialect {
     return `"${value}"`;
   }
 
-  aggregate(aggregateWith: string, sql: string) {
-    if (aggregateWith === "sum") {
-      return `COALESCE(SUM(${sql}), 0)`;
-    }
-
-    return `${aggregateWith.toUpperCase()}(${sql})`;
-  }
-
   ilike(
     startsWith: boolean,
     endsWith: boolean,

@@ -1,12 +1,12 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";

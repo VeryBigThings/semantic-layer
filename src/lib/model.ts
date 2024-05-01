@@ -9,8 +9,8 @@ import {
   SqlWithBindings,
 } from "./types.js";
 
-import { AnsiDialect } from "./dialect/ansi.js";
 import { Simplify } from "type-fest";
+import { AnsiDialect } from "./dialect/ansi.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
 
