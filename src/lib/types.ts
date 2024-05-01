@@ -17,6 +17,12 @@ export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryFilter = QueryFilter<any>;
 
+export type OrderDirection = "asc" | "desc";
+export type Order<DN extends string = string, MN extends string = string> = [
+  DN | MN,
+  OrderDirection,
+];
+
 export type WithInQueryFilter<
   F extends AnyQueryFilter,
   Q extends AnyInputQuery,
@@ -46,7 +52,7 @@ export type WithNotInQueryFilter<
 export type Query = {
   dimensions?: string[];
   metrics?: string[];
-  order?: Record<string, "asc" | "desc">;
+  order?: Order[];
   filters?: AnyQueryFilter;
   limit?: number;
   offset?: number;
@@ -281,7 +287,7 @@ export type IntrospectionResult = Record<
 
 export type InputQuery<DN extends string, MN extends string, F = never> = {
   members: (DN | MN)[];
-  order?: { [K in DN | MN]?: "asc" | "desc" };
+  order?: Order<DN, MN>[];
   filters?: WithNotInQueryFilter<
     WithInQueryFilter<QueryFilter<F>, InputQuery<DN, MN, F>>,
     InputQuery<DN, MN, F>

@@ -1,4 +1,10 @@
-import { AnyQueryFilter, ModelQuery, Query, QuerySegment } from "../types.js";
+import {
+  AnyQueryFilter,
+  ModelQuery,
+  OrderDirection,
+  Query,
+  QuerySegment,
+} from "../types.js";
 
 import { AnyRepository } from "../repository.js";
 
@@ -68,14 +74,14 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
     }
   }
 
-  const orderByWithoutNonProjectedMembers = Object.entries(
-    query.order ?? {},
-  ).reduce<Record<string, "asc" | "desc">>((acc, [member, direction]) => {
+  const orderByWithoutNonProjectedMembers = (query.order ?? []).reduce<
+    [string, OrderDirection][]
+  >((acc, [member, direction]) => {
     if (allProjectedMemberNames.has(member)) {
-      acc[member] = direction ?? "asc";
+      acc.push([member, direction]);
     }
     return acc;
-  }, {});
+  }, []);
 
   return {
     allModels,

@@ -219,7 +219,7 @@ await describe("semantic layer", async () => {
     await it("can query one dimension and one metric", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        order: [["customers.customer_id", "asc"]],
         limit: 10,
       });
 
@@ -249,7 +249,7 @@ await describe("semantic layer", async () => {
           "invoices.total",
           "invoice_lines.unit_price",
         ],
-        order: { "customers.customer_id": "asc" },
+        order: [["customers.customer_id", "asc"]],
         limit: 10,
       });
 
@@ -314,9 +314,7 @@ await describe("semantic layer", async () => {
     await it("can query a metric and slice it correctly by a non primary key dimension", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country", "customers.count"],
-        order: {
-          "customers.country": "asc",
-        },
+        order: [["customers.country", "asc"]],
       });
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -355,7 +353,7 @@ await describe("semantic layer", async () => {
     await it("will correctly load distinct dimensions when no metrics are loaded", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country"],
-        order: { "customers.country": "asc" },
+        order: [["customers.country", "asc"]],
         limit: 10,
       });
 
@@ -386,7 +384,7 @@ await describe("semantic layer", async () => {
           "invoice_lines.invoice_id",
         ],
         limit: 10,
-        order: { "invoices.invoice_date": "asc" },
+        order: [["invoices.invoice_date", "asc"]],
       });
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -451,7 +449,7 @@ await describe("semantic layer", async () => {
     await it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        order: [["customers.customer_id", "asc"]],
         limit: 10,
         filters: [
           {
@@ -644,7 +642,7 @@ await describe("semantic layer", async () => {
     await it("can filter by results of another query", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country"],
-        order: { "customers.country": "asc" },
+        order: [["customers.country", "asc"]],
         filters: [
           {
             operator: "inQuery",
@@ -725,7 +723,7 @@ await describe("semantic layer", async () => {
     await it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        order: [["customers.customer_id", "asc"]],
         limit: 10,
       });
 
@@ -831,7 +829,7 @@ await describe("semantic layer", async () => {
 
       const query = {
         members: ["customers.customer_id", "invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        order: [["customers.customer_id", "asc"]],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -1219,8 +1217,16 @@ await describe("semantic layer", async () => {
           limit: { type: "number" },
           offset: { type: "number" },
           order: {
-            type: "object",
-            additionalProperties: { type: "string", enum: ["asc", "desc"] },
+            type: "array",
+            items: {
+              type: "array",
+              minItems: 2,
+              maxItems: 2,
+              items: [
+                { type: "string" },
+                { type: "string", enum: ["asc", "desc"] },
+              ],
+            },
           },
         },
         required: ["members"],
@@ -1730,7 +1736,7 @@ await describe("semantic layer", async () => {
             value: ["Rock"],
           },
         ],
-        order: { "artists.name": "asc" },
+        order: [["artists.name", "asc"]],
         limit: 10,
       });
 
@@ -1835,7 +1841,7 @@ await describe("semantic layer", async () => {
             value: ["Rock"],
           },
         ],
-        order: { "artists.name": "asc" },
+        order: [["artists.name", "asc"]],
         limit: 10,
       };
 

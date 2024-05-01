@@ -45,7 +45,7 @@ function transformInputQueryToQuery(
   return {
     ...dimensionsAndMetrics,
     ...restQuery,
-  } as Query & { order?: Record<string, "asc" | "desc"> }; // TODO: remove this when order format is changed to array of tuples
+  } as Query;
 }
 export class QueryBuilder<
   C,

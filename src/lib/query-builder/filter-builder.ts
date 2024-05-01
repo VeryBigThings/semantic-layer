@@ -153,9 +153,6 @@ export class FilterFragmentBuilderRegistry<T = never> {
     AnyFilterFragmentBuilder
   > = {};
 
-  // TODO: capture EXTERNAl type in T of register (register<T = never>(....)) and then
-  // propagate these types to the query function. Other option is to capture type of the
-  // `filter` argument of the filter fragment builder function
   register<F extends AnyFilterFragmentBuilder>(
     builder: F,
   ): FilterFragmentBuilderRegistry<T | GetFilterFragmentBuilderPayload<F>> {

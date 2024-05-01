@@ -1,6 +1,6 @@
 import * as graphlib from "@dagrejs/graphlib";
 
-import { ModelQuery, Query, QuerySegment } from "../types.js";
+import { ModelQuery, Order, Query, QuerySegment } from "../types.js";
 
 import invariant from "tiny-invariant";
 import { AnsiDialect } from "../dialect/ansi.js";
@@ -15,26 +15,26 @@ interface ReferencedModels {
   metrics: string[];
 }
 
-function getDefaultOrderBy(repository: AnyRepository, query: Query) {
+function getDefaultOrderBy(repository: AnyRepository, query: Query): Order[] {
   const firstDimensionName = query.dimensions?.[0];
   const firstMetricName = query.metrics?.[0];
 
   for (const dimensionName of query.dimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
     if (dimension.getGranularity()) {
-      return { [dimensionName]: "asc" };
+      return [[dimensionName, "asc"]];
     }
   }
 
   if (firstMetricName) {
-    return { [firstMetricName]: "desc" };
+    return [[firstMetricName, "desc"]];
   }
 
   if (firstDimensionName) {
-    return { [firstDimensionName]: "asc" };
+    return [[firstDimensionName, "asc"]];
   }
 
-  return {};
+  return [];
 }
 
 function initializeQuerySegment(
@@ -361,8 +361,8 @@ export function buildQuery(
     }
   }
 
-  const orderBy = Object.entries(
-    query.order || getDefaultOrderBy(queryBuilder.repository, query),
+  const orderBy = (
+    query.order || getDefaultOrderBy(queryBuilder.repository, query)
   ).map(([member, direction]) => {
     const memberSql = queryBuilder.repository
       .getMember(member)

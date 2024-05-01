@@ -56,7 +56,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       filters: filters.optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
-      order: z.record(z.string(), z.enum(["asc", "desc"])).optional(),
+      order: z.array(z.tuple([z.string(), z.enum(["asc", "desc"])])).optional(),
     })
     .describe("Query schema");
 
