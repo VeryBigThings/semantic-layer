@@ -1,5 +1,4 @@
 import {
-  AggregateWith,
   DimensionWithGranularity,
   Granularity,
   GranularityByDimensionType,
@@ -10,14 +9,16 @@ import {
   SqlWithBindings,
 } from "./types.js";
 
-import { Simplify } from "type-fest";
 import { AnsiDialect } from "./dialect/ansi.js";
-import { sqlAsSqlWithBindings } from "./query-builder/util.js";
+import { Simplify } from "type-fest";
+
+export type NextColumnRefOrDimensionRefAlias = () => string;
 
 export abstract class ModelRef {
   public abstract render(
     dialect: AnsiDialect,
     context: unknown,
+    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
   ): SqlWithBindings;
 }
 
@@ -28,7 +29,17 @@ export class ColumnRef extends ModelRef {
   ) {
     super();
   }
-  render(dialect: AnsiDialect, context: unknown) {
+  render(
+    dialect: AnsiDialect,
+    context: unknown,
+    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+  ) {
+    if (nextColumnRefOrDimensionRefAlias) {
+      return {
+        sql: nextColumnRefOrDimensionRefAlias(),
+        bindings: [],
+      };
+    }
     const { sql: asSql, bindings } = this.model.getAs(dialect, context);
     const sql = `${asSql}.${dialect.asIdentifier(this.name)}`;
     return {
@@ -42,7 +53,11 @@ export class IdentifierRef extends ModelRef {
   constructor(private readonly identifier: string) {
     super();
   }
-  render(dialect: AnsiDialect, _context: unknown) {
+  render(
+    dialect: AnsiDialect,
+    _context: unknown,
+    _nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+  ) {
     return {
       sql: dialect.asIdentifier(this.identifier),
       bindings: [],
@@ -54,7 +69,17 @@ export class DimensionRef extends ModelRef {
   constructor(private readonly dimension: Dimension) {
     super();
   }
-  render(dialect: AnsiDialect, context: unknown) {
+  render(
+    dialect: AnsiDialect,
+    context: unknown,
+    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+  ) {
+    if (nextColumnRefOrDimensionRefAlias) {
+      return {
+        sql: nextColumnRefOrDimensionRefAlias(),
+        bindings: [],
+      };
+    }
     return this.dimension.getSql(dialect, context);
   }
 }
@@ -66,7 +91,11 @@ export class SqlWithRefs extends ModelRef {
   ) {
     super();
   }
-  render(dialect: AnsiDialect, context: unknown) {
+  render(
+    dialect: AnsiDialect,
+    context: unknown,
+    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+  ) {
     const sql: string[] = [];
     const bindings: unknown[] = [];
     for (let i = 0; i < this.strings.length; i++) {
@@ -74,7 +103,11 @@ export class SqlWithRefs extends ModelRef {
       const nextValue = this.values[i];
       if (nextValue) {
         if (nextValue instanceof ModelRef) {
-          const result = nextValue.render(dialect, context);
+          const result = nextValue.render(
+            dialect,
+            context,
+            nextColumnRefOrDimensionRefAlias,
+          );
           sql.push(result.sql);
           bindings.push(...result.bindings);
         } else {
@@ -88,9 +121,37 @@ export class SqlWithRefs extends ModelRef {
       bindings,
     };
   }
+  getRefsSqls(
+    dialect: AnsiDialect,
+    context: unknown,
+    nextColumnRefOrDimensionRefAlias: NextColumnRefOrDimensionRefAlias,
+  ) {
+    const columnOrDimensionRefs: SqlWithBindings[] = [];
+    for (let i = 0; i < this.values.length; i++) {
+      const value = this.values[i];
+      if (value instanceof DimensionRef || value instanceof ColumnRef) {
+        const alias = nextColumnRefOrDimensionRefAlias();
+        const { sql, bindings } = value.render(dialect, context);
+
+        columnOrDimensionRefs.push({
+          sql: `${sql} AS ${dialect.asIdentifier(alias)}`,
+          bindings,
+        });
+      } else if (value instanceof SqlWithRefs) {
+        columnOrDimensionRefs.push(
+          ...value.getRefsSqls(
+            dialect,
+            context,
+            nextColumnRefOrDimensionRefAlias,
+          ),
+        );
+      }
+    }
+    return columnOrDimensionRefs;
+  }
 }
 
-export type MemberSqlFn<C, DN extends string = string> = (args: {
+export interface MemberSqlFnArgs<C, DN extends string = string> {
   identifier: (name: string) => IdentifierRef;
   model: {
     column: (name: string) => ColumnRef;
@@ -98,7 +159,15 @@ export type MemberSqlFn<C, DN extends string = string> = (args: {
   };
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
   getContext: () => C;
-}) => ModelRef;
+}
+
+export type MemberSqlFn<C, DN extends string = string> = (
+  args: MemberSqlFnArgs<C, DN>,
+) => ModelRef;
+
+export type MetricSqlFn<C, DN extends string = string> = (
+  args: MemberSqlFnArgs<C, DN>,
+) => SqlWithRefs;
 
 export type ModelSqlFn<C> = (args: {
   identifier: (name: string) => IdentifierRef;
@@ -131,9 +200,7 @@ export interface DimensionProps<C, DN extends string = string> {
 export type AnyDimensionProps = DimensionProps<any, string>;
 export interface MetricProps<C, DN extends string = string> {
   type: MemberType;
-  // TODO: allow custom aggregate functions: ({sql: SqlFn<never>, metric: MetricRef}) => SqlWithRefs
-  aggregateWith: AggregateWith;
-  sql?: MemberSqlFn<C, DN>;
+  sql: MetricSqlFn<C, DN>;
   format?: MemberFormat;
   description?: string;
 }
@@ -146,11 +213,7 @@ export abstract class Member {
   public abstract readonly model: AnyModel;
   public abstract props: AnyDimensionProps | AnyMetricProps;
 
-  abstract getSql(
-    dialect: AnsiDialect,
-    context: unknown,
-    modelAlias?: string,
-  ): SqlWithBindings;
+  abstract getSql(dialect: AnsiDialect, context: unknown): SqlWithBindings;
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
@@ -162,12 +225,9 @@ export abstract class Member {
   getPath() {
     return `${this.model.name}.${this.name}`;
   }
-  renderSql(
-    dialect: AnsiDialect,
-    context: unknown,
-  ): SqlWithBindings | undefined {
+  callSqlFn(context: unknown) {
     if (this.props.sql) {
-      const result = this.props.sql({
+      return this.props.sql({
         identifier: (name: string) => new IdentifierRef(name),
         model: {
           column: (name: string) => new ColumnRef(this.model, name),
@@ -177,7 +237,16 @@ export abstract class Member {
         sql: (strings, ...values) => new SqlWithRefs([...strings], values),
         getContext: () => context,
       });
-      return result.render(dialect, context);
+    }
+  }
+  renderSql(
+    dialect: AnsiDialect,
+    context: unknown,
+    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+  ): SqlWithBindings | undefined {
+    const result = this.callSqlFn(context);
+    if (result) {
+      return result.render(dialect, context, nextColumnRefOrDimensionRefAlias);
     }
   }
   getDescription() {
@@ -200,12 +269,7 @@ export class Dimension extends Member {
   ) {
     super();
   }
-  getSql(dialect: AnsiDialect, context: unknown, modelAlias?: string) {
-    if (modelAlias) {
-      return sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
-      );
-    }
+  getSql(dialect: AnsiDialect, context: unknown) {
     const result = this.getSqlWithoutGranularity(dialect, context);
 
     if (this.granularity) {
@@ -255,14 +319,18 @@ export class Metric extends Member {
   ) {
     super();
   }
-  getSql(dialect: AnsiDialect, context: unknown, modelAlias?: string) {
-    if (modelAlias) {
-      return sqlAsSqlWithBindings(
-        `${dialect.asIdentifier(modelAlias)}.${this.getAlias(dialect)}`,
-      );
-    }
+  getNextColumnRefOrDimensionRefAlias() {
+    let columnRefOrDimensionRefAliasCounter = 0;
+    return () =>
+      `${this.name}___metric_ref_${columnRefOrDimensionRefAliasCounter++}`;
+  }
 
-    const result = this.renderSql(dialect, context);
+  getSql(dialect: AnsiDialect, context: unknown) {
+    const result = this.renderSql(
+      dialect,
+      context,
+      this.getNextColumnRefOrDimensionRefAlias(),
+    );
 
     if (result) {
       return result;
@@ -276,13 +344,19 @@ export class Metric extends Member {
       bindings,
     };
   }
-  getAggregateSql(dialect: AnsiDialect, context: unknown, modelAlias?: string) {
-    const { sql, bindings } = this.getSql(dialect, context, modelAlias);
-    return {
-      sql: dialect.aggregate(this.props.aggregateWith, sql),
-      bindings,
-    };
+
+  getRefsSqls(dialect: AnsiDialect, context: unknown) {
+    const sqlFnResult = this.callSqlFn(context);
+
+    if (sqlFnResult && sqlFnResult instanceof SqlWithRefs) {
+      return sqlFnResult.getRefsSqls(
+        dialect,
+        context,
+        this.getNextColumnRefOrDimensionRefAlias(),
+      );
+    }
   }
+
   isDimension(): this is Dimension {
     return false;
   }

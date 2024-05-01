@@ -1,12 +1,12 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { after, before, describe, it } from "node:test";
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -87,8 +87,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("count", {
         type: "string",
-        aggregateWith: "count",
-        sql: ({ model }) => model.column("CustomerId"),
+        sql: ({ model, sql }) =>
+          sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
       });
 
     const invoicesModel = semanticLayer
@@ -110,8 +110,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const invoiceLinesModel = semanticLayer
@@ -133,13 +133,13 @@ await describe("semantic layer", async () => {
       })
       .withMetric("quantity", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Quantity"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0))`,
       })
-      .withMetric("total_unit_price", {
+      .withMetric("unit_price", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("UnitPrice"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
       });
 
     const tracksModel = semanticLayer
@@ -247,7 +247,7 @@ await describe("semantic layer", async () => {
         members: [
           "customers.customer_id",
           "invoices.total",
-          "invoice_lines.total_unit_price",
+          "invoice_lines.unit_price",
         ],
         order: { "customers.customer_id": "asc" },
         limit: 10,
@@ -261,52 +261,52 @@ await describe("semantic layer", async () => {
         {
           customers___customer_id: 1,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 2,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 3,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 4,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 5,
           invoices___total: "40.62",
-          invoice_lines___total_unit_price: "40.62",
+          invoice_lines___unit_price: "40.62",
         },
         {
           customers___customer_id: 6,
           invoices___total: "49.62",
-          invoice_lines___total_unit_price: "49.62",
+          invoice_lines___unit_price: "49.62",
         },
         {
           customers___customer_id: 7,
           invoices___total: "42.62",
-          invoice_lines___total_unit_price: "42.62",
+          invoice_lines___unit_price: "42.62",
         },
         {
           customers___customer_id: 8,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 9,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 10,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
       ]);
     });
@@ -456,7 +456,7 @@ await describe("semantic layer", async () => {
         filters: [
           {
             operator: "lt",
-            member: "invoice_lines.total_unit_price",
+            member: "invoice_lines.unit_price",
             value: [38],
           },
         ],
@@ -495,129 +495,6 @@ await describe("semantic layer", async () => {
       );
 
       assert.deepEqual(result.rows, [{ invoices___total: "39.62" }]);
-    });
-
-    await it("can use a dimension in ad hoc metric and filters at the same time", async () => {
-      const query = queryBuilder.buildQuery({
-        members: [
-          "customers.customer_id",
-          { aggregateWith: "count", dimension: "invoices.invoice_id" },
-        ],
-        filters: [
-          { operator: "gt", member: "invoices.invoice_id", value: [1] },
-        ],
-        limit: 10,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_id___adhoc_count: "6",
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 6,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 7,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 8,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 9,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 10,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-      ]);
-    });
-
-    await it("will not break if dimension used in ad hoc metric and filters (and not projected otherwise) is used in order", async () => {
-      const query = queryBuilder.buildQuery({
-        members: [
-          "customers.customer_id",
-          { aggregateWith: "count", dimension: "invoices.invoice_id" },
-        ],
-        filters: [
-          { operator: "gt", member: "invoices.invoice_id", value: [1] },
-        ],
-        order: { "invoices.invoice_id": "asc" },
-        limit: 10,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_id___adhoc_count: "6",
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 6,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 7,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 8,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 9,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-        {
-          customers___customer_id: 10,
-          invoices___invoice_id___adhoc_count: "7",
-        },
-      ]);
     });
 
     await it("can query multiple metrics and filter by a dimension", async () => {
@@ -764,106 +641,6 @@ await describe("semantic layer", async () => {
       );
     });
 
-    await it("can query adhoc metrics", async () => {
-      const query = queryBuilder.buildQuery({
-        members: [
-          "customers.customer_id",
-          { aggregateWith: "count", dimension: "invoices.invoice_id" },
-          "invoice_lines.total_unit_price",
-        ],
-        order: { "customers.customer_id": "asc" },
-        limit: 5,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "37.62",
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "40.62",
-        },
-      ]);
-    });
-
-    await it("can query adhoc metrics on date/time granularity column", async () => {
-      const query = queryBuilder.buildQuery({
-        members: [
-          "customers.customer_id",
-          { aggregateWith: "min", dimension: "invoices.invoice_date.quarter" },
-          { aggregateWith: "min", dimension: "invoices.invoice_date" },
-        ],
-        order: { "customers.customer_id": "asc" },
-        limit: 5,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_date___quarter___adhoc_min: "2010-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2010-03-11T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-01-01T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_date___quarter___adhoc_min: "2010-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2010-03-11T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-01-02T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q4",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-12-08T00:00:00.000Z",
-          ),
-        },
-      ]);
-    });
-
     await it("can filter by results of another query", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country"],
@@ -926,8 +703,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const repository = semanticLayer
@@ -1033,8 +810,8 @@ await describe("semantic layer", async () => {
         })
         .withMetric("total", {
           type: "string",
-          aggregateWith: "sum",
-          sql: ({ model }) => model.column("Total"),
+          sql: ({ model, sql }) =>
+            sql`SUM(COALESCE(${model.column("Total")}, 0))`,
         });
 
       const repository = semanticLayer
@@ -1071,28 +848,7 @@ await describe("semantic layer", async () => {
         properties: {
           members: {
             type: "array",
-            items: {
-              anyOf: [
-                { type: "string", description: "Dimension or metric name" },
-                {
-                  type: "object",
-                  properties: {
-                    aggregateWith: {
-                      type: "string",
-                      enum: ["sum", "count", "min", "max", "avg"],
-                    },
-                    dimension: {
-                      type: "string",
-                      description: "Dimension name",
-                    },
-                  },
-                  required: ["aggregateWith", "dimension"],
-                  additionalProperties: false,
-                  description: "Ad hoc metric",
-                },
-              ],
-              description: "Dimension or metric name",
-            },
+            items: { type: "string", description: "Dimension or metric name" },
             minItems: 1,
           },
           filters: {
@@ -1504,9 +1260,9 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
         format: "percentage",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const repository = semanticLayer
@@ -1709,15 +1465,11 @@ await describe("semantic layer", async () => {
         type: "string",
         sql: ({ model }) => model.column("BillingPostalCode"),
       })
-      .withDimension("total", {
-        type: "string",
-        sql: ({ model }) => model.column("Total"),
-      })
-      .withMetric("sum_total", {
+      .withMetric("total", {
         type: "number",
-        aggregateWith: "sum",
-        description: "Sum of the invoice totals across models.",
-        sql: ({ model }) => model.dimension("total"),
+        description: "Invoice total.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
       });
 
     const invoiceLinesModel = semanticLayer
@@ -1737,25 +1489,17 @@ await describe("semantic layer", async () => {
         type: "number",
         sql: ({ model }) => model.column("TrackId"),
       })
-      .withDimension("unit_price", {
-        type: "string",
-        sql: ({ model }) => model.column("UnitPrice"),
-      })
-      .withDimension("quantity", {
-        type: "string",
-        sql: ({ model }) => model.column("Quantity"),
-      })
-      .withMetric("sum_quantity", {
+      .withMetric("quantity", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track quantities across models.",
-        sql: ({ model }) => model.dimension("quantity"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0))`,
       })
-      .withMetric("sum_unit_price", {
+      .withMetric("unit_price", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track unit prices across models.",
-        sql: ({ model }) => model.dimension("unit_price"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
       });
 
     const tracksModel = semanticLayer
@@ -1795,15 +1539,11 @@ await describe("semantic layer", async () => {
         type: "number",
         sql: ({ model }) => model.column("Bytes"),
       })
-      .withDimension("unit_price", {
-        type: "string",
-        sql: ({ model }) => model.column("UnitPrice"),
-      })
-      .withMetric("sum_unit_price", {
+      .withMetric("unit_price", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track unit prices across models.",
-        sql: ({ model }) => model.dimension("unit_price"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
       });
 
     const albumsModel = semanticLayer
@@ -2087,7 +1827,7 @@ await describe("semantic layer", async () => {
 
     await it("parsed query should equal original query", async () => {
       const query = {
-        members: ["artists.name", "tracks.sum_unit_price"],
+        members: ["artists.name", "tracks.unit_price"],
         filters: [
           {
             operator: "equals",
@@ -2102,144 +1842,6 @@ await describe("semantic layer", async () => {
       const parsedQuery = queryBuilder.querySchema.parse(query);
 
       assert.deepEqual(parsedQuery, query);
-    });
-
-    await it("should correctly perform a query with multiple ad hoc metrics", async () => {
-      const query = queryBuilder.buildQuery({
-        members: [
-          "genres.name",
-          { aggregateWith: "count", dimension: "invoice_lines.invoice_id" },
-          { aggregateWith: "sum", dimension: "tracks.unit_price" },
-        ],
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          genres___name: "Alternative",
-          invoice_lines___invoice_id___adhoc_count: "14",
-          tracks___unit_price___adhoc_sum: "13.86",
-        },
-        {
-          genres___name: "Alternative & Punk",
-          invoice_lines___invoice_id___adhoc_count: "244",
-          tracks___unit_price___adhoc_sum: "200.97",
-        },
-        {
-          genres___name: "Blues",
-          invoice_lines___invoice_id___adhoc_count: "61",
-          tracks___unit_price___adhoc_sum: "52.47",
-        },
-        {
-          genres___name: "Bossa Nova",
-          invoice_lines___invoice_id___adhoc_count: "15",
-          tracks___unit_price___adhoc_sum: "13.86",
-        },
-        {
-          genres___name: "Classical",
-          invoice_lines___invoice_id___adhoc_count: "41",
-          tracks___unit_price___adhoc_sum: "35.64",
-        },
-        {
-          genres___name: "Comedy",
-          invoice_lines___invoice_id___adhoc_count: "9",
-          tracks___unit_price___adhoc_sum: "15.92",
-        },
-        {
-          genres___name: "Drama",
-          invoice_lines___invoice_id___adhoc_count: "29",
-          tracks___unit_price___adhoc_sum: "53.73",
-        },
-        {
-          genres___name: "Easy Listening",
-          invoice_lines___invoice_id___adhoc_count: "10",
-          tracks___unit_price___adhoc_sum: "9.90",
-        },
-        {
-          genres___name: "Electronica/Dance",
-          invoice_lines___invoice_id___adhoc_count: "12",
-          tracks___unit_price___adhoc_sum: "10.89",
-        },
-        {
-          genres___name: "Heavy Metal",
-          invoice_lines___invoice_id___adhoc_count: "12",
-          tracks___unit_price___adhoc_sum: "11.88",
-        },
-        {
-          genres___name: "Hip Hop/Rap",
-          invoice_lines___invoice_id___adhoc_count: "17",
-          tracks___unit_price___adhoc_sum: "14.85",
-        },
-        {
-          genres___name: "Jazz",
-          invoice_lines___invoice_id___adhoc_count: "80",
-          tracks___unit_price___adhoc_sum: "67.32",
-        },
-        {
-          genres___name: "Latin",
-          invoice_lines___invoice_id___adhoc_count: "386",
-          tracks___unit_price___adhoc_sum: "336.60",
-        },
-        {
-          genres___name: "Metal",
-          invoice_lines___invoice_id___adhoc_count: "264",
-          tracks___unit_price___adhoc_sum: "228.69",
-        },
-        {
-          genres___name: "Pop",
-          invoice_lines___invoice_id___adhoc_count: "28",
-          tracks___unit_price___adhoc_sum: "25.74",
-        },
-        {
-          genres___name: "R&B/Soul",
-          invoice_lines___invoice_id___adhoc_count: "41",
-          tracks___unit_price___adhoc_sum: "36.63",
-        },
-        {
-          genres___name: "Reggae",
-          invoice_lines___invoice_id___adhoc_count: "30",
-          tracks___unit_price___adhoc_sum: "27.72",
-        },
-        {
-          genres___name: "Rock",
-          invoice_lines___invoice_id___adhoc_count: "835",
-          tracks___unit_price___adhoc_sum: "737.55",
-        },
-        {
-          genres___name: "Rock And Roll",
-          invoice_lines___invoice_id___adhoc_count: "6",
-          tracks___unit_price___adhoc_sum: "5.94",
-        },
-        {
-          genres___name: "Sci Fi & Fantasy",
-          invoice_lines___invoice_id___adhoc_count: "20",
-          tracks___unit_price___adhoc_sum: "39.80",
-        },
-        {
-          genres___name: "Science Fiction",
-          invoice_lines___invoice_id___adhoc_count: "6",
-          tracks___unit_price___adhoc_sum: "9.95",
-        },
-        {
-          genres___name: "Soundtrack",
-          invoice_lines___invoice_id___adhoc_count: "20",
-          tracks___unit_price___adhoc_sum: "18.81",
-        },
-        {
-          genres___name: "TV Shows",
-          invoice_lines___invoice_id___adhoc_count: "47",
-          tracks___unit_price___adhoc_sum: "85.57",
-        },
-        {
-          genres___name: "World",
-          invoice_lines___invoice_id___adhoc_count: "13",
-          tracks___unit_price___adhoc_sum: "12.87",
-        },
-      ]);
     });
   });
 

@@ -1,6 +1,6 @@
-import { z } from "zod";
 import { AnyQueryBuilder } from "./query-builder.js";
 import { AnyQueryFilter } from "./types.js";
+import { z } from "zod";
 
 export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const dimensionPaths = queryBuilder.repository
@@ -43,16 +43,6 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       ),
   );
 
-  const adHocMetricSchema = z
-    .object({
-      aggregateWith: z.enum(["sum", "count", "min", "max", "avg"]),
-      dimension: z
-        .string()
-        .refine((arg) => dimensionPaths.includes(arg))
-        .describe("Dimension name"),
-    })
-    .describe("Ad hoc metric");
-
   const schema = z
     .object({
       members: z
@@ -60,8 +50,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
           z
             .string()
             .refine((arg) => memberPaths.includes(arg))
-            .describe("Dimension or metric name")
-            .or(adHocMetricSchema),
+            .describe("Dimension or metric name"),
         )
         .min(1),
       filters: filters.optional(),

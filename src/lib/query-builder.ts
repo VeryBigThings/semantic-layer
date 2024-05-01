@@ -5,11 +5,7 @@ import {
   IntrospectionResult,
   MemberNameToType,
   Query,
-  QueryAdHocMetric,
-  QueryAdHocMetricName,
-  QueryAdHocMetricType,
   QueryMemberName,
-  QueryMetric,
   QueryReturnType,
   SqlQueryResult,
 } from "./types.js";
@@ -23,7 +19,6 @@ import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
-import { getAdHocAlias, getAdHocPath } from "./util.js";
 
 function transformInputQueryToQuery(
   queryBuilder: AnyQueryBuilder,
@@ -32,19 +27,16 @@ function transformInputQueryToQuery(
   const { members, ...restQuery } = parsedQuery;
   const dimensionsAndMetrics = members.reduce<{
     dimensions: string[];
-    metrics: (string | QueryAdHocMetric)[];
+    metrics: string[];
   }>(
-    (acc, memberNameOrAdHoc) => {
-      if (typeof memberNameOrAdHoc === "string") {
-        const member = queryBuilder.repository.getMember(memberNameOrAdHoc);
-        if (member.isDimension()) {
-          acc.dimensions.push(memberNameOrAdHoc);
-        } else {
-          acc.metrics.push(memberNameOrAdHoc);
-        }
+    (acc, memberName) => {
+      const member = queryBuilder.repository.getMember(memberName);
+      if (member.isDimension()) {
+        acc.dimensions.push(memberName);
       } else {
-        acc.metrics.push(memberNameOrAdHoc);
+        acc.metrics.push(memberName);
       }
+
       return acc;
     },
     { dimensions: [], metrics: [] },
@@ -106,7 +98,7 @@ export class QueryBuilder<
     };
   }
 
-  buildQuery<const Q extends { members: (string | QueryMetric)[] }>(
+  buildQuery<const Q extends { members: string[] }>(
     query: Q &
       InputQuery<
         string & keyof D,
@@ -123,8 +115,7 @@ export class QueryBuilder<
         QueryReturnType<
           D & M,
           QueryMemberName<Q["members"]> & (keyof D | keyof M)
-        > &
-          QueryAdHocMetricType<QueryAdHocMetricName<Q["members"]>>
+        >
       >
     > = {
       sql,
@@ -145,40 +136,22 @@ export class QueryBuilder<
   }
 
   introspect(query: AnyInputQuery): IntrospectionResult {
-    return query.members.reduce<IntrospectionResult>(
-      (acc, memberNameOrAdHoc) => {
-        if (typeof memberNameOrAdHoc === "string") {
-          const member = this.repository.getMember(memberNameOrAdHoc);
-          const isDimension = member.isDimension();
+    return query.members.reduce<IntrospectionResult>((acc, memberName) => {
+      const member = this.repository.getMember(memberName);
+      const isDimension = member.isDimension();
 
-          acc[memberNameOrAdHoc.replaceAll(".", "___")] = {
-            memberType: isDimension ? "dimension" : "metric",
-            path: member.getPath(),
-            format: member.getFormat(),
-            type: member.getType(),
-            description: member.getDescription(),
-            isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
-            isGranularity: isDimension ? member.isGranularity() : false,
-          };
-        } else {
-          const aggregateWith = memberNameOrAdHoc.aggregateWith;
-          const dimensionName = memberNameOrAdHoc.dimension;
-          const member = this.repository.getMember(dimensionName);
-          acc[getAdHocAlias(dimensionName, aggregateWith)] = {
-            memberType: "metric",
-            path: getAdHocPath(member.getPath(), aggregateWith),
-            format: undefined,
-            type: "unknown",
-            description: undefined,
-            isPrimaryKey: false,
-            isGranularity: false,
-          };
-        }
+      acc[memberName.replaceAll(".", "___")] = {
+        memberType: isDimension ? "dimension" : "metric",
+        path: member.getPath(),
+        format: member.getFormat(),
+        type: member.getType(),
+        description: member.getDescription(),
+        isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
+        isGranularity: isDimension ? member.isGranularity() : false,
+      };
 
-        return acc;
-      },
-      {},
-    );
+      return acc;
+    }, {});
   }
 }
 

@@ -1,20 +1,13 @@
 import * as graphlib from "@dagrejs/graphlib";
 
-import {
-  ModelQuery,
-  Query,
-  QueryAdHocMetric,
-  QueryMetric,
-  QuerySegment,
-} from "../types.js";
+import { ModelQuery, Query, QuerySegment } from "../types.js";
 
-import invariant from "tiny-invariant";
 import { AnsiDialect } from "../dialect/ansi.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import { getAdHocAlias } from "../util.js";
+import invariant from "tiny-invariant";
 
 interface ReferencedModels {
   all: string[];
@@ -22,21 +15,9 @@ interface ReferencedModels {
   metrics: string[];
 }
 
-function getAdHocMetricAlias(adHocMetric: QueryAdHocMetric) {
-  return getAdHocAlias(adHocMetric.dimension, adHocMetric.aggregateWith);
-}
-
-function getSortableMetric(metrics: QueryMetric[] | undefined) {
-  for (const metric of metrics ?? []) {
-    if (typeof metric === "string") {
-      return metric;
-    }
-  }
-}
-
 function getDefaultOrderBy(repository: AnyRepository, query: Query) {
   const firstDimensionName = query.dimensions?.[0];
-  const firstMetricName = getSortableMetric(query.metrics);
+  const firstMetricName = query.metrics?.[0];
 
   for (const dimensionName of query.dimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
@@ -117,14 +98,12 @@ function buildQuerySegmentJoinQuery(
     const modelQuery = modelQueries[modelName];
     const model = queryBuilder.repository.getModel(modelName);
     const hasMetrics = modelQuery?.metrics && modelQuery.metrics.size > 0;
-    const hasAdHocMetrics =
-      modelQuery?.adHocMetrics && modelQuery.adHocMetrics.size > 0;
     const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
       (modelName) => !visitedModels.has(modelName),
     );
     const dimensionNames = new Set(modelQuery?.dimensions || []);
 
-    if (hasMetrics || hasAdHocMetrics) {
+    if (hasMetrics) {
       for (const d of model.getPrimaryKeyDimensions()) {
         dimensionNames.add(d.getPath());
       }
@@ -155,29 +134,12 @@ function buildQuerySegmentJoinQuery(
 
     for (const metricName of modelQuery?.metrics || []) {
       const metric = queryBuilder.repository.getMetric(metricName);
-      const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
-      sqlQuery.select(
-        queryBuilder.dialect.fragment(
-          `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
-          bindings,
-        ),
-      );
-    }
+      const aliasedRefs =
+        metric.getRefsSqls(queryBuilder.dialect, context) ?? [];
 
-    for (const adHocMetric of modelQuery?.adHocMetrics || []) {
-      const dimension = queryBuilder.repository.getDimension(
-        adHocMetric.dimension,
-      );
-      const { sql, bindings } = dimension.getSqlWithoutGranularity(
-        queryBuilder.dialect,
-        context,
-      );
-      sqlQuery.select(
-        queryBuilder.dialect.fragment(
-          `${sql} as ${getAdHocMetricAlias(adHocMetric)}`,
-          bindings,
-        ),
-      );
+      for (const { sql, bindings } of aliasedRefs) {
+        sqlQuery.select(queryBuilder.dialect.fragment(sql, bindings));
+      }
     }
 
     for (const dimensionName of dimensionNames) {
@@ -203,7 +165,6 @@ function buildQuerySegmentJoinQuery(
   return sqlQuery;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity
 function buildQuerySegment(
   queryBuilder: AnyQueryBuilder,
   context: unknown,
@@ -229,10 +190,7 @@ function buildQuerySegment(
 
   // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
   // otherwise GROUP BY will take care of it
-  if (
-    (segment.query.metrics?.length ?? 0) === 0 &&
-    (segment.query.adHocMetrics?.length ?? 0) === 0
-  ) {
+  if ((segment.query.metrics?.length ?? 0) === 0) {
     initialSqlQuery.distinct();
   }
 
@@ -250,9 +208,7 @@ function buildQuerySegment(
 
   const alias = `${source}_query`;
   const sqlQuery = queryBuilder.dialect.from(initialSqlQuery.as(alias));
-  const hasMetrics =
-    (segment.query.metrics && segment.query.metrics.length > 0) ||
-    (segment.query.adHocMetrics && segment.query.adHocMetrics.length > 0);
+  const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;
 
   for (const dimensionName of segment.query.dimensions || []) {
     const dimension = queryBuilder.repository.getDimension(dimensionName);
@@ -276,38 +232,12 @@ function buildQuerySegment(
 
   for (const metricName of segment.query.metrics || []) {
     const metric = queryBuilder.repository.getMetric(metricName);
-    const { sql, bindings } = metric.getAggregateSql(
-      queryBuilder.dialect,
-      context,
-      alias,
-    );
+    const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
 
     sqlQuery.select(
       queryBuilder.dialect.fragment(
         `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
         bindings,
-      ),
-    );
-  }
-
-  for (const adHocMetric of segment.query.adHocMetrics || []) {
-    const dimension = queryBuilder.repository.getDimension(
-      adHocMetric.dimension,
-    );
-    const initialSql = queryBuilder.dialect.aggregate(
-      adHocMetric.aggregateWith,
-      `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
-        adHocMetric,
-      )}`,
-    );
-    const dimensionGranularity = dimension.getGranularity();
-    const sql = dimensionGranularity
-      ? queryBuilder.dialect.withGranularity(dimensionGranularity, initialSql)
-      : initialSql;
-
-    sqlQuery.select(
-      queryBuilder.dialect.fragment(
-        `${sql} as ${getAdHocMetricAlias(adHocMetric)}`,
       ),
     );
   }
@@ -374,17 +304,6 @@ export function buildQuery(
     );
   }
 
-  for (const adHocMetric of initialSqlQuerySegment.projectedQuery
-    .adHocMetrics || []) {
-    rootSqlQuery.select(
-      queryBuilder.dialect.fragment(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${getAdHocMetricAlias(
-          adHocMetric,
-        )} as ${getAdHocMetricAlias(adHocMetric)}`,
-      ),
-    );
-  }
-
   for (let i = 0; i < restSqlQuerySegments.length; i++) {
     const segment = restSqlQuerySegments[i]!;
     const alias = getAlias(i + 1);
@@ -419,16 +338,6 @@ export function buildQuery(
           ),
         );
       }
-    }
-
-    for (const adHocMetric of segment.projectedQuery.adHocMetrics || []) {
-      rootSqlQuery.select(
-        queryBuilder.dialect.fragment(
-          `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
-            adHocMetric,
-          )} as ${getAdHocMetricAlias(adHocMetric)}`,
-        ),
-      );
     }
   }
 

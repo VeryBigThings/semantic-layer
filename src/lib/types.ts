@@ -17,17 +17,6 @@ export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryFilter = QueryFilter<any>;
 
-export type AggregateWith = "count" | "sum" | "avg" | "min" | "max";
-export interface QueryAdHocMetric<DN extends string = string> {
-  aggregateWith: AggregateWith;
-  dimension: DN;
-}
-
-export type QueryMetric<
-  MN extends string = string,
-  DN extends string = string,
-> = MN | QueryAdHocMetric<DN>;
-
 export type WithInQueryFilter<
   F extends AnyQueryFilter,
   Q extends AnyInputQuery,
@@ -56,7 +45,7 @@ export type WithNotInQueryFilter<
 
 export type Query = {
   dimensions?: string[];
-  metrics?: QueryMetric<string, string>[];
+  metrics?: string[];
   order?: Record<string, "asc" | "desc">;
   filters?: AnyQueryFilter;
   limit?: number;
@@ -66,13 +55,11 @@ export type Query = {
 export interface ModelQuery {
   dimensions: Set<string>;
   metrics: Set<string>;
-  adHocMetrics: Set<QueryAdHocMetric>;
 }
 
 export interface QuerySegmentQuery {
   dimensions: string[];
   metrics: string[];
-  adHocMetrics: QueryAdHocMetric[];
   filters: AnyQueryFilter[];
 }
 
@@ -272,12 +259,6 @@ export type QueryMetricName<T> = Extract<
   T extends unknown[] ? T[number] : never,
   string
 >;
-export type QueryAdHocMetricName<
-  T,
-  AM = Extract<T extends unknown[] ? T[number] : never, QueryAdHocMetric>,
-> = AM extends QueryAdHocMetric
-  ? `${AM["dimension"]}.adhoc_${AM["aggregateWith"]}`
-  : never;
 
 export type QueryAdHocMetricType<N extends string> = {
   [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
@@ -299,7 +280,7 @@ export type IntrospectionResult = Record<
 >;
 
 export type InputQuery<DN extends string, MN extends string, F = never> = {
-  members: (DN | QueryMetric<MN, DN>)[];
+  members: (DN | MN)[];
   order?: { [K in DN | MN]?: "asc" | "desc" };
   filters?: WithNotInQueryFilter<
     WithInQueryFilter<QueryFilter<F>, InputQuery<DN, MN, F>>,
