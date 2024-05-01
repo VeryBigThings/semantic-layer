@@ -17,21 +17,21 @@ export class AnsiDialect extends BaseDialect {
       case "quarter_of_year":
         return `EXTRACT(QUARTER FROM ${sql})`;
       case "month":
-        return `EXTRACT (YEAR FROM ${sql}) || '-' || LPAD(EXTRACT(MONTH FROM ${sql})::varchar, 2, '0')`;
+        return `EXTRACT (YEAR FROM ${sql}) || '-' || LPAD(CAST(EXTRACT(MONTH FROM ${sql}) AS CHARACTER VARYING), 2, '0')`;
       case "month_num":
         return `EXTRACT(MONTH FROM ${sql})`;
       case "week":
-        return `EXTRACT (YEAR FROM ${sql}) || '-' || 'W' || LPAD(EXTRACT(WEEK FROM ${sql})::varchar, 2, '0')`;
+        return `EXTRACT (YEAR FROM ${sql}) || '-' || 'W' || LPAD(CAST(EXTRACT(WEEK FROM ${sql}) AS CHARACTER VARYING), 2, '0')`;
       case "week_num":
         return `EXTRACT(WEEK FROM ${sql})`;
       case "day_of_month":
         return `EXTRACT(DAY FROM ${sql})`;
       case "hour":
-        return `CAST(${sql} AS DATE) || ' ' || LPAD(EXTRACT(HOUR FROM ${sql})::varchar, 2, '0')`;
+        return `CAST(${sql} AS DATE) || ' ' || LPAD(CAST(EXTRACT(HOUR FROM ${sql}) AS CHARACTER VARYING), 2, '0')`;
       case "hour_of_day":
         return `EXTRACT(HOUR FROM ${sql})`;
       case "minute":
-        return `CAST(${sql} AS DATE) || ' ' || LPAD(EXTRACT(HOUR FROM ${sql})::varchar, 2, '0') || ':' || LPAD(EXTRACT(MINUTE FROM ${sql})::varchar, 2, '0')`;
+        return `CAST(${sql} AS DATE) || ' ' || LPAD(CAST(EXTRACT(HOUR FROM ${sql}) AS CHARACTER VARYING), 2, '0') || ':' || LPAD(CAST(EXTRACT(MINUTE FROM ${sql}) AS CHARACTER VARYING), 2, '0')`;
 
       default:
         // biome-ignore lint/correctness/noSwitchDeclarations: Exhaustiveness check
