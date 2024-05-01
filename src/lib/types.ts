@@ -283,7 +283,7 @@ export type QueryAdHocMetricType<N extends string> = {
   [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
 };
 
-export type AvailableDialects = "postgresql";
+export type AvailableDialects = "postgresql" | "ansi" | "databricks";
 
 export type IntrospectionResult = Record<
   string,

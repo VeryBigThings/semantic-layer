@@ -1,25 +1,6 @@
 import { z } from "zod";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
-function renderILike(
-  startsWith: boolean,
-  endsWith: boolean,
-  negation: boolean,
-  memberSql: string,
-) {
-  let like = "?";
-  if (startsWith) {
-    like = `'%' || ${like}`;
-  }
-  if (endsWith) {
-    like = `${like} || '%'`;
-  }
-  if (negation) {
-    return `${memberSql} not ilike ${like}`;
-  }
-  return `${memberSql} ilike ${like}`;
-}
-
 const DOCUMENTATION = {
   contains:
     "Filter for values that contain the given string. Accepts an array of strings.",
@@ -46,14 +27,19 @@ function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
     name,
     DOCUMENTATION[name],
     z.array(z.string()),
-    (_filterBuilder, _context, member, filter) => {
+    (filterBuilder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{
         sqls: string[];
         bindings: unknown[];
       }>(
         (acc, value) => {
           acc.sqls.push(
-            renderILike(startsWith, endsWith, negation, member.sql),
+            filterBuilder.queryBuilder.dialect.ilike(
+              startsWith,
+              endsWith,
+              negation,
+              member.sql,
+            ),
           );
           acc.bindings.push(...member.bindings, value);
           return acc;

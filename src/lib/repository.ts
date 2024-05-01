@@ -19,7 +19,9 @@ import { AvailableDialects, MemberNameToType } from "./types.js";
 
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
-import { BaseDialect } from "./dialect/base.js";
+import { AnsiDialect } from "./dialect/ansi.js";
+import { DatabricksDialect } from "./dialect/databricks.js";
+import { PostgresqlDialect } from "./dialect/postgresql.js";
 import { QueryBuilder } from "./query-builder.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
@@ -45,10 +47,14 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type AnyRepository = Repository<any, any, any, any>;
 
-function getDialect(dialect: AvailableDialects): BaseDialect {
+function getDialect(dialect: AvailableDialects): AnsiDialect {
   switch (dialect) {
+    case "ansi":
+      return new AnsiDialect();
     case "postgresql":
-      return new BaseDialect();
+      return new PostgresqlDialect();
+    case "databricks":
+      return new DatabricksDialect();
     default:
       // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
       const _exhaustiveCheck: never = dialect;

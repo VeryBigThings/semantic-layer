@@ -2,7 +2,7 @@ import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
 
 import { Granularity } from "../types.js";
 
-export class BaseDialect {
+export class AnsiDialect {
   withGranularity(granularity: Granularity, sql: string) {
     switch (granularity) {
       case "time":
@@ -38,16 +38,37 @@ export class BaseDialect {
         throw new Error(`Unrecognized granularity: ${granularity}`);
     }
   }
+
   asIdentifier(value: string) {
     if (value === "*") return value;
     return `"${value}"`;
   }
+
   aggregate(aggregateWith: string, sql: string) {
     if (aggregateWith === "sum") {
       return `COALESCE(SUM(${sql}), 0)`;
     }
 
     return `${aggregateWith.toUpperCase()}(${sql})`;
+  }
+
+  ilike(
+    startsWith: boolean,
+    endsWith: boolean,
+    negation: boolean,
+    memberSql: string,
+  ) {
+    let like = "?";
+    if (startsWith) {
+      like = `'%' || ${like}`;
+    }
+    if (endsWith) {
+      like = `${like} || '%'`;
+    }
+    if (negation) {
+      return `${memberSql} not ilike ${like}`;
+    }
+    return `${memberSql} ilike ${like}`;
   }
 
   from(from: From) {
@@ -59,17 +80,6 @@ export class BaseDialect {
   }
 
   sqlToNative(sql: string) {
-    return this.positionBindings(sql);
-  }
-
-  positionBindings(sql: string) {
-    let questionCount = 0;
-    return sql.replace(/(\\*)(\?)/g, (_match, escapes) => {
-      if (escapes.length % 2) {
-        return "?";
-      }
-      questionCount++;
-      return `$${questionCount}`;
-    });
+    return sql;
   }
 }

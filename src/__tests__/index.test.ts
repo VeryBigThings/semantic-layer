@@ -2464,5 +2464,39 @@ await describe("semantic layer", async () => {
 
       assert.deepEqual(query.bindings, [5000]);
     });
+
+    await it("can build SQL for ANSI", () => {
+      const ansiQueryBuilder = repository.build("ansi");
+      const query = ansiQueryBuilder.buildQuery(
+        {
+          members: ["invoices.invoice_id"],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit ?',
+      );
+
+      assert.deepEqual(query.bindings, [5000]);
+    });
+
+    await it("can build SQL for Databricks", () => {
+      const ansiQueryBuilder = repository.build("databricks");
+      const query = ansiQueryBuilder.buildQuery(
+        {
+          members: ["invoices.invoice_id"],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices_query`.`invoices___invoice_id` as `invoices___invoice_id` from (select distinct `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `invoices_query`) as `q0` order by `invoices___invoice_id` asc limit ?",
+      );
+
+      assert.deepEqual(query.bindings, [5000]);
+    });
   });
 });

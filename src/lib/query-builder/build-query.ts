@@ -9,7 +9,7 @@ import {
 } from "../types.js";
 
 import invariant from "tiny-invariant";
-import { BaseDialect } from "../dialect/base.js";
+import { AnsiDialect } from "../dialect/ansi.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
@@ -57,7 +57,7 @@ function getDefaultOrderBy(repository: AnyRepository, query: Query) {
 }
 
 function initializeQuerySegment(
-  dialect: BaseDialect,
+  dialect: AnsiDialect,
   context: unknown,
   model: AnyModel,
 ) {
@@ -75,7 +75,7 @@ function initializeQuerySegment(
 }
 
 function getJoinSubject(
-  dialect: BaseDialect,
+  dialect: AnsiDialect,
   context: unknown,
   model: AnyModel,
 ) {
