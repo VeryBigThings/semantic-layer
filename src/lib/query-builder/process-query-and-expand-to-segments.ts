@@ -1,7 +1,7 @@
 import {
   AnyQueryFilter,
   ModelQuery,
-  OrderDirection,
+  Order,
   Query,
   QuerySegment,
 } from "../types.js";
@@ -74,14 +74,15 @@ function analyzeQuery(repository: AnyRepository, query: Query) {
     }
   }
 
-  const orderByWithoutNonProjectedMembers = (query.order ?? []).reduce<
-    [string, OrderDirection][]
-  >((acc, [member, direction]) => {
-    if (allProjectedMemberNames.has(member)) {
-      acc.push([member, direction]);
-    }
-    return acc;
-  }, []);
+  const orderByWithoutNonProjectedMembers = (query.order ?? []).reduce<Order[]>(
+    (acc, { member, direction }) => {
+      if (allProjectedMemberNames.has(member)) {
+        acc.push({ member, direction });
+      }
+      return acc;
+    },
+    [],
+  );
 
   return {
     allModels,

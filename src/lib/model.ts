@@ -487,7 +487,7 @@ export class Model<
       });
       return result.render(dialect, context);
     }
-    throw new Error("Model is not a SQL query");
+    throw new Error("Model is not an SQL query");
   }
 }
 

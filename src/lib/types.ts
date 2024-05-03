@@ -18,10 +18,10 @@ export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 export type AnyQueryFilter = QueryFilter<any>;
 
 export type OrderDirection = "asc" | "desc";
-export type Order<DN extends string = string, MN extends string = string> = [
-  DN | MN,
-  OrderDirection,
-];
+export type Order<DN extends string = string, MN extends string = string> = {
+  member: DN | MN;
+  direction: OrderDirection;
+};
 
 export type WithInQueryFilter<
   F extends AnyQueryFilter,

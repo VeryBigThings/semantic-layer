@@ -22,16 +22,16 @@ function getDefaultOrderBy(repository: AnyRepository, query: Query): Order[] {
   for (const dimensionName of query.dimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
     if (dimension.getGranularity()) {
-      return [[dimensionName, "asc"]];
+      return [{ member: dimensionName, direction: "asc" }];
     }
   }
 
   if (firstMetricName) {
-    return [[firstMetricName, "desc"]];
+    return [{ member: firstMetricName, direction: "desc" }];
   }
 
   if (firstDimensionName) {
-    return [[firstDimensionName, "asc"]];
+    return [{ member: firstDimensionName, direction: "asc" }];
   }
 
   return [];
@@ -363,7 +363,7 @@ export function buildQuery(
 
   const orderBy = (
     query.order || getDefaultOrderBy(queryBuilder.repository, query)
-  ).map(([member, direction]) => {
+  ).map(({ member, direction }) => {
     const memberSql = queryBuilder.repository
       .getMember(member)
       .getAlias(queryBuilder.dialect);

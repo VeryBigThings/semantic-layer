@@ -53,10 +53,14 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
             .describe("Dimension or metric name"),
         )
         .min(1),
-      filters: filters.optional(),
       limit: z.number().optional(),
       offset: z.number().optional(),
-      order: z.array(z.tuple([z.string(), z.enum(["asc", "desc"])])).optional(),
+      order: z
+        .array(
+          z.object({ member: z.string(), direction: z.enum(["asc", "desc"]) }),
+        )
+        .optional(),
+      filters: filters.optional(),
     })
     .describe("Query schema");
 
