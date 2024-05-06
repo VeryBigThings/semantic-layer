@@ -9,7 +9,6 @@ import {
   SqlWithBindings,
 } from "./types.js";
 
-import { Simplify } from "type-fest";
 import { BaseDialect } from "./dialect/base.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
@@ -390,7 +389,7 @@ export class Model<
   >(
     name: DN1,
     dimension: DP,
-  ): Model<C, N, Simplify<D & WithGranularityDimensions<DN1, DP["type"]>>, M> {
+  ): Model<C, N, D & WithGranularityDimensions<DN1, DP["type"]>, M> {
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
@@ -412,7 +411,7 @@ export class Model<
   withMetric<MN1 extends string, MP extends MetricProps<C, string & keyof D>>(
     name: MN1,
     metric: MP,
-  ): Model<C, N, D, Simplify<M & { [k in MN1]: MP["type"] }>> {
+  ): Model<C, N, D, M & { [k in MN1]: MP["type"] }> {
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
