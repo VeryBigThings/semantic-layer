@@ -1849,6 +1849,162 @@ await describe("semantic layer", async () => {
 
       assert.deepEqual(parsedQuery, query);
     });
+
+    await it("can filter by contains", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "contains",
+            member: "artists.name",
+            value: ["ac"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can filter by notContains", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notContains",
+            member: "artists.name",
+            value: ["cor"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can filter by startsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "startsWith",
+            member: "artists.name",
+            value: ["ac"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can filter by notStartsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notStartsWith",
+            member: "artists.name",
+            value: ["a cor"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can filter by endsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "endsWith",
+            member: "artists.name",
+            value: ["dc"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can filter by notEndsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notEndsWith",
+            member: "artists.name",
+            value: ["som"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+        },
+      ]);
+    });
   });
 
   describe("repository with context", async () => {

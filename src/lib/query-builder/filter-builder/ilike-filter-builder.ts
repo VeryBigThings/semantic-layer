@@ -18,8 +18,8 @@ const DOCUMENTATION = {
 
 function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
   name: T,
-  startsWith: boolean,
-  endsWith: boolean,
+  beginWithWildcard: boolean,
+  endWithWildcard: boolean,
   negation: boolean,
   connective: "and" | "or",
 ) {
@@ -35,8 +35,8 @@ function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
         (acc, value) => {
           acc.sqls.push(
             filterBuilder.queryBuilder.dialect.ilike(
-              startsWith,
-              endsWith,
+              beginWithWildcard,
+              endWithWildcard,
               negation,
               member.sql,
             ),
@@ -57,43 +57,43 @@ function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
 
 export const contains = makeILikeFilterBuilder(
   "contains" as const,
-  false,
-  false,
+  true,
+  true,
   false,
   "or",
 );
 export const notContains = makeILikeFilterBuilder(
   "notContains" as const,
-  false,
-  false,
+  true,
+  true,
   true,
   "and",
 );
 export const startsWith = makeILikeFilterBuilder(
   "startsWith" as const,
-  true,
   false,
+  true,
   false,
   "or",
 );
 export const notStartsWith = makeILikeFilterBuilder(
   "notStartsWith" as const,
-  true,
   false,
+  true,
   true,
   "and",
 );
 export const endsWith = makeILikeFilterBuilder(
   "endsWith" as const,
-  false,
   true,
+  false,
   false,
   "or",
 );
 export const notEndsWith = makeILikeFilterBuilder(
   "notEndsWith" as const,
-  false,
   true,
+  false,
   true,
   "and",
 );
