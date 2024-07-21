@@ -11,6 +11,7 @@ import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { generateErrorMessage } from "zod-error";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // import { format as sqlFormat } from "sql-formatter";
@@ -215,6 +216,61 @@ await describe("semantic layer", async () => {
       );
 
     const queryBuilder = repository.build("postgresql");
+
+    await it("can report errors", async () => {
+      const result = queryBuilder.querySchema.safeParse({
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
+        filters: [
+          { operator: "equals", member: "customers.customer_id1", value: 1 },
+          { operator: "gte", member: "customers.customer_id", value: ["a"] },
+          {
+            operator: "nonExistingOperator",
+            member: "customers.customer_id2",
+            value: 1,
+          },
+          {
+            operator: "inQuery",
+            member: "customers.customer_id",
+            value: {
+              members: ["customers.customer_id"],
+              filters: [
+                {
+                  operator: "equals",
+                  member: "customers.customer_id2",
+                  value: [1],
+                },
+              ],
+            },
+          },
+        ],
+        limit: 10,
+      });
+
+      if (result.success) {
+        throw new Error("Expected error");
+      }
+
+      const formattedErrors = generateErrorMessage(result.error.issues, {
+        delimiter: { error: "\n" },
+        code: { enabled: false },
+        path: { label: "Error at ", enabled: true, type: "objectNotation" },
+        message: { label: "", enabled: true },
+        transform: ({ messageComponent, pathComponent }) => {
+          return `${pathComponent}: ${messageComponent}`;
+        },
+      });
+
+      const expectedFormattedErrors = [
+        "Error at filters[0].member: Member not found",
+        "Error at filters[0].value: Expected array, received number",
+        "Error at filters[1].value[0]: Expected number, received nan",
+        "Error at filters[2].operator: Invalid discriminator value. Expected 'and' | 'or' | 'equals' | 'in' | 'notEquals' | 'notIn' | 'notSet' | 'set' | 'contains' | 'notContains' | 'startsWith' | 'notStartsWith' | 'endsWith' | 'notEndsWith' | 'gt' | 'gte' | 'lt' | 'lte' | 'inDateRange' | 'notInDateRange' | 'beforeDate' | 'afterDate' | 'inQuery' | 'notInQuery'",
+        "Error at filters[3].value.filters[0].member: Member not found",
+      ].join("\n");
+
+      assert.deepEqual(formattedErrors, expectedFormattedErrors);
+    });
 
     await it("can query one dimension and one metric", async () => {
       const query = queryBuilder.buildQuery({

@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { AnyZodObject, z } from "zod";
+
 import { AnyQueryBuilder } from "./query-builder.js";
 import { AnyQueryFilter } from "./types.js";
 
@@ -14,11 +15,27 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const registeredFilterFragmentBuildersSchemas = queryBuilder.repository
     .getFilterFragmentBuilderRegistry()
     .getFilterFragmentBuilders()
-    .map((builder) => builder.getFilterFragmentBuilderSchema(queryBuilder));
+    .map((builder) => {
+      const filter = builder.getFilterFragmentBuilderSchema(
+        queryBuilder,
+      ) as AnyZodObject;
+
+      const mergedFilter = filter.merge(
+        z.object({
+          member: z.string().refine((arg) => memberPaths.includes(arg), {
+            message: "Member not found",
+          }),
+        }),
+      ) as typeof filter;
+
+      return filter.description
+        ? mergedFilter.describe(filter.description)
+        : mergedFilter;
+    });
 
   const filters: z.ZodType<AnyQueryFilter[]> = z.array(
     z
-      .union([
+      .discriminatedUnion("operator", [
         z
           .object({
             operator: z.literal("and"),
@@ -31,12 +48,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
             filters: z.lazy(() => filters),
           })
           .describe("OR connective for filters"),
-        ...registeredFilterFragmentBuildersSchemas.map((schema) =>
-          schema.refine((arg) => memberPaths.includes(arg.member), {
-            path: ["member"],
-            message: "Member not found",
-          }),
-        ),
+        ...(registeredFilterFragmentBuildersSchemas as z.ZodDiscriminatedUnionOption<"operator">[]),
       ])
       .describe(
         "Query filters. Top level filters are connected with AND connective. Filters can be nested with AND and OR connectives.",

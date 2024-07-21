@@ -46,16 +46,16 @@ export class AnsiDialect extends BaseDialect {
   }
 
   ilike(
-    startsWith: boolean,
-    endsWith: boolean,
+    beginWithWildcard: boolean,
+    endWithWildcard: boolean,
     negation: boolean,
     memberSql: string,
   ) {
     let like = "?";
-    if (startsWith) {
+    if (beginWithWildcard) {
       like = `'%' || ${like}`;
     }
-    if (endsWith) {
+    if (endWithWildcard) {
       like = `${like} || '%'`;
     }
     if (negation) {
