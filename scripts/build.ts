@@ -7,7 +7,7 @@ const srcPath = path.join(process.cwd(), "src");
 const buildPath = path.join(process.cwd(), "build");
 
 async function build() {
-  const buildId = randomUUID().replace(/-/g, "");
+  const _buildId = randomUUID().replace(/-/g, "");
 
   return esbuild({
     platform: "node",
@@ -27,7 +27,7 @@ async function build() {
     ],
     bundle: true,
     entryPoints: [path.join(srcPath, "index.ts")],
-    banner: {
+    /*banner: {
       js: `
             import { createRequire as createRequire${buildId} } from 'module';
             import { fileURLToPath as fileURLToPath${buildId} } from 'url';
@@ -39,7 +39,7 @@ async function build() {
             var __filename = fileURLToPath${buildId}(import.meta.url);
             var __dirname = dirname${buildId}(__filename);
       `,
-    },
+    },*/
     outdir: buildPath,
   });
 }
