@@ -202,7 +202,23 @@ export type MemberType =
   | "datetime"
   | "time"
   | "boolean";
-export type MemberFormat = "percentage" | "currency";
+
+export type MemberTypeToType<MT extends MemberType> = MT extends "number"
+  ? number
+  : MT extends "date"
+    ? Date
+    : MT extends "datetime"
+      ? Date
+      : MT extends "time"
+        ? string
+        : MT extends "boolean"
+          ? boolean
+          : string;
+
+export type MemberFormat =
+  | "percentage"
+  | "currency"
+  | ((value: MemberTypeToType<MemberType>) => string);
 
 export type MemberNameToType = { [k in never]: MemberType };
 

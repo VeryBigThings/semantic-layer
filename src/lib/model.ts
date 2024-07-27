@@ -394,11 +394,12 @@ export class Model<
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
       for (const g of granularity) {
+        const { format: _format, ...dimensionWithoutFormat } = dimension;
         this.dimensions[`${name}.${g}`] = new Dimension(
           this,
           `${name}.${g}`,
           {
-            ...dimension,
+            ...dimensionWithoutFormat,
             type: GranularityIndex[g].type,
             description: GranularityIndex[g].description,
           },

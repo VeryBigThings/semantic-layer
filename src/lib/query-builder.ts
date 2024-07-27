@@ -162,7 +162,11 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   infer M,
   infer F
 >
-  ? InputQuery<string & keyof D, string & keyof M, F>
+  ? InputQuery<
+      string & keyof D,
+      string & keyof M,
+      F & { member: string & (keyof D | keyof M) }
+    >
   : never;
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>

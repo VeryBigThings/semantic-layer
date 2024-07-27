@@ -1871,6 +1871,7 @@ await describe("semantic layer", async () => {
         description: "Sum of the track unit prices across models.",
         sql: ({ model, sql }) =>
           sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
+        format: (value) => `Price: $${value}`,
       });
 
     const albumsModel = semanticLayer
@@ -1903,6 +1904,7 @@ await describe("semantic layer", async () => {
       .withDimension("name", {
         type: "string",
         sql: ({ model }) => model.column("Name"),
+        format: (value) => `Artist: ${value}`,
       });
 
     const mediaTypeModel = semanticLayer
@@ -2323,6 +2325,46 @@ await describe("semantic layer", async () => {
       assert.deepEqual(result.rows, [
         {
           artists___name: "AC/DC",
+        },
+      ]);
+    });
+
+    await it("can return formatting function from introspection", async () => {
+      const queryInput: QueryBuilderQuery<typeof queryBuilder> = {
+        members: ["artists.name", "tracks.unit_price"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      };
+
+      const query = queryBuilder.buildQuery(queryInput);
+
+      const result = await client.query(query.sql, query.bindings);
+
+      const introspection = queryBuilder.introspect(queryInput);
+
+      const formattedResult = result.rows.map((row) =>
+        Object.fromEntries(
+          Object.entries(introspection).map(([column, columnIntrospection]) => {
+            const { format } = columnIntrospection;
+            if (format && format instanceof Function) {
+              return [column, format(row[column])];
+            }
+            return [column, row[column]];
+          }),
+        ),
+      );
+
+      assert.deepEqual(formattedResult, [
+        {
+          artists___name: "Artist: AC/DC",
+          tracks___unit_price: "Price: $17.82",
         },
       ]);
     });
