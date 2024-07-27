@@ -26,7 +26,7 @@ function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
   return filterFragmentBuilder(
     name,
     DOCUMENTATION[name],
-    z.array(z.string()),
+    z.array(z.string()).min(1),
     (filterBuilder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{
         sqls: string[];
