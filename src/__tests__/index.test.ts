@@ -1,30 +1,30 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { after, before, describe, it } from "node:test";
+import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from "@testcontainers/postgresql";
-import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
+import { afterAll, beforeAll, describe, it } from "vitest";
 
 import fs from "node:fs/promises";
+import { generateErrorMessage } from "zod-error";
 import path from "node:path";
 import pg from "pg";
-import { generateErrorMessage } from "zod-error";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-await describe("semantic layer", async () => {
+describe("semantic layer", async () => {
   let container: StartedPostgreSqlContainer;
   let client: pg.Client;
 
-  before(async () => {
+  beforeAll(async () => {
     const bootstrapSql = await fs.readFile(
-      path.join(__dirname, "Chinook_PostgreSql.sql"),
+      path.join(__dirname, "sqls/Chinook_PostgreSql.sql"),
       "utf-8",
     );
 
@@ -48,12 +48,12 @@ await describe("semantic layer", async () => {
     assert.equal(timezone, "UTC");
   });
 
-  after(async () => {
+  afterAll(async () => {
     await client.end();
     await container.stop();
   });
 
-  await describe("models from tables", async () => {
+  describe("models from tables", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -217,7 +217,7 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("can report errors", async () => {
+    it("can report errors", async () => {
       const result = queryBuilder.querySchema.safeParse({
         members: ["customers.customer_id", "invoices.total"],
         order: [{ member: "customers.customer_id", direction: "asc" }],
@@ -272,7 +272,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(formattedErrors, expectedFormattedErrors);
     });
 
-    await it("can query one dimension and one metric", async () => {
+    it("can query one dimension and one metric", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
         order: [{ member: "customers.customer_id", direction: "asc" }],
@@ -298,7 +298,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query one dimension and multiple metrics", async () => {
+    it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
         members: [
           "customers.customer_id",
@@ -367,7 +367,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query a metric and slice it correctly by a non primary key dimension", async () => {
+    it("can query a metric and slice it correctly by a non primary key dimension", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country", "customers.count"],
         order: [{ member: "customers.country", direction: "asc" }],
@@ -406,7 +406,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("will correctly load distinct dimensions when no metrics are loaded", async () => {
+    it("will correctly load distinct dimensions when no metrics are loaded", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country"],
         order: [{ member: "customers.country", direction: "asc" }],
@@ -432,7 +432,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("will remove non projected members from order clause", async () => {
+    it("will remove non projected members from order clause", async () => {
       const query = queryBuilder.buildQuery({
         members: [
           "customers.customer_id",
@@ -502,7 +502,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query one dimension and metric and filter by a different metric", async () => {
+    it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
         order: [{ member: "customers.customer_id", direction: "asc" }],
@@ -535,7 +535,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query a metric and filter by a dimension", async () => {
+    it("can query a metric and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
         members: ["invoices.total"],
         filters: [
@@ -551,7 +551,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(result.rows, [{ invoices___total: "39.62" }]);
     });
 
-    await it("can query multiple metrics and filter by a dimension", async () => {
+    it("can query multiple metrics and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
         members: ["invoices.total", "invoice_lines.quantity"],
         filters: [
@@ -569,7 +569,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query dimensions only", async () => {
+    it("can query dimensions only", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "albums.title"],
         filters: [
@@ -629,7 +629,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can correctly query datetime granularities", async () => {
+    it("can correctly query datetime granularities", async () => {
       const query = queryBuilder.buildQuery({
         members: [
           "invoices.invoice_id",
@@ -681,13 +681,13 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can introspect if dimension is a primary key", () => {
+    it("can introspect if dimension is a primary key", () => {
       assert.ok(
         repository.getDimension("customers.customer_id").isPrimaryKey(),
       );
     });
 
-    await it("can introspect if dimension is a granularity", () => {
+    it("can introspect if dimension is a granularity", () => {
       assert.ok(
         repository
           .getDimension("invoices.invoice_date.day_of_month")
@@ -695,7 +695,7 @@ await describe("semantic layer", async () => {
       );
     });
 
-    await it("can filter by results of another query", async () => {
+    it("can filter by results of another query", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.country"],
         order: [{ member: "customers.country", direction: "asc" }],
@@ -727,7 +727,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("models from sql queries", async () => {
+  describe("models from sql queries", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -776,7 +776,7 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("can query one dimension and multiple metrics", async () => {
+    it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
         order: [{ member: "customers.customer_id", direction: "asc" }],
@@ -833,8 +833,8 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("query schema", async () => {
-    await it("can parse a valid query", () => {
+  describe("query schema", async () => {
+    it("can parse a valid query", () => {
       const customersModel = semanticLayer
         .model()
         .withName("customers")
@@ -1558,7 +1558,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("model descriptions and query introspection", async () => {
+  describe("model descriptions and query introspection", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -1607,7 +1607,7 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("allows access to the model descriptions", () => {
+    it("allows access to the model descriptions", () => {
       const docs: string[] = [];
       const dimensions = repository.getDimensions();
       const metrics = repository.getMetrics();
@@ -1640,7 +1640,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("allows introspection of a query", () => {
+    it("allows introspection of a query", () => {
       const query: QueryBuilderQuery<typeof queryBuilder> = {
         members: [
           "customers.customer_id",
@@ -1693,7 +1693,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("full repository", async () => {
+  describe("full repository", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -2049,7 +2049,7 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("should return distinct results for dimension only query", async () => {
+    it("should return distinct results for dimension only query", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2102,7 +2102,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("should return order results by default", async () => {
+    it("should return order results by default", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2154,7 +2154,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("parsed query should equal original query", async () => {
+    it("parsed query should equal original query", async () => {
       const query = {
         members: ["artists.name", "tracks.unit_price"],
         filters: [
@@ -2173,7 +2173,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(parsedQuery, query);
     });
 
-    await it("can filter by contains", async () => {
+    it("can filter by contains", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2199,7 +2199,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can filter by notContains", async () => {
+    it("can filter by notContains", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2225,7 +2225,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can filter by startsWith", async () => {
+    it("can filter by startsWith", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2251,7 +2251,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can filter by notStartsWith", async () => {
+    it("can filter by notStartsWith", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2277,7 +2277,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can filter by endsWith", async () => {
+    it("can filter by endsWith", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2303,7 +2303,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can filter by notEndsWith", async () => {
+    it("can filter by notEndsWith", async () => {
       const query = queryBuilder.buildQuery({
         members: ["artists.name"],
         filters: [
@@ -2329,7 +2329,7 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can return formatting function from introspection", async () => {
+    it("can return formatting function from introspection", async () => {
       const queryInput: QueryBuilderQuery<typeof queryBuilder> = {
         members: ["artists.name", "tracks.unit_price"],
         filters: [
@@ -2426,7 +2426,7 @@ await describe("semantic layer", async () => {
           } = ${getContext().customerId}`,
       );
 
-    await it("propagates context to all sql functions", async () => {
+    it("propagates context to all sql functions", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2444,7 +2444,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000]);
     });
 
-    await it("propagates context to query filters", async () => {
+    it("propagates context to query filters", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2554,7 +2554,7 @@ await describe("semantic layer", async () => {
           )} = ${models.invoice_lines.dimension("invoice_id")}`,
       );
 
-    await it("can build SQL with namespaced tables (1)", async () => {
+    it("can build SQL with namespaced tables (1)", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2575,7 +2575,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(query.bindings, [5000]);
     });
 
-    await it("can build SQL with namespaced tables (2)", async () => {
+    it("can build SQL with namespaced tables (2)", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2592,7 +2592,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(query.bindings, [5000]);
     });
 
-    await it("can build SQL for ANSI", () => {
+    it("can build SQL for ANSI", () => {
       const ansiQueryBuilder = repository.build("ansi");
       const query = ansiQueryBuilder.buildQuery(
         {
@@ -2609,7 +2609,7 @@ await describe("semantic layer", async () => {
       assert.deepEqual(query.bindings, [5000]);
     });
 
-    await it("can build SQL for Databricks", () => {
+    it("can build SQL for Databricks", () => {
       const ansiQueryBuilder = repository.build("databricks");
       const query = ansiQueryBuilder.buildQuery(
         {
