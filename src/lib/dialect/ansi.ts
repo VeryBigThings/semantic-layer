@@ -1,9 +1,9 @@
-import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
-
+import { exhaustiveCheck } from "../query-builder/util.js";
 import { Granularity } from "../types.js";
 import { BaseDialect } from "./base.js";
+import { SqlFragment } from "./sql-query-builder.js";
 
-export class AnsiDialect extends BaseDialect {
+export class AnsiDialect extends BaseDialect<"array"> {
   withGranularity(granularity: Granularity, sql: string) {
     switch (granularity) {
       case "time":
@@ -34,9 +34,10 @@ export class AnsiDialect extends BaseDialect {
         return `CAST(${sql} AS DATE) || ' ' || LPAD(CAST(EXTRACT(HOUR FROM ${sql}) AS CHARACTER VARYING), 2, '0') || ':' || LPAD(CAST(EXTRACT(MINUTE FROM ${sql}) AS CHARACTER VARYING), 2, '0')`;
 
       default:
-        // biome-ignore lint/correctness/noSwitchDeclarations: Exhaustiveness check
-        const _exhaustiveCheck: never = granularity;
-        throw new Error(`Unrecognized granularity: ${granularity}`);
+        return exhaustiveCheck(
+          granularity,
+          `Unrecognized granularity: ${granularity}`,
+        );
     }
   }
 
@@ -64,15 +65,19 @@ export class AnsiDialect extends BaseDialect {
     return `${memberSql} ilike ${like}`;
   }
 
-  from(from: From): SqlQueryBuilder {
-    return new SqlQueryBuilder(this, from);
-  }
-
-  fragment(string: string, bindings: unknown[] = []) {
-    return new SqlFragment(string, bindings);
-  }
-
   sqlToNative(sql: string) {
     return sql;
+  }
+
+  paramsToNative(params: unknown[]) {
+    return params;
+  }
+
+  limitOffset(limit: number | undefined | null, offset: number): SqlFragment {
+    if (typeof limit === "number" && typeof offset === "number") {
+      return new SqlFragment("limit ? offset ?", [limit, offset]);
+    }
+
+    return new SqlFragment("offset ?", [offset]);
   }
 }

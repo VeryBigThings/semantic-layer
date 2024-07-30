@@ -11,7 +11,7 @@ import {
 } from "./types.js";
 
 import { Simplify } from "type-fest";
-import { BaseDialect } from "./dialect/base.js";
+import { AnyBaseDialect } from "./dialect/base.js";
 import { SqlQuery } from "./dialect/sql-query-builder/to-sql.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
@@ -52,11 +52,12 @@ export class QueryBuilder<
   D extends MemberNameToType,
   M extends MemberNameToType,
   F,
+  P,
 > {
   public readonly querySchema: QuerySchema;
   constructor(
     public readonly repository: AnyRepository,
-    public readonly dialect: BaseDialect,
+    public readonly dialect: AnyBaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
   }
@@ -94,7 +95,7 @@ export class QueryBuilder<
     ).toNative();
     return {
       sql,
-      bindings: bindings as unknown[],
+      bindings: bindings as P,
     };
   }
 
@@ -116,10 +117,11 @@ export class QueryBuilder<
           D & M,
           QueryMemberName<Q["members"]> & (keyof D | keyof M)
         >
-      >
+      >,
+      P
     > = {
       sql,
-      bindings: bindings as unknown[],
+      bindings: bindings as P,
     };
 
     return result;
@@ -160,7 +162,9 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   any,
   infer D,
   infer M,
-  infer F
+  infer F,
+  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  any
 >
   ? InputQuery<
       string & keyof D,
@@ -170,4 +174,4 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   : never;
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyQueryBuilder = QueryBuilder<any, any, any, any>;
+export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any>;

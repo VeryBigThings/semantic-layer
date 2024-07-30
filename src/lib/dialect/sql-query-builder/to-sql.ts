@@ -1,10 +1,10 @@
 import { SqlFragment, SqlQueryBuilder } from "../sql-query-builder.js";
 
-import { BaseDialect } from "../base.js";
+import { AnyBaseDialect } from "../base.js";
 
 export class SqlQuery {
   constructor(
-    private readonly dialect: BaseDialect,
+    private readonly dialect: AnyBaseDialect,
     public readonly sql: string,
     public readonly bindings: unknown[],
   ) {}
@@ -12,7 +12,7 @@ export class SqlQuery {
   toNative() {
     return {
       sql: this.dialect.sqlToNative(this.sql),
-      bindings: this.bindings,
+      bindings: this.dialect.paramsToNative(this.bindings),
     };
   }
 }
@@ -132,14 +132,15 @@ export function toSQL(sqlQueryBuilder: SqlQueryBuilder) {
     sql.push(orderBySql.join(", "));
   }
 
-  if (sqlQueryBuilder.query.limit) {
-    sql.push("limit ?");
-    bindings.push(sqlQueryBuilder.query.limit);
-  }
+  if (sqlQueryBuilder.query.limit || sqlQueryBuilder.query.offset) {
+    const { sql: limitOffsetSql, bindings: limitOffsetBindings } =
+      sqlQueryBuilder.dialect.limitOffset(
+        sqlQueryBuilder.query.limit,
+        sqlQueryBuilder.query.offset ?? 0,
+      );
 
-  if (sqlQueryBuilder.query.offset) {
-    sql.push("offset ?");
-    bindings.push(sqlQueryBuilder.query.offset);
+    sql.push(limitOffsetSql);
+    bindings.push(...limitOffsetBindings);
   }
 
   return new SqlQuery(sqlQueryBuilder.dialect, sql.join(" "), bindings);

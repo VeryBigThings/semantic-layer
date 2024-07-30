@@ -2,7 +2,9 @@ import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
 
 import { Granularity } from "../types.js";
 
-export abstract class BaseDialect {
+export type DialectParamsType = "array" | "object";
+
+export abstract class BaseDialect<P extends DialectParamsType> {
   abstract withGranularity(granularity: Granularity, sql: string): string;
 
   abstract asIdentifier(value: string): string;
@@ -14,9 +16,25 @@ export abstract class BaseDialect {
     memberSql: string,
   ): string;
 
-  abstract from(from: From): SqlQueryBuilder;
+  from(from: From): SqlQueryBuilder {
+    return new SqlQueryBuilder(this, from);
+  }
 
-  abstract fragment(string: string, bindings?: unknown[]): SqlFragment;
+  fragment(string: string, bindings: unknown[] = []) {
+    return new SqlFragment(string, bindings);
+  }
 
   abstract sqlToNative(sql: string): string;
+
+  abstract paramsToNative(
+    params: unknown[],
+  ): P extends "array" ? unknown[] : Record<string, unknown>;
+
+  abstract limitOffset(
+    limit: number | undefined | null,
+    offset: number,
+  ): SqlFragment;
 }
+
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+export type AnyBaseDialect = BaseDialect<any>;

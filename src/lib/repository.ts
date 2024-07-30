@@ -1,4 +1,9 @@
 import {
+  AvailableDialects,
+  AvailableDialectsNames,
+  DialectParamsReturnType,
+} from "./dialect.js";
+import {
   AnyJoin,
   JOIN_WEIGHTS,
   JoinDimensions,
@@ -15,15 +20,11 @@ import {
   GetFilterFragmentBuilderRegistryPayload,
   defaultFilterFragmentBuilderRegistry,
 } from "./query-builder/filter-builder.js";
-import { AvailableDialects, MemberNameToType } from "./types.js";
 
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
-import { AnsiDialect } from "./dialect/ansi.js";
-import { BaseDialect } from "./dialect/base.js";
-import { DatabricksDialect } from "./dialect/databricks.js";
-import { PostgresqlDialect } from "./dialect/postgresql.js";
 import { QueryBuilder } from "./query-builder.js";
+import { MemberNameToType } from "./types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelC<T> = T extends Model<infer C, any, any, any> ? C : never;
@@ -47,21 +48,6 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type AnyRepository = Repository<any, any, any, any>;
-
-function getDialect(dialect: AvailableDialects): BaseDialect {
-  switch (dialect) {
-    case "ansi":
-      return new AnsiDialect();
-    case "postgresql":
-      return new PostgresqlDialect();
-    case "databricks":
-      return new DatabricksDialect();
-    default:
-      // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
-      const _exhaustiveCheck: never = dialect;
-      throw new Error(`Dialect ${dialect} not supported`);
-  }
-}
 
 export class Repository<
   C,
@@ -271,9 +257,11 @@ export class Repository<
       .filter((join) => !join.reversed);
   }
 
-  build(dialectName: AvailableDialects) {
-    const dialect = getDialect(dialectName);
-    return new QueryBuilder<C, D, M, F>(this, dialect);
+  build<N extends AvailableDialectsNames, P = DialectParamsReturnType<N>>(
+    dialectName: N,
+  ) {
+    const dialect = AvailableDialects[dialectName];
+    return new QueryBuilder<C, D, M, F, P>(this, dialect);
   }
 }
 

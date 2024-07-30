@@ -134,7 +134,7 @@ export const GranularityIndex = {
   },
   hour_of_day: {
     description: "Hour of underlying field. Example output: 00",
-    type: "string",
+    type: "number",
   },
   minute: {
     description:
@@ -252,9 +252,9 @@ export type ProcessTOverridesNames<T extends Record<string, unknown>> = {
 };
 
 // biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
-export interface SqlQueryResult<RT extends Record<string, unknown>> {
+export interface SqlQueryResult<RT extends Record<string, unknown>, P> {
   sql: string;
-  bindings: unknown[];
+  bindings: P;
 }
 
 export type MergeInferredSqlQueryResultTypeWithOverrides<
@@ -265,7 +265,8 @@ export type MergeInferredSqlQueryResultTypeWithOverrides<
 export type InferSqlQueryResultType<
   T,
   TOverrides extends Record<string, unknown> = never,
-> = T extends SqlQueryResult<infer RT>
+  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+> = T extends SqlQueryResult<infer RT, any>
   ? [TOverrides] extends [never]
     ? RT
     : Simplify<
@@ -285,8 +286,6 @@ export type QueryMetricName<T> = Extract<
 export type QueryAdHocMetricType<N extends string> = {
   [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
 };
-
-export type AvailableDialects = "postgresql" | "ansi" | "databricks";
 
 export type IntrospectionResult = Record<
   string,

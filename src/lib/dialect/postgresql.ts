@@ -1,10 +1,10 @@
 import { AnsiDialect } from "./ansi.js";
 
-export class PostgresqlDialect extends AnsiDialect {
+export class PostgreSQLDialect extends AnsiDialect {
   sqlToNative(sql: string) {
     return this.positionBindings(sql);
   }
-  positionBindings(sql: string) {
+  private positionBindings(sql: string) {
     let questionCount = 0;
     return sql.replace(/(\\*)(\?)/g, (_match, escapes) => {
       if (escapes.length % 2) {

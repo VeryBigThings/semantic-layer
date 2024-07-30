@@ -1,17 +1,14 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
+import { beforeAll, describe, it } from "vitest";
 import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
-import {
-  PostgreSqlContainer,
-  StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
-import { afterAll, beforeAll, describe, it } from "vitest";
 
 import fs from "node:fs/promises";
-import { generateErrorMessage } from "zod-error";
 import path from "node:path";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import pg from "pg";
+import { generateErrorMessage } from "zod-error";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // import { format as sqlFormat } from "sql-formatter";
@@ -19,7 +16,6 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
 describe("semantic layer", async () => {
-  let container: StartedPostgreSqlContainer;
   let client: pg.Client;
 
   beforeAll(async () => {
@@ -28,7 +24,7 @@ describe("semantic layer", async () => {
       "utf-8",
     );
 
-    container = await new PostgreSqlContainer().start();
+    const container = await new PostgreSqlContainer().start();
 
     client = new pg.Client({
       host: container.getHost(),
@@ -46,12 +42,12 @@ describe("semantic layer", async () => {
     const timezone = timezoneResult.rows[0].TimeZone;
 
     assert.equal(timezone, "UTC");
-  });
 
-  afterAll(async () => {
-    await client.end();
-    await container.stop();
-  });
+    return async () => {
+      await client.end();
+      await container.stop();
+    };
+  }, 60000);
 
   describe("models from tables", async () => {
     const customersModel = semanticLayer
@@ -2437,11 +2433,11 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $6',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $6 offset $7',
       );
 
       // First 5 bindings are for the customerId, last one is for the limit
-      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000]);
+      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000, 0]);
     });
 
     it("propagates context to query filters", async () => {
@@ -2471,12 +2467,12 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers_query"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "customers_query") as "q0" order by "customers___customer_id" asc limit $11)) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $12',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers_query"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "customers_query") as "q0" order by "customers___customer_id" asc limit $11 offset $12)) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $13 offset $14',
       );
 
       assert.deepEqual(
         query.bindings,
-        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 5000],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 0, 5000, 0],
       );
     });
   });
@@ -2569,10 +2565,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select "invoice_lines_query"."customers___customer_id" as "customers___customer_id", "invoice_lines_query"."invoices___invoice_id" as "invoices___invoice_id", "invoice_lines_query"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."Customer"."CustomerId" as "customers___customer_id" from "public"."InvoiceLine" right join (select * from "public"."Invoice") as "invoices" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId" right join "public"."Customer" on "public"."Customer"."CustomerId" = "invoices"."CustomerId") as "invoice_lines_query") as "q0" order by "customers___customer_id" asc limit $1',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select "invoice_lines_query"."customers___customer_id" as "customers___customer_id", "invoice_lines_query"."invoices___invoice_id" as "invoices___invoice_id", "invoice_lines_query"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."Customer"."CustomerId" as "customers___customer_id" from "public"."InvoiceLine" right join (select * from "public"."Invoice") as "invoices" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId" right join "public"."Customer" on "public"."Customer"."CustomerId" = "invoices"."CustomerId") as "invoice_lines_query") as "q0" order by "customers___customer_id" asc limit $1 offset $2',
       );
 
-      assert.deepEqual(query.bindings, [5000]);
+      assert.deepEqual(query.bindings, [5000, 0]);
     });
 
     it("can build SQL with namespaced tables (2)", async () => {
@@ -2586,10 +2582,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit $1',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit $1 offset $2',
       );
 
-      assert.deepEqual(query.bindings, [5000]);
+      assert.deepEqual(query.bindings, [5000, 0]);
     });
 
     it("can build SQL for ANSI", () => {
@@ -2603,10 +2599,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit ?',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit ? offset ?',
       );
 
-      assert.deepEqual(query.bindings, [5000]);
+      assert.deepEqual(query.bindings, [5000, 0]);
     });
 
     it("can build SQL for Databricks", () => {
@@ -2620,10 +2616,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices_query`.`invoices___invoice_id` as `invoices___invoice_id` from (select distinct `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `invoices_query`) as `q0` order by `invoices___invoice_id` asc limit ?",
+        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices_query`.`invoices___invoice_id` as `invoices___invoice_id` from (select distinct `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `invoices_query`) as `q0` order by `invoices___invoice_id` asc limit ? offset ?",
       );
 
-      assert.deepEqual(query.bindings, [5000]);
+      assert.deepEqual(query.bindings, [5000, 0]);
     });
   });
 });
