@@ -111,7 +111,7 @@ export class Repository<
     return this.filterFragmentBuilderRegistry;
   }
 
-  join<N1 extends string, N2 extends string>(
+  join<N1 extends N, N2 extends N & Exclude<N, N1>>(
     type: AnyJoin["type"],
     modelName1: N1,
     modelName2: N2,
@@ -122,6 +122,10 @@ export class Repository<
 
     invariant(model1, `Model ${model1} not found in repository`);
     invariant(model2, `Model ${model2} not found in repository`);
+    invariant(
+      model1.name !== model2.name,
+      `Model ${model1.name} cannot be joined to itself`,
+    );
 
     const joinSqlDef = (context: C) => {
       const models = {
@@ -161,7 +165,7 @@ export class Repository<
     return this;
   }
 
-  joinOneToOne<N1 extends string, N2 extends string>(
+  joinOneToOne<N1 extends N, N2 extends N & Exclude<N, N1>>(
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
@@ -169,7 +173,7 @@ export class Repository<
     return this.join("oneToOne", model1, model2, joinSqlDefFn);
   }
 
-  joinOneToMany<N1 extends string, N2 extends string>(
+  joinOneToMany<N1 extends N, N2 extends N & Exclude<N, N1>>(
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
@@ -177,7 +181,7 @@ export class Repository<
     return this.join("oneToMany", model1, model2, joinSqlDefFn);
   }
 
-  joinManyToOne<N1 extends string, N2 extends string>(
+  joinManyToOne<N1 extends N, N2 extends N & Exclude<N, N1>>(
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
@@ -185,7 +189,7 @@ export class Repository<
     return this.join("manyToOne", model1, model2, joinSqlDefFn);
   }
 
-  joinManyToMany<N1 extends string, N2 extends string>(
+  joinManyToMany<N1 extends N, N2 extends N & Exclude<N, N1>>(
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
