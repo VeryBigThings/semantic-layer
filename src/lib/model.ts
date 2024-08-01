@@ -258,6 +258,7 @@ export abstract class Member {
   getFormat() {
     return this.props.format;
   }
+  abstract clone(model: AnyModel): Member;
 }
 
 export class Dimension extends Member {
@@ -268,6 +269,9 @@ export class Dimension extends Member {
     public readonly granularity?: Granularity,
   ) {
     super();
+  }
+  clone(model: AnyModel) {
+    return new Dimension(model, this.name, { ...this.props }, this.granularity);
   }
   getSql(dialect: AnyBaseDialect, context: unknown) {
     const result = this.getSqlWithoutGranularity(dialect, context);
@@ -318,6 +322,9 @@ export class Metric extends Member {
     public readonly props: AnyMetricProps,
   ) {
     super();
+  }
+  clone(model: AnyModel) {
+    return new Metric(model, this.name, { ...this.props });
   }
   getNextColumnRefOrDimensionRefAlias() {
     let columnRefOrDimensionRefAliasCounter = 0;
@@ -492,6 +499,16 @@ export class Model<
       getContext: () => context,
     });
     return result.render(dialect, context);
+  }
+  clone<N extends string>(name: N) {
+    const newModel = new Model<C, N, D, M>(name, this.config);
+    for (const [key, value] of Object.entries(this.dimensions)) {
+      newModel.dimensions[key] = value.clone(newModel);
+    }
+    for (const [key, value] of Object.entries(this.metrics)) {
+      newModel.metrics[key] = value.clone(newModel);
+    }
+    return newModel;
   }
 }
 
