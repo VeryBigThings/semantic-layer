@@ -2622,4 +2622,87 @@ describe("semantic layer", async () => {
       assert.deepEqual(query.bindings, [5000, 0]);
     });
   });
+
+  describe("repository without custom SQL", async () => {
+    const customersModel = semanticLayer
+      .model()
+      .withName("Customer")
+      .fromTable("Customer")
+      .withDimension("CustomerId", {
+        type: "number",
+        primaryKey: true,
+      })
+      .withDimension("FirstName", {
+        type: "string",
+      })
+      .withDimension("LastName", {
+        type: "string",
+      })
+
+      .withMetric("Count", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
+      });
+
+    const invoicesModel = semanticLayer
+      .model()
+      .withName("Invoice")
+      .fromTable("Invoice")
+      .withDimension("InvoiceId", {
+        type: "number",
+        primaryKey: true,
+      })
+      .withDimension("CustomerId", {
+        type: "number",
+      })
+      .withDimension("InvoiceDate", {
+        type: "datetime",
+      })
+      .withMetric("Total", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
+      });
+
+    const repository = semanticLayer
+      .repository()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .joinOneToMany(
+        "Customer",
+        "Invoice",
+        ({ sql, models }) =>
+          sql`${models.Customer.dimension(
+            "CustomerId",
+          )} = ${models.Invoice.dimension("CustomerId")}`,
+      );
+
+    const queryBuilder = repository.build("postgresql");
+
+    it("generates correct SQL", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["Customer.CustomerId", "Invoice.InvoiceId", "Invoice.Total"],
+        order: [{ member: "Customer.CustomerId", direction: "asc" }],
+        filters: [
+          { operator: "equals", member: "Customer.CustomerId", value: [1] },
+          { operator: "equals", member: "Invoice.InvoiceId", value: [98] },
+        ],
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          Customer___CustomerId: 1,
+          Invoice___Total: "3.98",
+          Invoice___InvoiceId: 98,
+        },
+      ]);
+    });
+  });
 });

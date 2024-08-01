@@ -134,7 +134,7 @@ export class SqlWithRefs extends ModelRef {
         const { sql, bindings } = value.render(dialect, context);
 
         columnOrDimensionRefs.push({
-          sql: `${sql} AS ${dialect.asIdentifier(alias)}`,
+          sql: `${sql} as ${alias}`,
           bindings,
         });
       } else if (value instanceof SqlWithRefs) {
@@ -292,9 +292,7 @@ export class Dimension extends Member {
     }
 
     const { sql: asSql, bindings } = this.model.getAs(dialect, context);
-    const sql = `${dialect.asIdentifier(asSql)}.${dialect.asIdentifier(
-      this.name,
-    )}`;
+    const sql = `${asSql}.${dialect.asIdentifier(this.name)}`;
 
     return { sql, bindings };
   }
@@ -326,17 +324,19 @@ export class Metric extends Member {
   clone(model: AnyModel) {
     return new Metric(model, this.name, { ...this.props });
   }
-  getNextColumnRefOrDimensionRefAlias() {
+  getNextColumnRefOrDimensionRefAlias(dialect: AnyBaseDialect) {
     let columnRefOrDimensionRefAliasCounter = 0;
     return () =>
-      `${this.name}___metric_ref_${columnRefOrDimensionRefAliasCounter++}`;
+      dialect.asIdentifier(
+        `${this.name}___metric_ref_${columnRefOrDimensionRefAliasCounter++}`,
+      );
   }
 
   getSql(dialect: AnyBaseDialect, context: unknown) {
     const result = this.renderSql(
       dialect,
       context,
-      this.getNextColumnRefOrDimensionRefAlias(),
+      this.getNextColumnRefOrDimensionRefAlias(dialect),
     );
 
     if (result) {
@@ -359,7 +359,7 @@ export class Metric extends Member {
       return sqlFnResult.getRefsSqls(
         dialect,
         context,
-        this.getNextColumnRefOrDimensionRefAlias(),
+        this.getNextColumnRefOrDimensionRefAlias(dialect),
       );
     }
   }
