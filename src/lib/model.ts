@@ -9,6 +9,7 @@ import {
   SqlWithBindings,
 } from "./types.js";
 
+import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
@@ -387,9 +388,14 @@ export class Model<
     DN1 extends string,
     DP extends DimensionProps<C, string & keyof D>,
   >(
-    name: DN1,
+    name: Exclude<DN1, keyof D | keyof M>,
     dimension: DP,
   ): Model<C, N, D & WithGranularityDimensions<DN1, DP["type"]>, M> {
+    invariant(
+      !(this.dimensions[name] || this.metrics[name]),
+      `Member "${name}" already exists`,
+    );
+
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (typeHasGranularity(dimension.type)) {
       const granularity = GranularityByDimensionType[dimension.type];
@@ -410,24 +416,25 @@ export class Model<
     return this;
   }
   withMetric<MN1 extends string, MP extends MetricProps<C, string & keyof D>>(
-    name: MN1,
+    name: Exclude<MN1, keyof M | keyof D>,
     metric: MP,
   ): Model<C, N, D, M & { [k in MN1]: MP["type"] }> {
+    invariant(
+      !(this.dimensions[name] || this.metrics[name]),
+      `Member "${name}" already exists`,
+    );
+
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
   getMetric(name: string & keyof M) {
     const metric = this.metrics[name];
-    if (!metric) {
-      throw new Error(`Metric ${name} not found in model ${this.name}`);
-    }
+    invariant(metric, `Metric ${name} not found in model ${this.name}`);
     return metric;
   }
   getDimension(name: string & keyof D) {
     const dimension = this.dimensions[name];
-    if (!dimension) {
-      throw new Error(`Dimension ${name} not found in model ${this.name}`);
-    }
+    invariant(dimension, `Dimension ${name} not found in model ${this.name}`);
     return dimension;
   }
   getPrimaryKeyDimensions() {
@@ -435,9 +442,7 @@ export class Model<
   }
   getMember(name: string & (keyof D | keyof M)) {
     const member = this.dimensions[name] || this.metrics[name];
-    if (!member) {
-      throw new Error(`Member ${name} not found in model ${this.name}`);
-    }
+    invariant(member, `Member ${name} not found in model ${this.name}`);
     return member;
   }
   getDimensions() {
@@ -478,16 +483,15 @@ export class Model<
     return this.getTableName(dialect, context);
   }
   getSql(dialect: AnyBaseDialect, context: C) {
-    if (this.config.type === "sqlQuery") {
-      const result = this.config.sql({
-        identifier: (name: string) => new IdentifierRef(name),
-        sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
-          new SqlWithRefs([...strings], values),
-        getContext: () => context,
-      });
-      return result.render(dialect, context);
-    }
-    throw new Error("Model is not an SQL query");
+    invariant(this.config.type === "sqlQuery", "Model is not an SQL query");
+
+    const result = this.config.sql({
+      identifier: (name: string) => new IdentifierRef(name),
+      sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
+        new SqlWithRefs([...strings], values),
+      getContext: () => context,
+    });
+    return result.render(dialect, context);
   }
 }
 
