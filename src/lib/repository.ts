@@ -1,8 +1,8 @@
 import {
-  AvailableDialects,
-  AvailableDialectsNames,
-  DialectParamsReturnType,
-} from "./dialect.js";
+  AnyFilterFragmentBuilderRegistry,
+  GetFilterFragmentBuilderRegistryPayload,
+  defaultFilterFragmentBuilderRegistry,
+} from "./query-builder/filter-builder.js";
 import {
   AnyJoin,
   JOIN_WEIGHTS,
@@ -14,17 +14,17 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import type { Dimension, Metric } from "./model.js";
 import {
-  AnyFilterFragmentBuilderRegistry,
-  GetFilterFragmentBuilderRegistryPayload,
-  defaultFilterFragmentBuilderRegistry,
-} from "./query-builder/filter-builder.js";
+  AvailableDialects,
+  AvailableDialectsNames,
+  DialectParamsReturnType,
+} from "./dialect.js";
+import { CustomGranularityElements, MemberNameToType } from "./types.js";
+import type { Dimension, Metric } from "./model.js";
 
+import { QueryBuilder } from "./query-builder.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
-import { QueryBuilder } from "./query-builder.js";
-import { MemberNameToType } from "./types.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: Using any for inference
 export type ModelC<T> = T extends Model<infer C, any, any, any> ? C : never;
@@ -69,6 +69,7 @@ export class Repository<
   > = {} as Record<string, { model: string; dimension: string }>;
   readonly metricsIndex: Record<string, { model: string; metric: string }> =
     {} as Record<string, { model: string; metric: string }>;
+  readonly granularities: Record<string, CustomGranularityElements> = {};
 
   withModel<T extends AnyModel>(model: ModelWithMatchingContext<C, T>) {
     this.models[model.name] = model;
@@ -259,6 +260,27 @@ export class Repository<
     return Object.values(this.joins)
       .flatMap((joins) => Object.values(joins))
       .filter((join) => !join.reversed);
+  }
+
+  withGranularity<HN extends string>(
+    hierarchyName: HN,
+    elements: (
+      | Extract<keyof M | keyof D, string>
+      | {
+          key: string;
+          elements: Extract<keyof M | keyof D, string>[];
+          display?:
+            | Extract<keyof M | keyof D, string>
+            | Extract<keyof M | keyof D, string>[];
+        }
+    )[],
+  ) {
+    invariant(
+      this.granularities[hierarchyName] === undefined,
+      `Hierarchy ${hierarchyName} already exists`,
+    );
+    this.granularities[hierarchyName] = elements;
+    return this;
   }
 
   build<N extends AvailableDialectsNames, P = DialectParamsReturnType<N>>(

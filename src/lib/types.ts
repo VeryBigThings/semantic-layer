@@ -322,3 +322,8 @@ export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
 
 // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyInputQuery = InputQuery<string, string, any>;
+
+export type CustomGranularityElement =
+  | string
+  | { key: string; elements: string[]; display?: string | string[] };
+export type CustomGranularityElements = CustomGranularityElement[];
