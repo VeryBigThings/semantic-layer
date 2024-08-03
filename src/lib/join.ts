@@ -111,7 +111,7 @@ export interface Join<C> {
   reversed: boolean;
   type: "oneToOne" | "oneToMany" | "manyToOne" | "manyToMany";
 }
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
+
 export type AnyJoin = Join<any>;
 
 export type JoinFn<

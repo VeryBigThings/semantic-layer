@@ -1,8 +1,8 @@
 import {
-  AnyFilterFragmentBuilderRegistry,
-  GetFilterFragmentBuilderRegistryPayload,
-  defaultFilterFragmentBuilderRegistry,
-} from "./query-builder/filter-builder.js";
+  AvailableDialects,
+  AvailableDialectsNames,
+  DialectParamsReturnType,
+} from "./dialect.js";
 import {
   AnyJoin,
   JOIN_WEIGHTS,
@@ -14,30 +14,41 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import {
-  AvailableDialects,
-  AvailableDialectsNames,
-  DialectParamsReturnType,
-} from "./dialect.js";
-import { CustomGranularityElements, MemberNameToType } from "./types.js";
 import type { Dimension, Metric } from "./model.js";
+import {
+  AnyFilterFragmentBuilderRegistry,
+  GetFilterFragmentBuilderRegistryPayload,
+  defaultFilterFragmentBuilderRegistry,
+} from "./query-builder/filter-builder.js";
+import {
+  CustomGranularity,
+  CustomGranularityElements,
+  GranularityType,
+  MemberNameToType,
+} from "./types.js";
 
-import { QueryBuilder } from "./query-builder.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
+import { QueryBuilder } from "./query-builder.js";
 
-// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
-export type ModelC<T> = T extends Model<infer C, any, any, any> ? C : never;
+export type ModelC<T> = T extends Model<infer C, any, any, any, any>
+  ? C
+  : never;
 
-// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
-export type ModelN<T> = T extends Model<any, infer N, any, any> ? N : never;
-// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
-export type ModelD<T> = T extends Model<any, infer N, infer D, any>
+export type ModelN<T> = T extends Model<any, infer N, any, any, any>
+  ? N
+  : never;
+
+export type ModelD<T> = T extends Model<any, infer N, infer D, any, any>
   ? { [K in string & keyof D as `${N}.${K}`]: D[K] }
   : never;
-// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
-export type ModelM<T> = T extends Model<any, infer N, any, infer M>
+
+export type ModelM<T> = T extends Model<any, infer N, any, infer M, any>
   ? { [K in string & keyof M as `${N}.${K}`]: M[K] }
+  : never;
+
+export type ModelG<T> = T extends Model<any, any, any, any, infer G>
+  ? G
   : never;
 
 export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
@@ -46,8 +57,7 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
   ? T
   : never;
 
-// biome-ignore lint/suspicious/noExplicitAny: Using any for inference
-export type AnyRepository = Repository<any, any, any, any>;
+export type AnyRepository = Repository<any, any, any, any, any, any>;
 
 export class Repository<
   C,
@@ -57,6 +67,7 @@ export class Repository<
   F = GetFilterFragmentBuilderRegistryPayload<
     ReturnType<typeof defaultFilterFragmentBuilderRegistry>
   >,
+  G extends string = never,
 > {
   private readonly models: Record<string, AnyModel> = {};
   private filterFragmentBuilderRegistry: AnyFilterFragmentBuilderRegistry =
@@ -69,7 +80,8 @@ export class Repository<
   > = {} as Record<string, { model: string; dimension: string }>;
   readonly metricsIndex: Record<string, { model: string; metric: string }> =
     {} as Record<string, { model: string; metric: string }>;
-  readonly granularities: Record<string, CustomGranularityElements> = {};
+  readonly granularities: CustomGranularity[] = [];
+  readonly granularitiesNames: Set<string> = new Set();
 
   withModel<T extends AnyModel>(model: ModelWithMatchingContext<C, T>) {
     this.models[model.name] = model;
@@ -85,14 +97,76 @@ export class Repository<
         metric,
       };
     }
+    for (const granularity of Object.values(model.granularities)) {
+      this.unsafeWithGranularity(
+        `${model.name}.${granularity.name}`,
+        granularity.elements.map((element) => {
+          if (typeof element === "string") {
+            return `${model.name}.${element}`;
+          }
+          const { key, elements, display } = element;
+          const namespacedDisplay =
+            display === undefined
+              ? undefined
+              : typeof display === "string"
+                ? `${model.name}.${display}`
+                : display.map((element) => `${model.name}.${element}`);
+          const namespacedElements = elements.map(
+            (element) => `${model.name}.${element}`,
+          );
+          return {
+            key,
+            elements: namespacedElements,
+            display: namespacedDisplay,
+          };
+        }),
+        granularity.type ?? "custom",
+      );
+    }
 
     return this as unknown as Repository<
       C,
       N | ModelN<T>,
       D & ModelD<T>,
       M & ModelM<T>,
-      F
+      F,
+      G | `${ModelN<T>}.${ModelG<T>}`
     >;
+  }
+
+  unsafeWithGranularity(
+    granularityName: string,
+    elements: CustomGranularityElements,
+    type: GranularityType,
+    position: "top" | "bottom" = "bottom",
+  ) {
+    invariant(
+      this.granularitiesNames.has(granularityName) === false,
+      `Granularity ${granularityName} already exists`,
+    );
+    this.granularitiesNames.add(granularityName);
+    if (position === "top") {
+      this.granularities.unshift({
+        name: granularityName,
+        type,
+        elements,
+      });
+    } else {
+      this.granularities.push({
+        name: granularityName,
+        type,
+        elements,
+      });
+    }
+    return this;
+  }
+
+  withGranularity<GN extends string>(
+    granularityName: Exclude<GN, G>,
+    elements: CustomGranularityElements<Extract<keyof M | keyof D, string>>,
+    type: GranularityType = "custom",
+  ): Repository<C, N, D, M, F, G | GN> {
+    return this.unsafeWithGranularity(granularityName, elements, type, "top");
   }
 
   withFilterFragmentBuilderRegistry<T extends AnyFilterFragmentBuilderRegistry>(
@@ -104,7 +178,8 @@ export class Repository<
       N,
       D,
       M,
-      GetFilterFragmentBuilderRegistryPayload<T>
+      GetFilterFragmentBuilderRegistryPayload<T>,
+      G
     >;
   }
 
@@ -260,27 +335,6 @@ export class Repository<
     return Object.values(this.joins)
       .flatMap((joins) => Object.values(joins))
       .filter((join) => !join.reversed);
-  }
-
-  withGranularity<HN extends string>(
-    hierarchyName: HN,
-    elements: (
-      | Extract<keyof M | keyof D, string>
-      | {
-          key: string;
-          elements: Extract<keyof M | keyof D, string>[];
-          display?:
-            | Extract<keyof M | keyof D, string>
-            | Extract<keyof M | keyof D, string>[];
-        }
-    )[],
-  ) {
-    invariant(
-      this.granularities[hierarchyName] === undefined,
-      `Hierarchy ${hierarchyName} already exists`,
-    );
-    this.granularities[hierarchyName] = elements;
-    return this;
   }
 
   build<N extends AvailableDialectsNames, P = DialectParamsReturnType<N>>(

@@ -179,7 +179,6 @@ export class FilterFragmentBuilderRegistry<T = never> {
 }
 
 export type AnyFilterFragmentBuilderRegistry =
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   FilterFragmentBuilderRegistry<any>;
 export type GetFilterFragmentBuilderRegistryPayload<T> =
   T extends FilterFragmentBuilderRegistry<infer P> ? P : never;

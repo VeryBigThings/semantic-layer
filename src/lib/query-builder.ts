@@ -1,5 +1,6 @@
 import {
   AnyInputQuery,
+  AnyMemberFormat,
   FilterType,
   InputQuery,
   IntrospectionResult,
@@ -145,7 +146,7 @@ export class QueryBuilder<
       acc[memberName.replaceAll(".", "___")] = {
         memberType: isDimension ? "dimension" : "metric",
         path: member.getPath(),
-        format: member.getFormat(),
+        format: member.getFormat() as AnyMemberFormat,
         type: member.getType(),
         description: member.getDescription(),
         isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
@@ -158,12 +159,10 @@ export class QueryBuilder<
 }
 
 export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any,
   infer D,
   infer M,
   infer F,
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any
 >
   ? InputQuery<
@@ -173,5 +172,4 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
     >
   : never;
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any>;

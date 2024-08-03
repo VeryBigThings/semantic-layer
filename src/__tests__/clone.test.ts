@@ -19,10 +19,21 @@ const userModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("LastName"),
   })
+  .withDimension("datetime", {
+    type: "datetime",
+    sql: ({ model }) => model.column("DateTime"),
+  })
   .withMetric("count", {
     type: "string",
     sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("UserId")})`,
-  });
+  })
+  .withGranularity("name", [
+    {
+      key: "name",
+      elements: ["first_name", "last_name", "user_id"],
+      display: ["first_name", "last_name"],
+    },
+  ]);
 
 const customerModel = userModel.clone("customer");
 const employeeModel = userModel.clone("employee");
@@ -71,6 +82,12 @@ const queryBuilder = repository.build("postgresql");
 
 describe("clone", async () => {
   it("can clone a model", async () => {
+    assert.deepEqual(userModel.granularities, customerModel.granularities);
+    assert.deepEqual(
+      userModel.granularitiesNames,
+      customerModel.granularitiesNames,
+    );
+
     const query = queryBuilder.buildQuery({
       members: [
         "customer.user_id",

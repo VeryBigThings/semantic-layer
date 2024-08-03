@@ -15,7 +15,8 @@
       "style": {
         "useNamingConvention": "off",
         "noNonNullAssertion": "off"
-      }
+      },
+      "suspicious": { "noExplicitAny": "off" }
     }
   }
 }

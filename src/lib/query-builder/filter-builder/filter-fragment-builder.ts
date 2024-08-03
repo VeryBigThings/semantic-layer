@@ -74,7 +74,6 @@ export class FilterFragmentBuilder<
 export type AnyFilterFragmentBuilder = FilterFragmentBuilder<
   string,
   ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any
 >;
 

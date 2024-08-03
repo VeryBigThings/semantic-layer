@@ -1,6 +1,6 @@
 import * as semanticLayer from "../index.js";
 
-import { assert, describe, it } from "vitest";
+import { assert, it } from "vitest";
 
 const customersModel = semanticLayer
   .model()
@@ -61,7 +61,22 @@ const customersModel = semanticLayer
   .withDimension("email", {
     type: "string",
     sql: ({ model }) => model.column("Email"),
-  });
+  })
+  .withGranularity("address", [
+    "country",
+    "state",
+    "city",
+    "postal_code",
+    "address",
+  ])
+  .withGranularity("personal_data", [
+    {
+      key: "personal_data",
+      elements: ["first_name", "last_name", "full_name", "customer_id"],
+      display: "full_name",
+    },
+  ])
+  .withGranularity("company", ["company"]);
 
 const invoicesModel = semanticLayer
   .model()
@@ -104,7 +119,14 @@ const invoicesModel = semanticLayer
     type: "number",
     description: "Invoice total.",
     sql: ({ model, sql }) => sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
-  });
+  })
+  .withGranularity("billing_address", [
+    "billing_country",
+    "billing_state",
+    "billing_city",
+    "billing_postal_code",
+    "billing_address",
+  ]);
 
 const invoiceLinesModel = semanticLayer
   .model()
@@ -211,7 +233,14 @@ const artistModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Name"),
     format: (value) => `Artist: ${value}`,
-  });
+  })
+  .withGranularity("name", [
+    {
+      key: "name",
+      elements: ["name", "artist_id"],
+      display: "name",
+    },
+  ]);
 
 const mediaTypeModel = semanticLayer
   .model()
@@ -225,7 +254,14 @@ const mediaTypeModel = semanticLayer
   .withDimension("name", {
     type: "string",
     sql: ({ model }) => model.column("Name"),
-  });
+  })
+  .withGranularity("name", [
+    {
+      key: "name",
+      elements: ["name", "media_type_id"],
+      display: "name",
+    },
+  ]);
 
 const genreModel = semanticLayer
   .model()
@@ -239,7 +275,14 @@ const genreModel = semanticLayer
     type: "number",
     primaryKey: true,
     sql: ({ model }) => model.column("GenreId"),
-  });
+  })
+  .withGranularity("name", [
+    {
+      key: "data",
+      elements: ["name", "genre_id"],
+      display: "name",
+    },
+  ]);
 
 const playlistModel = semanticLayer
   .model()
@@ -253,7 +296,14 @@ const playlistModel = semanticLayer
   .withDimension("name", {
     type: "string",
     sql: ({ model }) => model.column("Name"),
-  });
+  })
+  .withGranularity("name", [
+    {
+      key: "name",
+      elements: ["name", "playlist_id"],
+      display: "name",
+    },
+  ]);
 
 const playlistTrackModel = semanticLayer
   .model()
@@ -280,61 +330,6 @@ const repository = semanticLayer
   .withModel(genreModel)
   .withModel(playlistModel)
   .withModel(playlistTrackModel)
-  .withGranularity("customer.address", [
-    "customers.country",
-    "customers.state",
-    "customers.city",
-    "customers.postal_code",
-    "customers.address",
-  ])
-  .withGranularity("customer", [
-    {
-      key: "customer.personal_data",
-      elements: [
-        "customers.first_name",
-        "customers.last_name",
-        "customers.full_name",
-        "customers.customer_id",
-      ],
-      display: "customers.full_name",
-    },
-  ])
-  .withGranularity("customer.company", ["customers.company"])
-  .withGranularity("invoice.billing_address", [
-    "invoices.billing_country",
-    "invoices.billing_state",
-    "invoices.billing_city",
-    "invoices.billing_postal_code",
-    "invoices.billing_address",
-  ])
-  .withGranularity("genre", [
-    {
-      key: "genre.data",
-      elements: ["genres.name", "genres.genre_id"],
-      display: "genres.name",
-    },
-  ])
-  .withGranularity("playlist", [
-    {
-      key: "playlist.data",
-      elements: ["playlists.name", "playlists.playlist_id"],
-      display: "playlists.name",
-    },
-  ])
-  .withGranularity("media_type", [
-    {
-      key: "media_type.data",
-      elements: ["media_types.name", "media_types.media_type_id"],
-      display: "media_types.name",
-    },
-  ])
-  .withGranularity("artist", [
-    {
-      key: "artist.data",
-      elements: ["artists.name", "artists.artist_id"],
-      display: "artists.name",
-    },
-  ])
   .withGranularity("album", [
     "artists.name",
     {
@@ -425,4 +420,136 @@ const repository = semanticLayer
       )} = ${models.tracks.dimension("track_id")}`,
   );
 
-const queryBuilder = repository.build("postgresql");
+//const queryBuilder = repository.build("postgresql");
+
+it("can correctly generate granularities", () => {
+  assert.deepEqual(repository.granularities, [
+    {
+      name: "track",
+      type: "custom",
+      elements: [
+        "artists.name",
+        "albums.title",
+        {
+          key: "track.data",
+          elements: ["tracks.name", "tracks.track_id"],
+          display: "tracks.name",
+        },
+      ],
+    },
+    {
+      name: "album",
+      type: "custom",
+      elements: [
+        "artists.name",
+        {
+          key: "album.data",
+          elements: ["albums.title", "albums.album_id"],
+          display: "albums.title",
+        },
+      ],
+    },
+    {
+      name: "customers.company",
+      type: "custom",
+      elements: ["customers.company"],
+    },
+    {
+      name: "customers.personal_data",
+      type: "custom",
+      elements: [
+        {
+          key: "personal_data",
+          elements: [
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.customer_id",
+          ],
+          display: "customers.full_name",
+        },
+      ],
+    },
+    {
+      name: "customers.address",
+      type: "custom",
+      elements: [
+        "customers.country",
+        "customers.state",
+        "customers.city",
+        "customers.postal_code",
+        "customers.address",
+      ],
+    },
+    {
+      name: "invoices.billing_address",
+      type: "custom",
+      elements: [
+        "invoices.billing_country",
+        "invoices.billing_state",
+        "invoices.billing_city",
+        "invoices.billing_postal_code",
+        "invoices.billing_address",
+      ],
+    },
+    {
+      name: "invoices.invoice_date",
+      type: "temporal",
+      elements: [
+        "invoices.invoice_date.year",
+        "invoices.invoice_date.quarter",
+        "invoices.invoice_date.quarter_of_year",
+        "invoices.invoice_date.month",
+        "invoices.invoice_date.month_num",
+        "invoices.invoice_date.week",
+        "invoices.invoice_date.week_num",
+        "invoices.invoice_date.day_of_month",
+        "invoices.invoice_date",
+      ],
+    },
+    {
+      name: "artists.name",
+      type: "custom",
+      elements: [
+        {
+          key: "name",
+          elements: ["artists.name", "artists.artist_id"],
+          display: "artists.name",
+        },
+      ],
+    },
+    {
+      name: "media_types.name",
+      type: "custom",
+      elements: [
+        {
+          key: "name",
+          elements: ["media_types.name", "media_types.media_type_id"],
+          display: "media_types.name",
+        },
+      ],
+    },
+    {
+      name: "genres.name",
+      type: "custom",
+      elements: [
+        {
+          key: "data",
+          elements: ["genres.name", "genres.genre_id"],
+          display: "genres.name",
+        },
+      ],
+    },
+    {
+      name: "playlists.name",
+      type: "custom",
+      elements: [
+        {
+          key: "name",
+          elements: ["playlists.name", "playlists.playlist_id"],
+          display: "playlists.name",
+        },
+      ],
+    },
+  ]);
+});

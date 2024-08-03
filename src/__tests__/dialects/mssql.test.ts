@@ -393,7 +393,7 @@ describe("mssql dialect", () => {
     return async () => {
       await container.stop();
     };
-  }, 60000);
+  });
 
   describe("test", () => {
     it("can retrieve data", async () => {
@@ -475,6 +475,9 @@ describe("mssql dialect", () => {
         order: [{ member: "artists.name", direction: "asc" }],
         limit: 1,
       });
+
+      console.log(query.sql);
+      console.log(query.bindings);
 
       const result = await runQuery<InferSqlQueryResultType<typeof query>>(
         query.sql,
