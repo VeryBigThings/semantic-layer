@@ -103,3 +103,10 @@ it("can convert path to alias", () => {
     "user___user_id",
   );
 });
+
+it("can convert alias to path", () => {
+  assert.equal(
+    semanticLayer.helpers.aliasToPath("user___user_id"),
+    "user.user_id",
+  );
+});

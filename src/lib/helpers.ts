@@ -53,3 +53,7 @@ export function formatResults<T extends Record<string, unknown>>(
 export function pathToAlias(path: string) {
   return path.replaceAll(".", "___");
 }
+
+export function aliasToPath(alias: string) {
+  return alias.replaceAll("___", ".");
+}
