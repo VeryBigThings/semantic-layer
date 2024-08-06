@@ -1,7 +1,8 @@
-import { Get, Simplify } from "type-fest";
 import {
-  CustomGranularity,
-  CustomGranularityElements,
+  AnyCustomGranularityElement,
+  CustomGranularityElementInit,
+} from "./custom-granularity.js";
+import {
   DimensionWithTemporalGranularity,
   GranularityType,
   MemberFormat,
@@ -12,9 +13,10 @@ import {
   TemporalGranularityIndex,
   makeTemporalGranularityElementsForDimension,
 } from "./types.js";
+import { Get, Simplify } from "type-fest";
 
-import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
+import invariant from "tiny-invariant";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
 
@@ -253,10 +255,11 @@ export abstract class Member {
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
-  getAlias(dialect: AnyBaseDialect) {
-    return dialect.asIdentifier(
-      `${this.model.name}___${this.name.replaceAll(".", "___")}`,
-    );
+  getQuotedAlias(dialect: AnyBaseDialect) {
+    return dialect.asIdentifier(this.getAlias());
+  }
+  getAlias() {
+    return `${this.model.name}.${this.name}`;
   }
   getPath() {
     return `${this.model.name}.${this.name}`;
@@ -293,6 +296,19 @@ export abstract class Member {
   }
   getFormat() {
     return this.props.format;
+  }
+  unsafeFormatValue(value: unknown) {
+    const format = this.getFormat();
+    if (typeof format === "function") {
+      return (format as (value: unknown) => string)(value);
+    }
+    if (format === "currency") {
+      return `$${value}`;
+    }
+    if (format === "percentage") {
+      return `${value}%`;
+    }
+    return String(value);
   }
   abstract clone(model: AnyModel): Member;
 }
@@ -417,7 +433,14 @@ export class Model<
 > {
   public readonly dimensions: Record<string, Dimension> = {};
   public readonly metrics: Record<string, Metric> = {};
-  public readonly granularities: CustomGranularity[] = [];
+  public readonly categoricalGranularities: {
+    name: string;
+    elements: AnyCustomGranularityElement[];
+  }[] = [];
+  public readonly temporalGranularities: {
+    name: string;
+    elements: AnyCustomGranularityElement[];
+  }[] = [];
   public readonly granularitiesNames: Set<string> = new Set();
 
   constructor(
@@ -461,6 +484,7 @@ export class Model<
             ...dimensionWithoutFormat,
             type: TemporalGranularityIndex[g].type,
             description: TemporalGranularityIndex[g].description,
+            format: (value: unknown) => `${value}`,
           },
           g,
         );
@@ -469,7 +493,6 @@ export class Model<
         name,
         makeTemporalGranularityElementsForDimension(name, dimension.type),
         "temporal",
-        "bottom",
       );
     }
     return this;
@@ -488,36 +511,46 @@ export class Model<
   }
   unsafeWithGranularity(
     granularityName: string,
-    elements: CustomGranularityElements,
+    elements: AnyCustomGranularityElement[],
     type: GranularityType,
-    position: "top" | "bottom" = "bottom",
   ) {
     invariant(
       this.granularitiesNames.has(granularityName) === false,
       `Granularity ${granularityName} already exists`,
     );
     this.granularitiesNames.add(granularityName);
-    if (position === "top") {
-      this.granularities.unshift({
-        name: granularityName,
-        type,
-        elements,
-      });
-    } else {
-      this.granularities.push({
-        name: granularityName,
-        type,
-        elements,
-      });
+    if (type === "categorical") {
+      this.categoricalGranularities.push({ name: granularityName, elements });
+    } else if (type === "temporal") {
+      this.temporalGranularities.push({ name: granularityName, elements });
     }
     return this;
   }
-  withGranularity<GN extends string>(
+  withCategoricalGranularity<GN extends string>(
     granularityName: Exclude<GN, G>,
-    elements: CustomGranularityElements<Extract<keyof M | keyof D, string>>,
-    type: GranularityType = "custom",
+    builder: (args: {
+      element: (
+        name: string,
+      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
+    }) => AnyCustomGranularityElement[],
   ): Model<C, N, D, M, G | GN> {
-    return this.unsafeWithGranularity(granularityName, elements, type, "top");
+    const elements = builder({
+      element: (name) => new CustomGranularityElementInit(this, name),
+    });
+    return this.unsafeWithGranularity(granularityName, elements, "categorical");
+  }
+  withTemporalGranularity<GN extends string>(
+    granularityName: Exclude<GN, G>,
+    builder: (args: {
+      element: (
+        name: string,
+      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
+    }) => AnyCustomGranularityElement[],
+  ): Model<C, N, D, M, G | GN> {
+    const elements = builder({
+      element: (name) => new CustomGranularityElementInit(this, name),
+    });
+    return this.unsafeWithGranularity(granularityName, elements, "temporal");
   }
   getMetric(name: string & keyof M) {
     const metric = this.metrics[name];
@@ -593,7 +626,8 @@ export class Model<
     for (const [key, value] of Object.entries(this.metrics)) {
       newModel.metrics[key] = value.clone(newModel);
     }
-    newModel.granularities.push(...this.granularities);
+    newModel.temporalGranularities.push(...this.temporalGranularities);
+    newModel.categoricalGranularities.push(...this.categoricalGranularities);
     for (const granularityName of this.granularitiesNames) {
       newModel.granularitiesNames.add(granularityName);
     }

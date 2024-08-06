@@ -1,5 +1,9 @@
 import { Replace, Simplify } from "type-fest";
 import { exhaustiveCheck } from "./util.js";
+import {
+  CustomGranularityElement,
+  CustomGranularityElementConfig,
+} from "./custom-granularity.js";
 
 export interface AndConnective<F = never> {
   operator: "and";
@@ -191,25 +195,37 @@ export function makeTemporalGranularityElementsForDimension(
   switch (dimensionType) {
     case "time":
       return [
-        ...TemporalGranularityByDimensionType.time.map(
-          (granularity) => `${dimensionName}.${granularity}`,
-        ),
-        dimensionName,
+        ...TemporalGranularityByDimensionType.time.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new CustomGranularityElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new CustomGranularityElement(dimensionName, [dimensionName]),
       ];
-    case "date":
+
+    case "date": {
       return [
-        ...TemporalGranularityByDimensionType.date.map(
-          (granularity) => `${dimensionName}.${granularity}`,
-        ),
-        dimensionName,
+        ...TemporalGranularityByDimensionType.date.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new CustomGranularityElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new CustomGranularityElement(dimensionName, [dimensionName]),
       ];
-    case "datetime":
+    }
+    case "datetime": {
       return [
-        ...TemporalGranularityByDimensionType.datetime.map(
-          (granularity) => `${dimensionName}.${granularity}`,
-        ),
-        dimensionName,
+        ...TemporalGranularityByDimensionType.datetime.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new CustomGranularityElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new CustomGranularityElement(dimensionName, [dimensionName]),
       ];
+    }
     default:
       exhaustiveCheck(
         dimensionType,
@@ -358,16 +374,9 @@ export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
 
 export type AnyInputQuery = InputQuery<string, string, any>;
 
-export type CustomGranularityElement<MN extends string = string> =
-  | MN
-  | { key: string; elements: MN[]; display?: MN | MN[] };
-export type CustomGranularityElements<MN extends string = string> =
-  CustomGranularityElement<MN>[];
-
-export type GranularityType = "custom" | "temporal";
-
-export interface CustomGranularity<MN extends string = string> {
+export type GranularityType = "categorical" | "temporal";
+export interface GranularityConfig {
   name: string;
   type: GranularityType;
-  elements: CustomGranularityElements<MN>;
+  elements: CustomGranularityElementConfig[];
 }

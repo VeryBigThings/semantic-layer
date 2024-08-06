@@ -297,12 +297,11 @@ const playlistModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Name"),
   })
-  .withGranularity("name", [
-    {
-      key: "name",
-      elements: ["name", "playlist_id"],
-      display: "name",
-    },
+  .withCategoricalGranularity("name", ({ element }) => [
+    element("name")
+      .withDimensions("playlist_id", "name")
+      .withKey("playlist_id")
+      .withFormat(({ dimension }) => dimension("name")),
   ]);
 
 const playlistTrackModel = semanticLayer

@@ -2,6 +2,7 @@ import {
   AnyInputQuery,
   AnyMemberFormat,
   FilterType,
+  GranularityConfig,
   InputQuery,
   IntrospectionResult,
   MemberNameToType,
@@ -56,11 +57,56 @@ export class QueryBuilder<
   P,
 > {
   public readonly querySchema: QuerySchema;
+  public readonly granularityConfigs: GranularityConfig[];
   constructor(
     public readonly repository: AnyRepository,
     public readonly dialect: AnyBaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
+    this.granularityConfigs = this.getGranularityConfigs(repository);
+  }
+
+  private getGranularityConfigs(repository: AnyRepository) {
+    const granularityConfigs: GranularityConfig[] = [];
+    for (const categoricalGranularity of repository.categoricalGranularities) {
+      granularityConfigs.push({
+        name: categoricalGranularity.name,
+        type: "categorical",
+        elements: categoricalGranularity.elements.map((element) =>
+          element.getConfig(repository),
+        ),
+      });
+    }
+    for (const model of repository.getModels()) {
+      for (const granularity of model.categoricalGranularities) {
+        granularityConfigs.push({
+          name: granularity.name,
+          type: "categorical",
+          elements: granularity.elements.map((element) =>
+            element.getConfig(repository),
+          ),
+        });
+      }
+      for (const granularity of model.temporalGranularities) {
+        granularityConfigs.push({
+          name: granularity.name,
+          type: "temporal",
+          elements: granularity.elements.map((element) =>
+            element.getConfig(repository),
+          ),
+        });
+      }
+    }
+    for (const temporalGranularity of repository.temporalGranularities) {
+      granularityConfigs.push({
+        name: temporalGranularity.name,
+        type: "temporal",
+        elements: temporalGranularity.elements.map((element) =>
+          element.getConfig(repository),
+        ),
+      });
+    }
+    return granularityConfigs;
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(
