@@ -2,11 +2,11 @@ import * as semanticLayer from "../../index.js";
 
 import { assert, beforeAll, describe, it } from "vitest";
 
-import { InferSqlQueryResultType } from "../../index.js";
-import { MSSQLServerContainer } from "@testcontainers/mssqlserver";
 import fs from "node:fs/promises";
-import mssql from "mssql";
 import path from "node:path";
+import { MSSQLServerContainer } from "@testcontainers/mssqlserver";
+import mssql from "mssql";
+import { InferSqlQueryResultType } from "../../index.js";
 
 const customersModel = semanticLayer
   .model()

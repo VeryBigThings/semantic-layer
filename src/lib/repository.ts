@@ -1,12 +1,12 @@
 import {
-  AnyCustomGranularityElement,
-  makeCustomGranularityElementInitMaker,
-} from "./custom-granularity.js";
+  AvailableDialects,
+  AvailableDialectsNames,
+  DialectParamsReturnType,
+} from "./dialect.js";
 import {
-  AnyFilterFragmentBuilderRegistry,
-  GetFilterFragmentBuilderRegistryPayload,
-  defaultFilterFragmentBuilderRegistry,
-} from "./query-builder/filter-builder.js";
+  AnyHierarchyElement,
+  makeHierarchyElementInitMaker,
+} from "./hierarchy.js";
 import {
   AnyJoin,
   JOIN_WEIGHTS,
@@ -18,17 +18,17 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import {
-  AvailableDialects,
-  AvailableDialectsNames,
-  DialectParamsReturnType,
-} from "./dialect.js";
 import type { Dimension, Metric } from "./model.js";
-import { GranularityType, MemberNameToType } from "./types.js";
+import {
+  AnyFilterFragmentBuilderRegistry,
+  GetFilterFragmentBuilderRegistryPayload,
+  defaultFilterFragmentBuilderRegistry,
+} from "./query-builder/filter-builder.js";
+import { HierarchyType, MemberNameToType } from "./types.js";
 
-import { QueryBuilder } from "./query-builder.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
+import { QueryBuilder } from "./query-builder.js";
 
 export type ModelC<T> = T extends Model<infer C, any, any, any, any>
   ? C
@@ -79,15 +79,15 @@ export class Repository<
   > = {} as Record<string, { model: string; dimension: string }>;
   readonly metricsIndex: Record<string, { model: string; metric: string }> =
     {} as Record<string, { model: string; metric: string }>;
-  public readonly categoricalGranularities: {
+  public readonly categoricalHierarchies: {
     name: string;
-    elements: AnyCustomGranularityElement[];
+    elements: AnyHierarchyElement[];
   }[] = [];
-  public readonly temporalGranularities: {
+  public readonly temporalHierarchies: {
     name: string;
-    elements: AnyCustomGranularityElement[];
+    elements: AnyHierarchyElement[];
   }[] = [];
-  public readonly granularitiesNames: Set<string> = new Set();
+  public readonly hierarchyNames: Set<string> = new Set();
 
   withModel<T extends AnyModel>(model: ModelWithMatchingContext<C, T>) {
     this.models[model.name] = model;
@@ -114,44 +114,44 @@ export class Repository<
     >;
   }
 
-  unsafeWithGranularity(
-    granularityName: string,
-    elements: AnyCustomGranularityElement[],
-    type: GranularityType,
+  unsafeWithHierarchy(
+    hierarchyName: string,
+    elements: AnyHierarchyElement[],
+    type: HierarchyType,
   ) {
     invariant(
-      this.granularitiesNames.has(granularityName) === false,
-      `Granularity ${granularityName} already exists`,
+      this.hierarchyNames.has(hierarchyName) === false,
+      `Granularity ${hierarchyName} already exists`,
     );
-    this.granularitiesNames.add(granularityName);
+    this.hierarchyNames.add(hierarchyName);
     if (type === "categorical") {
-      this.categoricalGranularities.push({ name: granularityName, elements });
+      this.categoricalHierarchies.push({ name: hierarchyName, elements });
     } else if (type === "temporal") {
-      this.temporalGranularities.push({ name: granularityName, elements });
+      this.temporalHierarchies.push({ name: hierarchyName, elements });
     }
     return this;
   }
-  withCategoricalGranularity<GN extends string>(
-    granularityName: Exclude<GN, G>,
+  withCategoricalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
     builder: (args: {
-      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
-    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Repository<C, N, D, M, F, G | GN> {
     const elements = builder({
-      element: makeCustomGranularityElementInitMaker(),
+      element: makeHierarchyElementInitMaker(),
     });
-    return this.unsafeWithGranularity(granularityName, elements, "categorical");
+    return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
   }
-  withTemporalGranularity<GN extends string>(
-    granularityName: Exclude<GN, G>,
+  withTemporalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
     builder: (args: {
-      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
-    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Repository<C, N, D, M, F, G | GN> {
     const elements = builder({
-      element: makeCustomGranularityElementInitMaker(),
+      element: makeHierarchyElementInitMaker(),
     });
-    return this.unsafeWithGranularity(granularityName, elements, "temporal");
+    return this.unsafeWithHierarchy(hierarchyName, elements, "temporal");
   }
 
   withFilterFragmentBuilderRegistry<T extends AnyFilterFragmentBuilderRegistry>(

@@ -1,22 +1,22 @@
+import { Get, Simplify } from "type-fest";
 import {
-  AnyCustomGranularityElement,
-  makeCustomGranularityElementInitMaker,
-} from "./custom-granularity.js";
+  AnyHierarchyElement,
+  makeHierarchyElementInitMaker,
+} from "./hierarchy.js";
 import {
   DimensionWithTemporalGranularity,
-  GranularityType,
+  HierarchyType,
   MemberFormat,
   MemberNameToType,
   SqlWithBindings,
   TemporalGranularity,
   TemporalGranularityByDimensionType,
   TemporalGranularityIndex,
-  makeTemporalGranularityElementsForDimension,
+  makeTemporalHierarchyElementsForDimension,
 } from "./types.js";
-import { Get, Simplify } from "type-fest";
 
-import { AnyBaseDialect } from "./dialect/base.js";
 import invariant from "tiny-invariant";
+import { AnyBaseDialect } from "./dialect/base.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
 
@@ -433,15 +433,15 @@ export class Model<
 > {
   public readonly dimensions: Record<string, Dimension> = {};
   public readonly metrics: Record<string, Metric> = {};
-  public readonly categoricalGranularities: {
+  public readonly categoricalHierarchies: {
     name: string;
-    elements: AnyCustomGranularityElement[];
+    elements: AnyHierarchyElement[];
   }[] = [];
-  public readonly temporalGranularities: {
+  public readonly temporalHierarchies: {
     name: string;
-    elements: AnyCustomGranularityElement[];
+    elements: AnyHierarchyElement[];
   }[] = [];
-  public readonly granularitiesNames: Set<string> = new Set();
+  public readonly hierarchyNames: Set<string> = new Set();
 
   constructor(
     public readonly name: N,
@@ -489,9 +489,9 @@ export class Model<
           g,
         );
       }
-      this.unsafeWithGranularity(
+      this.unsafeWithHierarchy(
         name,
-        makeTemporalGranularityElementsForDimension(name, dimension.type),
+        makeTemporalHierarchyElementsForDimension(name, dimension.type),
         "temporal",
       );
     }
@@ -509,44 +509,44 @@ export class Model<
     this.metrics[name] = new Metric(this, name, metric);
     return this;
   }
-  unsafeWithGranularity(
-    granularityName: string,
-    elements: AnyCustomGranularityElement[],
-    type: GranularityType,
+  unsafeWithHierarchy(
+    hierarchyName: string,
+    elements: AnyHierarchyElement[],
+    type: HierarchyType,
   ) {
     invariant(
-      this.granularitiesNames.has(granularityName) === false,
-      `Granularity ${granularityName} already exists`,
+      this.hierarchyNames.has(hierarchyName) === false,
+      `Granularity ${hierarchyName} already exists`,
     );
-    this.granularitiesNames.add(granularityName);
+    this.hierarchyNames.add(hierarchyName);
     if (type === "categorical") {
-      this.categoricalGranularities.push({ name: granularityName, elements });
+      this.categoricalHierarchies.push({ name: hierarchyName, elements });
     } else if (type === "temporal") {
-      this.temporalGranularities.push({ name: granularityName, elements });
+      this.temporalHierarchies.push({ name: hierarchyName, elements });
     }
     return this;
   }
-  withCategoricalGranularity<GN extends string>(
-    granularityName: Exclude<GN, G>,
+  withCategoricalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
     builder: (args: {
-      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
-    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Model<C, N, D, M, G | GN> {
     const elements = builder({
-      element: makeCustomGranularityElementInitMaker(),
+      element: makeHierarchyElementInitMaker(),
     });
-    return this.unsafeWithGranularity(granularityName, elements, "categorical");
+    return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
   }
-  withTemporalGranularity<GN extends string>(
-    granularityName: Exclude<GN, G>,
+  withTemporalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
     builder: (args: {
-      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
-    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Model<C, N, D, M, G | GN> {
     const elements = builder({
-      element: makeCustomGranularityElementInitMaker(),
+      element: makeHierarchyElementInitMaker(),
     });
-    return this.unsafeWithGranularity(granularityName, elements, "temporal");
+    return this.unsafeWithHierarchy(hierarchyName, elements, "temporal");
   }
   getMetric(name: string & keyof M) {
     const metric = this.metrics[name];
@@ -573,28 +573,26 @@ export class Model<
     return Object.values(this.metrics);
   }
   getTableName(dialect: AnyBaseDialect, context: C) {
-    if (this.config.type === "table") {
-      if (typeof this.config.name === "string") {
-        return {
-          sql: this.config.name
-            .split(".")
-            .map((v) => dialect.asIdentifier(v))
-            .join("."),
-          bindings: [],
-        };
-      }
+    invariant(this.config.type === "table", "Model is not a table");
 
-      const result = this.config.name({
-        identifier: (name: string) => new IdentifierRef(name),
-        sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
-          new SqlWithRefs([...strings], values),
-        getContext: () => context,
-      });
-
-      return result.render(dialect, context);
+    if (typeof this.config.name === "string") {
+      return {
+        sql: this.config.name
+          .split(".")
+          .map((v) => dialect.asIdentifier(v))
+          .join("."),
+        bindings: [],
+      };
     }
 
-    throw new Error("Model is not a table");
+    const result = this.config.name({
+      identifier: (name: string) => new IdentifierRef(name),
+      sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
+        new SqlWithRefs([...strings], values),
+      getContext: () => context,
+    });
+
+    return result.render(dialect, context);
   }
   getAs(dialect: AnyBaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
@@ -622,10 +620,10 @@ export class Model<
     for (const [key, value] of Object.entries(this.metrics)) {
       newModel.metrics[key] = value.clone(newModel);
     }
-    newModel.temporalGranularities.push(...this.temporalGranularities);
-    newModel.categoricalGranularities.push(...this.categoricalGranularities);
-    for (const granularityName of this.granularitiesNames) {
-      newModel.granularitiesNames.add(granularityName);
+    newModel.temporalHierarchies.push(...this.temporalHierarchies);
+    newModel.categoricalHierarchies.push(...this.categoricalHierarchies);
+    for (const hierarchyName of this.hierarchyNames) {
+      newModel.hierarchyNames.add(hierarchyName);
     }
     return newModel;
   }

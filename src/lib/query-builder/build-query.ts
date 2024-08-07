@@ -2,12 +2,12 @@ import * as graphlib from "@dagrejs/graphlib";
 
 import { ModelQuery, Order, Query, QuerySegment } from "../types.js";
 
+import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import invariant from "tiny-invariant";
 
 interface ReferencedModels {
   all: string[];

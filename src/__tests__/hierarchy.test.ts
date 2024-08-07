@@ -55,7 +55,7 @@ const customersModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Email"),
   })
-  .withCategoricalGranularity("full_address", ({ element }) => [
+  .withCategoricalHierarchy("full_address", ({ element }) => [
     element.fromDimension("country"),
     element.fromDimension("state"),
     element.fromDimension("city"),
@@ -63,7 +63,7 @@ const customersModel = semanticLayer
     element.fromDimension("address"),
   ])
 
-  .withCategoricalGranularity("personal_information", ({ element }) => [
+  .withCategoricalHierarchy("personal_information", ({ element }) => [
     element("customer")
       .withDimensions(["customer_id", "first_name", "last_name"])
       .withKey(["customer_id"])
@@ -73,7 +73,7 @@ const customersModel = semanticLayer
           `${dimension("first_name")} ${dimension("last_name")}`,
       ),
   ])
-  .withCategoricalGranularity("company", ({ element }) => [
+  .withCategoricalHierarchy("company", ({ element }) => [
     element.fromDimension("company"),
   ]);
 
@@ -119,7 +119,7 @@ const invoicesModel = semanticLayer
     description: "Invoice total.",
     sql: ({ model, sql }) => sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
   })
-  .withCategoricalGranularity("billing_address", ({ element }) => [
+  .withCategoricalHierarchy("billing_address", ({ element }) => [
     element.fromDimension("billing_country"),
     element.fromDimension("billing_state"),
     element.fromDimension("billing_city"),
@@ -233,13 +233,13 @@ const artistModel = semanticLayer
     sql: ({ model }) => model.column("Name"),
     format: (value) => `Artist: ${value}`,
   })
-  .withCategoricalGranularity("artist", ({ element }) => [
+  .withCategoricalHierarchy("artist", ({ element }) => [
     element("name")
       .withDimensions(["name", "artist_id"])
       .withKey(["artist_id"])
       .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
   ])
-  .withCategoricalGranularity("formatting_test", ({ element }) => [
+  .withCategoricalHierarchy("formatting_test", ({ element }) => [
     element("name1").withDimensions(["name", "artist_id"]),
     element("name2")
       .withDimensions(["name", "artist_id"])
@@ -277,7 +277,7 @@ const mediaTypeModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Name"),
   })
-  .withCategoricalGranularity("media_type", ({ element }) => [
+  .withCategoricalHierarchy("media_type", ({ element }) => [
     element("name")
       .withDimensions(["name", "media_type_id"])
       .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
@@ -296,7 +296,7 @@ const genreModel = semanticLayer
     primaryKey: true,
     sql: ({ model }) => model.column("GenreId"),
   })
-  .withCategoricalGranularity("genre", ({ element }) => [
+  .withCategoricalHierarchy("genre", ({ element }) => [
     element("name")
       .withDimensions(["name", "genre_id"])
       .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
@@ -315,7 +315,7 @@ const playlistModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Name"),
   })
-  .withCategoricalGranularity("name", ({ element }) => [
+  .withCategoricalHierarchy("name", ({ element }) => [
     element("name")
       .withDimensions(["playlist_id", "name"])
       .withKey(["playlist_id"])
@@ -347,7 +347,7 @@ const repository = semanticLayer
   .withModel(genreModel)
   .withModel(playlistModel)
   .withModel(playlistTrackModel)
-  .withCategoricalGranularity("album", ({ element }) => [
+  .withCategoricalHierarchy("album", ({ element }) => [
     element("artists.name")
       .withDimensions(["artists.name", "artists.artist_id"])
       .withKey(["artists.artist_id"])
@@ -363,8 +363,7 @@ const repository = semanticLayer
         ({ dimension }) => `${dimension("albums.title")}`,
       ),
   ])
-  .withCategoricalGranularity("track", ({ element }) => [
-    // Reduce this duplication by tracking element names in the generic, and then using them here by adding a function that will look like this: granularity("album").element("artists.name")
+  .withCategoricalHierarchy("track", ({ element }) => [
     element("artists.name")
       .withDimensions(["artists.name", "artists.artist_id"])
       .withKey(["artists.artist_id"])
@@ -387,7 +386,7 @@ const repository = semanticLayer
         ({ dimension }) => `${dimension("tracks.name")}`,
       ),
   ])
-  .withCategoricalGranularity("formatting_test", ({ element }) => [
+  .withCategoricalHierarchy("formatting_test", ({ element }) => [
     element("name1").withDimensions(["artists.name", "artists.artist_id"]),
     element("name2")
       .withDimensions(["artists.name", "artists.artist_id"])
@@ -486,28 +485,28 @@ const repository = semanticLayer
 
 const queryBuilder = repository.build("postgresql");
 
-it("can correctly generate granularities", () => {
-  const granularitiesWithoutFormatters = queryBuilder.granularities.map(
-    (granularity) => {
-      const elements = granularity.elements.map(
+it("can correctly generate hierarchies", () => {
+  const hierarchiesWithoutFormatters = queryBuilder.hierarchies.map(
+    (hierarchy) => {
+      const elements = hierarchy.elements.map(
         ({ formatter: _formatter, ...element }) => {
           return element;
         },
       );
       return {
-        ...granularity,
+        ...hierarchy,
         elements: elements,
       };
     },
   );
 
-  for (const granularity of queryBuilder.granularities) {
-    for (const element of granularity.elements) {
+  for (const hierarchy of queryBuilder.hierarchies) {
+    for (const element of hierarchy.elements) {
       assert.isFunction(element.formatter);
     }
   }
 
-  assert.deepEqual(granularitiesWithoutFormatters, [
+  assert.deepEqual(hierarchiesWithoutFormatters, [
     {
       name: "album",
       type: "categorical",
@@ -826,14 +825,14 @@ it("can correctly format granularities", () => {
     artists___artist_id: 1,
     artists___name: "AC/DC",
   };
-  const granularity1 = queryBuilder.getGranularity("artists.formatting_test");
-  const formattedValues1 = granularity1.elements.map((element) => [
+  const hierarchy1 = queryBuilder.getHierarchy("artists.formatting_test");
+  const formattedValues1 = hierarchy1.elements.map((element) => [
     element.name,
     element.formatter(row),
   ]);
 
-  const granularity2 = queryBuilder.getGranularity("formatting_test");
-  const formattedValues2 = granularity2.elements.map((element) => [
+  const hierarchy2 = queryBuilder.getHierarchy("formatting_test");
+  const formattedValues2 = hierarchy2.elements.map((element) => [
     element.name,
     element.formatter(row),
   ]);

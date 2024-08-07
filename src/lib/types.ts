@@ -1,9 +1,6 @@
 import { Replace, Simplify } from "type-fest";
+import { HierarchyElement, HierarchyElementConfig } from "./hierarchy.js";
 import { exhaustiveCheck } from "./util.js";
-import {
-  CustomGranularityElement,
-  CustomGranularityElementConfig,
-} from "./custom-granularity.js";
 
 export interface AndConnective<F = never> {
   operator: "and";
@@ -188,7 +185,7 @@ export const TemporalGranularityByDimensionType = {
   ),
 } as const;
 
-export function makeTemporalGranularityElementsForDimension(
+export function makeTemporalHierarchyElementsForDimension(
   dimensionName: string,
   dimensionType: "time" | "date" | "datetime",
 ) {
@@ -197,33 +194,33 @@ export function makeTemporalGranularityElementsForDimension(
       return [
         ...TemporalGranularityByDimensionType.time.map((granularity) => {
           const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new CustomGranularityElement(granularityDimensionName, [
+          return new HierarchyElement(granularityDimensionName, [
             granularityDimensionName,
           ]);
         }),
-        new CustomGranularityElement(dimensionName, [dimensionName]),
+        new HierarchyElement(dimensionName, [dimensionName]),
       ];
 
     case "date": {
       return [
         ...TemporalGranularityByDimensionType.date.map((granularity) => {
           const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new CustomGranularityElement(granularityDimensionName, [
+          return new HierarchyElement(granularityDimensionName, [
             granularityDimensionName,
           ]);
         }),
-        new CustomGranularityElement(dimensionName, [dimensionName]),
+        new HierarchyElement(dimensionName, [dimensionName]),
       ];
     }
     case "datetime": {
       return [
         ...TemporalGranularityByDimensionType.datetime.map((granularity) => {
           const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new CustomGranularityElement(granularityDimensionName, [
+          return new HierarchyElement(granularityDimensionName, [
             granularityDimensionName,
           ]);
         }),
-        new CustomGranularityElement(dimensionName, [dimensionName]),
+        new HierarchyElement(dimensionName, [dimensionName]),
       ];
     }
     default:
@@ -374,12 +371,9 @@ export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
 
 export type AnyInputQuery = InputQuery<string, string, any>;
 
-export type GranularityType = "categorical" | "temporal";
-export interface GranularityConfig {
+export type HierarchyType = "categorical" | "temporal";
+export interface HierarchyConfig {
   name: string;
-  type: GranularityType;
-  elements: [
-    CustomGranularityElementConfig,
-    ...CustomGranularityElementConfig[],
-  ];
+  type: HierarchyType;
+  elements: [HierarchyElementConfig, ...HierarchyElementConfig[]];
 }

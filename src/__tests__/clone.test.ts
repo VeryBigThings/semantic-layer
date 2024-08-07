@@ -27,7 +27,7 @@ const userModel = semanticLayer
     type: "string",
     sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("UserId")})`,
   })
-  .withCategoricalGranularity("customer", ({ element }) => [
+  .withCategoricalHierarchy("customer", ({ element }) => [
     element("user")
       .withDimensions(["user_id", "first_name", "last_name"])
       .withFormat(
@@ -85,13 +85,10 @@ const queryBuilder = repository.build("postgresql");
 describe("clone", async () => {
   it("can clone a model", async () => {
     assert.deepEqual(
-      userModel.categoricalGranularities,
-      customerModel.categoricalGranularities,
+      userModel.categoricalHierarchies,
+      customerModel.categoricalHierarchies,
     );
-    assert.deepEqual(
-      userModel.granularitiesNames,
-      customerModel.granularitiesNames,
-    );
+    assert.deepEqual(userModel.hierarchyNames, customerModel.hierarchyNames);
 
     const query = queryBuilder.buildQuery({
       members: [

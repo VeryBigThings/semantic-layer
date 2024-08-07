@@ -3,7 +3,7 @@ import { MemberNameToType, MemberType, MemberTypeToType } from "./types.js";
 import { AnyModel } from "./model.js";
 import { AnyRepository } from "./repository.js";
 
-export interface CustomGranularityElementConfig {
+export interface HierarchyElementConfig {
   name: string;
   dimensions: string[];
   keyDimensions: string[];
@@ -11,12 +11,9 @@ export interface CustomGranularityElementConfig {
   formatter: (row: Record<string, unknown>) => string;
 }
 
-export type AnyCustomGranularityElement = CustomGranularityElement<any, any>;
+export type AnyHierarchyElement = HierarchyElement<any, any>;
 
-export class CustomGranularityElement<
-  D extends MemberNameToType,
-  DN extends keyof D,
-> {
+export class HierarchyElement<D extends MemberNameToType, DN extends keyof D> {
   private keys: string[] | null = null;
   private formatDimensions: string[];
   private formatter:
@@ -87,7 +84,7 @@ export class CustomGranularityElement<
     }
     return this.getDefaultFormatter(parent);
   }
-  getConfig(parent: AnyModel | AnyRepository): CustomGranularityElementConfig {
+  getConfig(parent: AnyModel | AnyRepository): HierarchyElementConfig {
     const dimensionNames = this.dimensionNames.map((dimensionName) =>
       parent.getDimension(dimensionName).getPath(),
     );
@@ -106,21 +103,19 @@ export class CustomGranularityElement<
   }
 }
 
-export class CustomGranularityElementInit<D extends MemberNameToType> {
+export class HierarchyElementInit<D extends MemberNameToType> {
   constructor(public readonly name: string) {}
 
   withDimensions<DN extends keyof D>(dimensionNames: (DN & string)[]) {
-    return new CustomGranularityElement<D, DN>(this.name, dimensionNames);
+    return new HierarchyElement<D, DN>(this.name, dimensionNames);
   }
 }
 
-export function makeCustomGranularityElementInitMaker<
-  D extends MemberNameToType,
->() {
-  const fn = (name: string) => new CustomGranularityElementInit<D>(name);
+export function makeHierarchyElementInitMaker<D extends MemberNameToType>() {
+  const fn = (name: string) => new HierarchyElementInit<D>(name);
 
   fn.fromDimension = <DN extends keyof D>(name: DN & string) =>
-    new CustomGranularityElementInit<D>(name as string).withDimensions([name]);
+    new HierarchyElementInit<D>(name as string).withDimensions([name]);
 
   return fn;
 }
