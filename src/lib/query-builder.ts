@@ -21,6 +21,17 @@ import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
+import invariant from "tiny-invariant";
+import { CustomGranularityElementConfig } from "./custom-granularity.js";
+
+function isValidGranularityConfigElements(
+  elements: CustomGranularityElementConfig[],
+): elements is [
+  CustomGranularityElementConfig,
+  ...CustomGranularityElementConfig[],
+] {
+  return elements.length > 0;
+}
 
 function transformInputQueryToQuery(
   queryBuilder: AnyQueryBuilder,
@@ -55,58 +66,92 @@ export class QueryBuilder<
   M extends MemberNameToType,
   F,
   P,
+  G,
 > {
   public readonly querySchema: QuerySchema;
-  public readonly granularityConfigs: GranularityConfig[];
+  public readonly granularities: GranularityConfig[];
+  public readonly granularitiesByName: Record<string, GranularityConfig>;
   constructor(
     public readonly repository: AnyRepository,
     public readonly dialect: AnyBaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
-    this.granularityConfigs = this.getGranularityConfigs(repository);
+    this.granularities = this.getGranularityConfigs(repository);
+    this.granularitiesByName = this.granularities.reduce<
+      Record<string, GranularityConfig>
+    >((acc, granularity) => {
+      acc[granularity.name] = granularity;
+      return acc;
+    }, {});
   }
 
   private getGranularityConfigs(repository: AnyRepository) {
-    const granularityConfigs: GranularityConfig[] = [];
-    for (const categoricalGranularity of repository.categoricalGranularities) {
-      granularityConfigs.push({
-        name: categoricalGranularity.name,
+    const granularities: GranularityConfig[] = [];
+    for (const granularity of repository.categoricalGranularities) {
+      const elements = granularity.elements.map((element) =>
+        element.getConfig(repository),
+      );
+      invariant(
+        isValidGranularityConfigElements(elements),
+        "Granularity requires at least one element",
+      );
+      granularities.push({
+        name: granularity.name,
         type: "categorical",
-        elements: categoricalGranularity.elements.map((element) =>
-          element.getConfig(repository),
-        ),
+        elements,
       });
     }
     for (const model of repository.getModels()) {
       for (const granularity of model.categoricalGranularities) {
-        granularityConfigs.push({
-          name: granularity.name,
+        const elements = granularity.elements.map((element) =>
+          element.getConfig(model),
+        );
+        invariant(
+          isValidGranularityConfigElements(elements),
+          "Granularity requires at least one element",
+        );
+        granularities.push({
+          name: `${model.name}.${granularity.name}`,
           type: "categorical",
-          elements: granularity.elements.map((element) =>
-            element.getConfig(repository),
-          ),
+          elements,
         });
       }
       for (const granularity of model.temporalGranularities) {
-        granularityConfigs.push({
-          name: granularity.name,
+        const elements = granularity.elements.map((element) =>
+          element.getConfig(model),
+        );
+        invariant(
+          isValidGranularityConfigElements(elements),
+          "Granularity requires at least one element",
+        );
+        granularities.push({
+          name: `${model.name}.${granularity.name}`,
           type: "temporal",
-          elements: granularity.elements.map((element) =>
-            element.getConfig(repository),
-          ),
+          elements,
         });
       }
     }
-    for (const temporalGranularity of repository.temporalGranularities) {
-      granularityConfigs.push({
-        name: temporalGranularity.name,
+    for (const granularity of repository.temporalGranularities) {
+      const elements = granularity.elements.map((element) =>
+        element.getConfig(repository),
+      );
+      invariant(
+        isValidGranularityConfigElements(elements),
+        "Granularity requires at least one element",
+      );
+      granularities.push({
+        name: granularity.name,
         type: "temporal",
-        elements: temporalGranularity.elements.map((element) =>
-          element.getConfig(repository),
-        ),
+        elements,
       });
     }
-    return granularityConfigs;
+    return granularities;
+  }
+
+  getGranularity<G1 extends G>(granularityName: G1 & string) {
+    const granularity = this.granularitiesByName[granularityName];
+    invariant(granularity, `Granularity ${granularityName} not found`);
+    return granularity;
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(
@@ -209,6 +254,7 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   infer D,
   infer M,
   infer F,
+  any,
   any
 >
   ? InputQuery<
@@ -218,4 +264,4 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
     >
   : never;
 
-export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any>;
+export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any, any>;

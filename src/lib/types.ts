@@ -378,5 +378,8 @@ export type GranularityType = "categorical" | "temporal";
 export interface GranularityConfig {
   name: string;
   type: GranularityType;
-  elements: CustomGranularityElementConfig[];
+  elements: [
+    CustomGranularityElementConfig,
+    ...CustomGranularityElementConfig[],
+  ];
 }

@@ -19,13 +19,6 @@ const customersModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("LastName"),
   })
-  .withDimension("full_name", {
-    type: "string",
-    sql: ({ model, sql }) =>
-      sql`${model.dimension("first_name")} || ' ' || ${model.dimension(
-        "last_name",
-      )}`,
-  })
   .withDimension("company", {
     type: "string",
     sql: ({ model }) => model.column("Company"),
@@ -62,21 +55,27 @@ const customersModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Email"),
   })
-  .withGranularity("address", [
-    "country",
-    "state",
-    "city",
-    "postal_code",
-    "address",
+  .withCategoricalGranularity("full_address", ({ element }) => [
+    element.fromDimension("country"),
+    element.fromDimension("state"),
+    element.fromDimension("city"),
+    element.fromDimension("postal_code"),
+    element.fromDimension("address"),
   ])
-  .withGranularity("personal_data", [
-    {
-      key: "personal_data",
-      elements: ["first_name", "last_name", "full_name", "customer_id"],
-      display: "full_name",
-    },
+
+  .withCategoricalGranularity("personal_information", ({ element }) => [
+    element("customer")
+      .withDimensions(["customer_id", "first_name", "last_name"])
+      .withKey(["customer_id"])
+      .withFormat(
+        ["first_name", "last_name"],
+        ({ dimension }) =>
+          `${dimension("first_name")} ${dimension("last_name")}`,
+      ),
   ])
-  .withGranularity("company", ["company"]);
+  .withCategoricalGranularity("company", ({ element }) => [
+    element.fromDimension("company"),
+  ]);
 
 const invoicesModel = semanticLayer
   .model()
@@ -120,12 +119,12 @@ const invoicesModel = semanticLayer
     description: "Invoice total.",
     sql: ({ model, sql }) => sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
   })
-  .withGranularity("billing_address", [
-    "billing_country",
-    "billing_state",
-    "billing_city",
-    "billing_postal_code",
-    "billing_address",
+  .withCategoricalGranularity("billing_address", ({ element }) => [
+    element.fromDimension("billing_country"),
+    element.fromDimension("billing_state"),
+    element.fromDimension("billing_city"),
+    element.fromDimension("billing_postal_code"),
+    element.fromDimension("billing_address"),
   ]);
 
 const invoiceLinesModel = semanticLayer
@@ -234,12 +233,35 @@ const artistModel = semanticLayer
     sql: ({ model }) => model.column("Name"),
     format: (value) => `Artist: ${value}`,
   })
-  .withGranularity("name", [
-    {
-      key: "name",
-      elements: ["name", "artist_id"],
-      display: "name",
-    },
+  .withCategoricalGranularity("artist", ({ element }) => [
+    element("name")
+      .withDimensions(["name", "artist_id"])
+      .withKey(["artist_id"])
+      .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
+  ])
+  .withCategoricalGranularity("formatting_test", ({ element }) => [
+    element("name1").withDimensions(["name", "artist_id"]),
+    element("name2")
+      .withDimensions(["name", "artist_id"])
+      .withFormat(["artist_id", "name"]),
+    element("name3")
+      .withDimensions(["name", "artist_id"])
+      .withFormat(
+        ["name", "artist_id"],
+        ({ dimension }) =>
+          `ID: ${dimension("artist_id").originalValue}, Artist Name: ${
+            dimension("name").originalValue
+          }`,
+      ),
+    element("name4")
+      .withDimensions(["name", "artist_id"])
+      .withFormat(
+        ["name", "artist_id"],
+        ({ dimension }) =>
+          `${dimension("artist_id").formattedValue} ${
+            dimension("name").formattedValue
+          }`,
+      ),
   ]);
 
 const mediaTypeModel = semanticLayer
@@ -255,12 +277,10 @@ const mediaTypeModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("Name"),
   })
-  .withGranularity("name", [
-    {
-      key: "name",
-      elements: ["name", "media_type_id"],
-      display: "name",
-    },
+  .withCategoricalGranularity("media_type", ({ element }) => [
+    element("name")
+      .withDimensions(["name", "media_type_id"])
+      .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
   ]);
 
 const genreModel = semanticLayer
@@ -276,12 +296,10 @@ const genreModel = semanticLayer
     primaryKey: true,
     sql: ({ model }) => model.column("GenreId"),
   })
-  .withGranularity("name", [
-    {
-      key: "data",
-      elements: ["name", "genre_id"],
-      display: "name",
-    },
+  .withCategoricalGranularity("genre", ({ element }) => [
+    element("name")
+      .withDimensions(["name", "genre_id"])
+      .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
   ]);
 
 const playlistModel = semanticLayer
@@ -299,9 +317,9 @@ const playlistModel = semanticLayer
   })
   .withCategoricalGranularity("name", ({ element }) => [
     element("name")
-      .withDimensions("playlist_id", "name")
-      .withKey("playlist_id")
-      .withFormat(({ dimension }) => dimension("name")),
+      .withDimensions(["playlist_id", "name"])
+      .withKey(["playlist_id"])
+      .withFormat(["name"], ({ dimension }) => `${dimension("name")}`),
   ]);
 
 const playlistTrackModel = semanticLayer
@@ -329,22 +347,69 @@ const repository = semanticLayer
   .withModel(genreModel)
   .withModel(playlistModel)
   .withModel(playlistTrackModel)
-  .withGranularity("album", [
-    "artists.name",
-    {
-      key: "album.data",
-      elements: ["albums.title", "albums.album_id"],
-      display: "albums.title",
-    },
+  .withCategoricalGranularity("album", ({ element }) => [
+    element("artists.name")
+      .withDimensions(["artists.name", "artists.artist_id"])
+      .withKey(["artists.artist_id"])
+      .withFormat(
+        ["artists.name"],
+        ({ dimension }) => `${dimension("artists.name")}`,
+      ),
+    element("album.title")
+      .withDimensions(["albums.title", "albums.album_id"])
+      .withKey(["albums.album_id"])
+      .withFormat(
+        ["albums.title"],
+        ({ dimension }) => `${dimension("albums.title")}`,
+      ),
   ])
-  .withGranularity("track", [
-    "artists.name",
-    "albums.title",
-    {
-      key: "track.data",
-      elements: ["tracks.name", "tracks.track_id"],
-      display: "tracks.name",
-    },
+  .withCategoricalGranularity("track", ({ element }) => [
+    // Reduce this duplication by tracking element names in the generic, and then using them here by adding a function that will look like this: granularity("album").element("artists.name")
+    element("artists.name")
+      .withDimensions(["artists.name", "artists.artist_id"])
+      .withKey(["artists.artist_id"])
+      .withFormat(
+        ["artists.name"],
+        ({ dimension }) => `${dimension("artists.name")}`,
+      ),
+    element("album.title")
+      .withDimensions(["albums.title", "albums.album_id"])
+      .withKey(["albums.album_id"])
+      .withFormat(
+        ["albums.title"],
+        ({ dimension }) => `${dimension("albums.title")}`,
+      ),
+    element("track.name")
+      .withDimensions(["tracks.name", "tracks.track_id"])
+      .withKey(["tracks.track_id"])
+      .withFormat(
+        ["tracks.name"],
+        ({ dimension }) => `${dimension("tracks.name")}`,
+      ),
+  ])
+  .withCategoricalGranularity("formatting_test", ({ element }) => [
+    element("name1").withDimensions(["artists.name", "artists.artist_id"]),
+    element("name2")
+      .withDimensions(["artists.name", "artists.artist_id"])
+      .withFormat(["artists.artist_id", "artists.name"]),
+    element("name3")
+      .withDimensions(["artists.name", "artists.artist_id"])
+      .withFormat(
+        ["artists.name", "artists.artist_id"],
+        ({ dimension }) =>
+          `ID: ${dimension("artists.artist_id").originalValue}, Artist Name: ${
+            dimension("artists.name").originalValue
+          }`,
+      ),
+    element("name4")
+      .withDimensions(["artists.name", "artists.artist_id"])
+      .withFormat(
+        ["artists.name", "artists.artist_id"],
+        ({ dimension }) =>
+          `${dimension("artists.artist_id").formattedValue} ${
+            dimension("artists.name").formattedValue
+          }`,
+      ),
   ])
   .joinOneToMany(
     "customers",
@@ -419,136 +484,367 @@ const repository = semanticLayer
       )} = ${models.tracks.dimension("track_id")}`,
   );
 
-//const queryBuilder = repository.build("postgresql");
+const queryBuilder = repository.build("postgresql");
 
 it("can correctly generate granularities", () => {
-  assert.deepEqual(repository.granularities, [
+  const granularitiesWithoutFormatters = queryBuilder.granularities.map(
+    (granularity) => {
+      const elements = granularity.elements.map(
+        ({ formatter: _formatter, ...element }) => {
+          return element;
+        },
+      );
+      return {
+        ...granularity,
+        elements: elements,
+      };
+    },
+  );
+
+  for (const granularity of queryBuilder.granularities) {
+    for (const element of granularity.elements) {
+      assert.isFunction(element.formatter);
+    }
+  }
+
+  assert.deepEqual(granularitiesWithoutFormatters, [
     {
-      name: "track",
-      type: "custom",
+      name: "album",
+      type: "categorical",
       elements: [
-        "artists.name",
-        "albums.title",
         {
-          key: "track.data",
-          elements: ["tracks.name", "tracks.track_id"],
-          display: "tracks.name",
+          name: "artists.name",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.artist_id"],
+          formatDimensions: ["artists.name"],
+        },
+        {
+          name: "album.title",
+          dimensions: ["albums.title", "albums.album_id"],
+          keyDimensions: ["albums.album_id"],
+          formatDimensions: ["albums.title"],
         },
       ],
     },
     {
-      name: "album",
-      type: "custom",
+      name: "track",
+      type: "categorical",
       elements: [
-        "artists.name",
         {
-          key: "album.data",
-          elements: ["albums.title", "albums.album_id"],
-          display: "albums.title",
+          name: "artists.name",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.artist_id"],
+          formatDimensions: ["artists.name"],
+        },
+        {
+          name: "album.title",
+          dimensions: ["albums.title", "albums.album_id"],
+          keyDimensions: ["albums.album_id"],
+          formatDimensions: ["albums.title"],
+        },
+        {
+          name: "track.name",
+          dimensions: ["tracks.name", "tracks.track_id"],
+          keyDimensions: ["tracks.track_id"],
+          formatDimensions: ["tracks.name"],
+        },
+      ],
+    },
+    {
+      name: "formatting_test",
+      type: "categorical",
+      elements: [
+        {
+          name: "name1",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+        {
+          name: "name2",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.artist_id", "artists.name"],
+        },
+        {
+          name: "name3",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+        {
+          name: "name4",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+      ],
+    },
+    {
+      name: "customers.full_address",
+      type: "categorical",
+      elements: [
+        {
+          name: "country",
+          dimensions: ["customers.country"],
+          keyDimensions: ["customers.country"],
+          formatDimensions: ["customers.country"],
+        },
+        {
+          name: "state",
+          dimensions: ["customers.state"],
+          keyDimensions: ["customers.state"],
+          formatDimensions: ["customers.state"],
+        },
+        {
+          name: "city",
+          dimensions: ["customers.city"],
+          keyDimensions: ["customers.city"],
+          formatDimensions: ["customers.city"],
+        },
+        {
+          name: "postal_code",
+          dimensions: ["customers.postal_code"],
+          keyDimensions: ["customers.postal_code"],
+          formatDimensions: ["customers.postal_code"],
+        },
+        {
+          name: "address",
+          dimensions: ["customers.address"],
+          keyDimensions: ["customers.address"],
+          formatDimensions: ["customers.address"],
+        },
+      ],
+    },
+    {
+      name: "customers.personal_information",
+      type: "categorical",
+      elements: [
+        {
+          name: "customer",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.first_name", "customers.last_name"],
         },
       ],
     },
     {
       name: "customers.company",
-      type: "custom",
-      elements: ["customers.company"],
-    },
-    {
-      name: "customers.personal_data",
-      type: "custom",
+      type: "categorical",
       elements: [
         {
-          key: "personal_data",
-          elements: [
-            "customers.first_name",
-            "customers.last_name",
-            "customers.full_name",
-            "customers.customer_id",
-          ],
-          display: "customers.full_name",
+          name: "company",
+          dimensions: ["customers.company"],
+          keyDimensions: ["customers.company"],
+          formatDimensions: ["customers.company"],
         },
       ],
     },
     {
-      name: "customers.address",
-      type: "custom",
-      elements: [
-        "customers.country",
-        "customers.state",
-        "customers.city",
-        "customers.postal_code",
-        "customers.address",
-      ],
-    },
-    {
       name: "invoices.billing_address",
-      type: "custom",
+      type: "categorical",
       elements: [
-        "invoices.billing_country",
-        "invoices.billing_state",
-        "invoices.billing_city",
-        "invoices.billing_postal_code",
-        "invoices.billing_address",
+        {
+          name: "billing_country",
+          dimensions: ["invoices.billing_country"],
+          keyDimensions: ["invoices.billing_country"],
+          formatDimensions: ["invoices.billing_country"],
+        },
+        {
+          name: "billing_state",
+          dimensions: ["invoices.billing_state"],
+          keyDimensions: ["invoices.billing_state"],
+          formatDimensions: ["invoices.billing_state"],
+        },
+        {
+          name: "billing_city",
+          dimensions: ["invoices.billing_city"],
+          keyDimensions: ["invoices.billing_city"],
+          formatDimensions: ["invoices.billing_city"],
+        },
+        {
+          name: "billing_postal_code",
+          dimensions: ["invoices.billing_postal_code"],
+          keyDimensions: ["invoices.billing_postal_code"],
+          formatDimensions: ["invoices.billing_postal_code"],
+        },
+        {
+          name: "billing_address",
+          dimensions: ["invoices.billing_address"],
+          keyDimensions: ["invoices.billing_address"],
+          formatDimensions: ["invoices.billing_address"],
+        },
       ],
     },
     {
       name: "invoices.invoice_date",
       type: "temporal",
       elements: [
-        "invoices.invoice_date.year",
-        "invoices.invoice_date.quarter",
-        "invoices.invoice_date.quarter_of_year",
-        "invoices.invoice_date.month",
-        "invoices.invoice_date.month_num",
-        "invoices.invoice_date.week",
-        "invoices.invoice_date.week_num",
-        "invoices.invoice_date.day_of_month",
-        "invoices.invoice_date",
-      ],
-    },
-    {
-      name: "artists.name",
-      type: "custom",
-      elements: [
         {
-          key: "name",
-          elements: ["artists.name", "artists.artist_id"],
-          display: "artists.name",
+          name: "invoice_date.year",
+          dimensions: ["invoices.invoice_date.year"],
+          keyDimensions: ["invoices.invoice_date.year"],
+          formatDimensions: ["invoices.invoice_date.year"],
+        },
+        {
+          name: "invoice_date.quarter",
+          dimensions: ["invoices.invoice_date.quarter"],
+          keyDimensions: ["invoices.invoice_date.quarter"],
+          formatDimensions: ["invoices.invoice_date.quarter"],
+        },
+        {
+          name: "invoice_date.quarter_of_year",
+          dimensions: ["invoices.invoice_date.quarter_of_year"],
+          keyDimensions: ["invoices.invoice_date.quarter_of_year"],
+          formatDimensions: ["invoices.invoice_date.quarter_of_year"],
+        },
+        {
+          name: "invoice_date.month",
+          dimensions: ["invoices.invoice_date.month"],
+          keyDimensions: ["invoices.invoice_date.month"],
+          formatDimensions: ["invoices.invoice_date.month"],
+        },
+        {
+          name: "invoice_date.month_num",
+          dimensions: ["invoices.invoice_date.month_num"],
+          keyDimensions: ["invoices.invoice_date.month_num"],
+          formatDimensions: ["invoices.invoice_date.month_num"],
+        },
+        {
+          name: "invoice_date.week",
+          dimensions: ["invoices.invoice_date.week"],
+          keyDimensions: ["invoices.invoice_date.week"],
+          formatDimensions: ["invoices.invoice_date.week"],
+        },
+        {
+          name: "invoice_date.week_num",
+          dimensions: ["invoices.invoice_date.week_num"],
+          keyDimensions: ["invoices.invoice_date.week_num"],
+          formatDimensions: ["invoices.invoice_date.week_num"],
+        },
+        {
+          name: "invoice_date.day_of_month",
+          dimensions: ["invoices.invoice_date.day_of_month"],
+          keyDimensions: ["invoices.invoice_date.day_of_month"],
+          formatDimensions: ["invoices.invoice_date.day_of_month"],
+        },
+        {
+          name: "invoice_date",
+          dimensions: ["invoices.invoice_date"],
+          keyDimensions: ["invoices.invoice_date"],
+          formatDimensions: ["invoices.invoice_date"],
         },
       ],
     },
     {
-      name: "media_types.name",
-      type: "custom",
+      name: "artists.artist",
+      type: "categorical",
       elements: [
         {
-          key: "name",
-          elements: ["media_types.name", "media_types.media_type_id"],
-          display: "media_types.name",
+          name: "name",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.artist_id"],
+          formatDimensions: ["artists.name"],
         },
       ],
     },
     {
-      name: "genres.name",
-      type: "custom",
+      name: "artists.formatting_test",
+      type: "categorical",
       elements: [
         {
-          key: "data",
-          elements: ["genres.name", "genres.genre_id"],
-          display: "genres.name",
+          name: "name1",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+        {
+          name: "name2",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.artist_id", "artists.name"],
+        },
+        {
+          name: "name3",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+        {
+          name: "name4",
+          dimensions: ["artists.name", "artists.artist_id"],
+          keyDimensions: ["artists.name", "artists.artist_id"],
+          formatDimensions: ["artists.name", "artists.artist_id"],
+        },
+      ],
+    },
+    {
+      name: "media_types.media_type",
+      type: "categorical",
+      elements: [
+        {
+          name: "name",
+          dimensions: ["media_types.name", "media_types.media_type_id"],
+          keyDimensions: ["media_types.name", "media_types.media_type_id"],
+          formatDimensions: ["media_types.name"],
+        },
+      ],
+    },
+    {
+      name: "genres.genre",
+      type: "categorical",
+      elements: [
+        {
+          name: "name",
+          dimensions: ["genres.name", "genres.genre_id"],
+          keyDimensions: ["genres.name", "genres.genre_id"],
+          formatDimensions: ["genres.name"],
         },
       ],
     },
     {
       name: "playlists.name",
-      type: "custom",
+      type: "categorical",
       elements: [
         {
-          key: "name",
-          elements: ["playlists.name", "playlists.playlist_id"],
-          display: "playlists.name",
+          name: "name",
+          dimensions: ["playlists.playlist_id", "playlists.name"],
+          keyDimensions: ["playlists.playlist_id"],
+          formatDimensions: ["playlists.name"],
         },
       ],
     },
   ]);
+});
+
+it("can correctly format granularities", () => {
+  const row = {
+    artists___artist_id: 1,
+    artists___name: "AC/DC",
+  };
+  const granularity1 = queryBuilder.getGranularity("artists.formatting_test");
+  const formattedValues1 = granularity1.elements.map((element) => [
+    element.name,
+    element.formatter(row),
+  ]);
+
+  const granularity2 = queryBuilder.getGranularity("formatting_test");
+  const formattedValues2 = granularity2.elements.map((element) => [
+    element.name,
+    element.formatter(row),
+  ]);
+
+  const expectedValues = [
+    ["name1", "Artist: AC/DC, 1"],
+    ["name2", "1, Artist: AC/DC"],
+    ["name3", "ID: 1, Artist Name: AC/DC"],
+    ["name4", "null Artist: AC/DC"],
+  ];
+
+  assert.deepEqual(formattedValues1, expectedValues);
+  assert.deepEqual(formattedValues2, expectedValues);
 });

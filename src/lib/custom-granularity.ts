@@ -1,6 +1,7 @@
+import { MemberNameToType, MemberType, MemberTypeToType } from "./types.js";
+
 import { AnyModel } from "./model.js";
 import { AnyRepository } from "./repository.js";
-import invariant from "tiny-invariant";
 
 export interface CustomGranularityElementConfig {
   name: string;
@@ -10,126 +11,81 @@ export interface CustomGranularityElementConfig {
   formatter: (row: Record<string, unknown>) => string;
 }
 
-export type AnyCustomGranularityElement = CustomGranularityElement<any>;
+export type AnyCustomGranularityElement = CustomGranularityElement<any, any>;
 
-export abstract class CustomGranularityElementFormatter {
-  abstract getFormatter(
-    parent: AnyModel | AnyRepository,
-  ): (row: Record<string, unknown>) => string;
-  abstract getReferencedDimensionNames(): string[];
-}
-
-export class CustomGranularityElementDimensionRef extends CustomGranularityElementFormatter {
-  constructor(public readonly dimensionName: string) {
-    super();
-  }
-  getFormatter(parent: AnyModel | AnyRepository) {
-    const dimension = parent.getDimension(this.dimensionName);
-    return (row: Record<string, unknown>) => {
-      const value = row[dimension.getAlias()];
-      return dimension.unsafeFormatValue(value);
-    };
-  }
-  getReferencedDimensionNames() {
-    return [this.dimensionName];
-  }
-}
-export class CustomGranularityElementTemplateWithDimensionRefs extends CustomGranularityElementFormatter {
-  constructor(
-    public readonly strings: string[],
-    public readonly values: unknown[],
-  ) {
-    super();
-  }
-  getReferencedDimensionNames() {
-    const dimensions: string[] = [];
-    for (const value of this.values) {
-      if (value instanceof CustomGranularityElementDimensionRef) {
-        dimensions.push(value.dimensionName);
-      }
-    }
-    return dimensions;
-  }
-  getFormatter(parent: AnyModel | AnyRepository) {
-    return (row: Record<string, unknown>) => {
-      const result = [];
-      for (let i = 0; i < this.strings.length; i++) {
-        result.push(this.strings[i]!);
-        const nextValue = this.values[i];
-        if (nextValue) {
-          if (nextValue instanceof CustomGranularityElementDimensionRef) {
-            const dimension = parent.getDimension(nextValue.dimensionName);
-            const value = row[dimension.getAlias()];
-            result.push(dimension.unsafeFormatValue(value));
-          } else {
-            result.push(nextValue);
-          }
-        }
-      }
-      return result.join("");
-    };
-  }
-}
-
-export class CustomGranularityElement<D extends string> {
-  private readonly dimensionRefs: Record<
-    string,
-    CustomGranularityElementDimensionRef
-  >;
+export class CustomGranularityElement<
+  D extends MemberNameToType,
+  DN extends keyof D,
+> {
   private keys: string[] | null = null;
-  private formatter: CustomGranularityElementFormatter | null = null;
+  private formatDimensions: string[];
+  private formatter:
+    | ((props: { dimension: (name: string) => any }) => string)
+    | null = null;
   constructor(
     public readonly name: string,
     private readonly dimensionNames: string[],
   ) {
-    this.dimensionRefs = dimensionNames.reduce<
-      Record<string, CustomGranularityElementDimensionRef>
-    >((acc, dimensionName) => {
-      acc[dimensionName] = new CustomGranularityElementDimensionRef(
-        dimensionName,
-      );
-      return acc;
-    }, {});
+    this.formatDimensions = dimensionNames;
   }
-  withKey<K extends D>(...keys: K[]) {
+  withKey<K extends DN>(keys: (K & string)[]) {
     this.keys = keys;
     return this;
   }
-  withFormat(
-    formatter: (props: {
-      dimension: (name: D) => CustomGranularityElementDimensionRef;
-      template: (
-        strings: TemplateStringsArray,
-        ...values: unknown[]
-      ) => CustomGranularityElementTemplateWithDimensionRefs;
-    }) =>
-      | CustomGranularityElementDimensionRef
-      | CustomGranularityElementTemplateWithDimensionRefs,
+  withFormat<FD extends DN>(
+    dimensions: (FD & string)[],
+    formatter?: (props: {
+      dimension: <FD1 extends FD, DT1 = D[FD1 & string]>(
+        name: FD1 & string,
+      ) => {
+        originalValue: MemberTypeToType<DT1 & MemberType> | null;
+        formattedValue: string | null;
+      };
+    }) => string,
   ) {
-    this.formatter = formatter({
-      dimension: (name: D) => {
-        const dimensionRef = this.dimensionRefs[name];
-        invariant(dimensionRef, `Dimension ${name} not found`);
-        return dimensionRef;
-      },
-      template: (strings, ...values) => {
-        return new CustomGranularityElementTemplateWithDimensionRefs(
-          [...strings],
-          values,
-        );
-      },
-    });
+    this.formatDimensions = dimensions;
+    this.formatter = formatter ?? null;
     return this;
   }
-  gerDefaultFormatter(parent: AnyModel | AnyRepository) {
+  getDefaultFormatter(parent: AnyModel | AnyRepository) {
     return (row: Record<string, unknown>) =>
-      this.dimensionNames
-        .map((dimensionName) =>
-          parent
-            .getDimension(dimensionName)
-            .unsafeFormatValue(row[dimensionName]),
-        )
+      this.formatDimensions
+        .map((dimensionName) => {
+          const dimension = parent.getDimension(dimensionName);
+          const originalValue = row[dimension.getAlias()] ?? null;
+          const formattedValue =
+            originalValue === null || originalValue === undefined
+              ? null
+              : dimension.props.format
+                ? dimension.unsafeFormatValue(originalValue)
+                : null;
+          return formattedValue ?? originalValue;
+        })
         .join(", ");
+  }
+  getFormatter(parent: AnyModel | AnyRepository) {
+    const formatter = this.formatter;
+    if (formatter) {
+      return (row: Record<string, unknown>) => {
+        return formatter({
+          dimension: (dimensionName: string) => {
+            const dimension = parent.getDimension(dimensionName);
+            const originalValue = row[dimension.getAlias()] ?? null;
+            const formattedValue =
+              originalValue === null || originalValue === undefined
+                ? null
+                : dimension.props.format
+                  ? dimension.unsafeFormatValue(originalValue)
+                  : null;
+            return {
+              originalValue,
+              formattedValue,
+            };
+          },
+        });
+      };
+    }
+    return this.getDefaultFormatter(parent);
   }
   getConfig(parent: AnyModel | AnyRepository): CustomGranularityElementConfig {
     const dimensionNames = this.dimensionNames.map((dimensionName) =>
@@ -142,21 +98,29 @@ export class CustomGranularityElement<D extends string> {
         this.keys?.map((dimensionNames) =>
           parent.getDimension(dimensionNames).getPath(),
         ) ?? dimensionNames,
-      formatDimensions:
-        this.formatter?.getReferencedDimensionNames() ?? dimensionNames,
-      formatter:
-        this.formatter?.getFormatter(parent) ??
-        this.gerDefaultFormatter(parent),
+      formatDimensions: this.formatDimensions.map((dimensionName) =>
+        parent.getDimension(dimensionName).getPath(),
+      ),
+      formatter: this.getFormatter(parent),
     };
   }
 }
 
-export class CustomGranularityElementInit<D extends string> {
-  constructor(
-    public readonly parent: AnyModel | AnyRepository,
-    public readonly name: string,
-  ) {}
-  withDimensions<GD extends D>(...dimensionNames: GD[]) {
-    return new CustomGranularityElement<GD>(this.name, dimensionNames);
+export class CustomGranularityElementInit<D extends MemberNameToType> {
+  constructor(public readonly name: string) {}
+
+  withDimensions<DN extends keyof D>(dimensionNames: (DN & string)[]) {
+    return new CustomGranularityElement<D, DN>(this.name, dimensionNames);
   }
+}
+
+export function makeCustomGranularityElementInitMaker<
+  D extends MemberNameToType,
+>() {
+  const fn = (name: string) => new CustomGranularityElementInit<D>(name);
+
+  fn.fromDimension = <DN extends keyof D>(name: DN & string) =>
+    new CustomGranularityElementInit<D>(name as string).withDimensions([name]);
+
+  return fn;
 }

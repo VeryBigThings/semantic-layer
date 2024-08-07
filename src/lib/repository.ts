@@ -1,6 +1,6 @@
 import {
   AnyCustomGranularityElement,
-  CustomGranularityElementInit,
+  makeCustomGranularityElementInitMaker,
 } from "./custom-granularity.js";
 import {
   AnyFilterFragmentBuilderRegistry,
@@ -134,26 +134,22 @@ export class Repository<
   withCategoricalGranularity<GN extends string>(
     granularityName: Exclude<GN, G>,
     builder: (args: {
-      element: (
-        name: string,
-      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
-    }) => AnyCustomGranularityElement[],
+      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
+    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
   ): Repository<C, N, D, M, F, G | GN> {
     const elements = builder({
-      element: (name) => new CustomGranularityElementInit(this, name),
+      element: makeCustomGranularityElementInitMaker(),
     });
     return this.unsafeWithGranularity(granularityName, elements, "categorical");
   }
   withTemporalGranularity<GN extends string>(
     granularityName: Exclude<GN, G>,
     builder: (args: {
-      element: (
-        name: string,
-      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
-    }) => AnyCustomGranularityElement[],
+      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
+    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
   ): Repository<C, N, D, M, F, G | GN> {
     const elements = builder({
-      element: (name) => new CustomGranularityElementInit(this, name),
+      element: makeCustomGranularityElementInitMaker(),
     });
     return this.unsafeWithGranularity(granularityName, elements, "temporal");
   }
@@ -333,7 +329,7 @@ export class Repository<
     dialectName: N,
   ) {
     const dialect = AvailableDialects[dialectName];
-    return new QueryBuilder<C, D, M, F, P>(this, dialect);
+    return new QueryBuilder<C, D, M, F, P, G>(this, dialect);
   }
 }
 

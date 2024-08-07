@@ -1,6 +1,6 @@
 import {
   AnyCustomGranularityElement,
-  CustomGranularityElementInit,
+  makeCustomGranularityElementInitMaker,
 } from "./custom-granularity.js";
 import {
   DimensionWithTemporalGranularity,
@@ -259,7 +259,7 @@ export abstract class Member {
     return dialect.asIdentifier(this.getAlias());
   }
   getAlias() {
-    return `${this.model.name}.${this.name}`;
+    return `${this.model.name}___${this.name.replaceAll(".", "___")}`;
   }
   getPath() {
     return `${this.model.name}.${this.name}`;
@@ -529,26 +529,22 @@ export class Model<
   withCategoricalGranularity<GN extends string>(
     granularityName: Exclude<GN, G>,
     builder: (args: {
-      element: (
-        name: string,
-      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
-    }) => AnyCustomGranularityElement[],
+      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
+    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
   ): Model<C, N, D, M, G | GN> {
     const elements = builder({
-      element: (name) => new CustomGranularityElementInit(this, name),
+      element: makeCustomGranularityElementInitMaker(),
     });
     return this.unsafeWithGranularity(granularityName, elements, "categorical");
   }
   withTemporalGranularity<GN extends string>(
     granularityName: Exclude<GN, G>,
     builder: (args: {
-      element: (
-        name: string,
-      ) => CustomGranularityElementInit<Extract<keyof D, string>>;
-    }) => AnyCustomGranularityElement[],
+      element: ReturnType<typeof makeCustomGranularityElementInitMaker<D>>;
+    }) => [AnyCustomGranularityElement, ...AnyCustomGranularityElement[]],
   ): Model<C, N, D, M, G | GN> {
     const elements = builder({
-      element: (name) => new CustomGranularityElementInit(this, name),
+      element: makeCustomGranularityElementInitMaker(),
     });
     return this.unsafeWithGranularity(granularityName, elements, "temporal");
   }
