@@ -145,10 +145,14 @@ export class QueryBuilder<
     return hierarchies;
   }
 
-  getHierarchy<G1 extends G>(hierarchyName: G1 & string) {
+  unsafeGetHierarchy(hierarchyName: string) {
     const hierarchy = this.hierarchiesByName[hierarchyName];
     invariant(hierarchy, `Hierarchy ${hierarchyName} not found`);
     return hierarchy;
+  }
+
+  getHierarchy<G1 extends G>(hierarchyName: G1 & string) {
+    return this.unsafeGetHierarchy(hierarchyName);
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(

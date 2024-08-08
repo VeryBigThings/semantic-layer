@@ -1,243 +1,13 @@
-import { AnyInputQuery, HierarchyConfig, HierarchyType } from "../types.js";
+import {
+  AnyInputQuery,
+  HierarchyConfig,
+  HierarchyType,
+  Order as _Order,
+} from "../types.js";
 
-import { AnyQueryBuilder } from "../query-builder.js";
-import { HierarchyElementConfig } from "../hierarchy.js";
 import { compareBy } from "compare-by";
 import invariant from "tiny-invariant";
-
-/* import { compareBy } from 'compare-by';
-import invariant from 'tiny-invariant';
-
-const granularityComparator = compareBy([
-  {
-    key: 'idx',
-    dir: 'asc',
-  },
-  {
-    key: 'firstDimensionIdx',
-    dir: 'asc',
-  },
-]);
-
-export function getQueryGranularities(
-  repository: semanticLayer.AnyRepository,
-  query: semanticLayer.AnyInputQuery,
-) {
-  const repositoryGranularities = repository.granularities;
-  const seenGranularities = repositoryGranularities
-    .map((v, i) => [i, v] as const)
-    .reduce<
-      Record<
-        'custom' | 'temporal',
-        {
-          idx: number;
-          firstDimensionIdx: number;
-          name: string;
-          members: string[];
-        }[]
-      >
-    >(
-      (acc, [idx, granularity]) => {
-        let firstDimensionIdx: null | number = null;
-        const members: string[] = [];
-
-        for (let i = 0; i < granularity.elements.length; i++) {
-          const element = granularity.elements[i];
-
-          if (typeof element === 'string') {
-            if (query.members.includes(element)) {
-              if (firstDimensionIdx === null) {
-                firstDimensionIdx = i;
-              }
-              members.push(element);
-            }
-          } else {
-            const elementElements = element.elements;
-            for (const elementElement of elementElements) {
-              if (query.members.includes(elementElement)) {
-                if (firstDimensionIdx === null) {
-                  firstDimensionIdx = i;
-                }
-                members.push(elementElement);
-              }
-            }
-          }
-        }
-        if (firstDimensionIdx !== null) {
-          acc[granularity.type].push({
-            idx,
-            firstDimensionIdx,
-            name: granularity.name,
-            members,
-          });
-        }
-        return acc;
-      },
-      { custom: [], temporal: [] },
-    );
-
-  return {
-    custom: seenGranularities.custom
-      .sort(granularityComparator)
-      .map(({ name, members }) => ({
-        members,
-        name,
-      })),
-    temporal: seenGranularities.temporal
-      .sort(granularityComparator)
-      .map(({ name, members }) => ({
-        members,
-        name,
-      })),
-  };
-}
-
-export function getQueriesForGranularity(
-  repository: semanticLayer.AnyRepository,
-  query: semanticLayer.AnyInputQuery,
-  queryGranularity: ReturnType<typeof getQueryGranularities>['custom'][number],
-  temporalGranularities: ReturnType<typeof getQueryGranularities>['temporal'],
-) {
-  console.log('GET QUERIES FOR GRANULARITY', queryGranularity);
-  const granularity = repository.granularities.find(
-    (g) => g.name === queryGranularity.name,
-  );
-  if (!granularity) {
-    return null;
-  }
-  const granularityLevels = granularity.elements.reduce<{
-    granularityAllDimensions: string[];
-    levelsDimensions: string[][];
-  }>(
-    (acc, m) => {
-      if (typeof m === 'string') {
-        acc.granularityAllDimensions.push(m);
-        acc.levelsDimensions.push([m]);
-      } else {
-        const elements = m.elements;
-        acc.levelsDimensions.push(elements);
-        for (const element of elements) {
-          acc.granularityAllDimensions.push(element);
-        }
-      }
-      return acc;
-    },
-    { granularityAllDimensions: [], levelsDimensions: [] },
-  );
-
-  const dimensions: string[] = [];
-  const metrics: string[] = [];
-  for (const queryMember of query.members) {
-    if (granularityLevels.granularityAllDimensions.includes(queryMember)) {
-      continue;
-    } else {
-      if (repository.getMember(queryMember).isMetric()) {
-        metrics.push(queryMember);
-      } else {
-        dimensions.push(queryMember);
-      }
-    }
-  }
-
-  const sortedDimensions = dimensions.sort();
-  const sortedMetrics = metrics.sort();
-
-  const queriesInfo: {
-    level: number;
-    isFirstLevel: boolean;
-    isLastLevel: boolean;
-    baseQuery: semanticLayer.AnyInputQuery;
-    granularityDimensions: string[];
-    prevLevelsGranularityDimensions: string[];
-  }[] = [];
-
-  for (let i = 0; i < granularityLevels.levelsDimensions.length; i++) {
-    const granularityDimensions = granularityLevels.levelsDimensions[i];
-    const isFirstLevel = i === 0;
-
-    const baseQuery = {
-      ...query,
-      members: [],
-    };
-
-    const prevLevelsGranularityDimensions = [
-      ...(queriesInfo[i - 1]?.prevLevelsGranularityDimensions ?? []),
-      ...(queriesInfo[i - 1]?.granularityDimensions ?? []),
-    ];
-
-    queriesInfo.push({
-      level: i,
-      isFirstLevel,
-      isLastLevel: false,
-      baseQuery,
-      granularityDimensions,
-      prevLevelsGranularityDimensions,
-    });
-  }
-
-  queriesInfo.push({
-    ...queriesInfo[queriesInfo.length - 1],
-    isLastLevel: true,
-    level: queriesInfo.length,
-  });
-
-  return {
-    granularity,
-    allGranularityDimensions: granularityLevels.granularityAllDimensions,
-    dimensions: sortedDimensions,
-    metrics: sortedMetrics,
-    temporalDimensions: temporalGranularities.flatMap((g) => g.members),
-    queriesInfo,
-  };
-}
-
-export function getQueriesForSelectedGranularity(
-  repository: semanticLayer.AnyRepository,
-  query: semanticLayer.AnyInputQuery,
-  queryGranularities: ReturnType<typeof getQueryGranularities>,
-  granularityName?: string,
-) {
-  const queryGranularity = granularityName
-    ? queryGranularities.custom.find((g) => g.name === granularityName)
-    : queryGranularities.custom[0];
-
-  if (!queryGranularity) {
-    return null;
-  }
-
-  const queriesForGranularity = getQueriesForGranularity(
-    repository,
-    query,
-    queryGranularity,
-    queryGranularities.temporal,
-  );
-
-  return queriesForGranularity;
-}
-
-export function getQueryForGranularityLevel(
-  queriesForGranularity: NonNullable<
-    ReturnType<typeof getQueriesForGranularity>
-  >,
-  level: number = 0,
-) {
-  const queryInfoForLevel = queriesForGranularity.queriesInfo[level];
-
-  invariant(queryInfoForLevel, `Query info for level ${level} not found`);
-
-  return {
-    ...queryInfoForLevel.baseQuery,
-    members: [
-      ...queryInfoForLevel.prevLevelsGranularityDimensions,
-      ...queryInfoForLevel.granularityDimensions,
-      ...queriesForGranularity.temporalDimensions,
-      ...(queryInfoForLevel.isLastLevel
-        ? queriesForGranularity.dimensions
-        : []),
-      ...queriesForGranularity.metrics,
-    ],
-  };
-}*/
+import { AnyQueryBuilder } from "../query-builder.js";
 
 const hierarchyOrderComparator = compareBy([
   {
@@ -273,10 +43,10 @@ function getQueryHierarchies(
 
   const result = seenHierarchies
     .sort(hierarchyOrderComparator)
-    .reduce<Record<HierarchyType | "all", HierarchyConfig[]>>(
+    .reduce<Record<HierarchyType | "all", string[]>>(
       (acc, { hierarchy }) => {
-        acc.all.push(hierarchy);
-        acc[hierarchy.type].push(hierarchy);
+        acc.all.push(hierarchy.name);
+        acc[hierarchy.type].push(hierarchy.name);
         return acc;
       },
       { categorical: [], temporal: [], all: [] },
@@ -326,20 +96,23 @@ export function analyzeQuery(
 
 export type QueryAnalysis = ReturnType<typeof analyzeQuery>;
 
-export function getQueriesForHierarchy(
+export function analyzeQueryHierarchy(
+  queryBuilder: AnyQueryBuilder,
   analysis: QueryAnalysis,
   hierarchyName: string,
 ) {
-  const hierarchy = analysis.hierarchies.all.find(
-    (h) => h.name === hierarchyName,
+  const queryHierarchyName = analysis.hierarchies.all.find(
+    (h) => h === hierarchyName,
   );
-  invariant(hierarchy, `Hierarchy ${hierarchyName} not found`);
+  invariant(queryHierarchyName, `Hierarchy ${hierarchyName} not found`);
+
+  const hierarchy = queryBuilder.getHierarchy(queryHierarchyName);
 
   const queriesForHierarchy = hierarchy.elements.reduce<{
     elementsExtraDimensions: string[];
     restDimensions: string[];
     queriesInfo: {
-      hierarchyElement: HierarchyElementConfig;
+      elementName: string;
       keyDimensions: string[];
       prevLevelsKeyDimensions: string[];
       formatDimensions: string[];
@@ -380,7 +153,7 @@ export function getQueriesForHierarchy(
       acc.elementsExtraDimensions.push(...elementExtraDimensions);
 
       const queryInfo = {
-        hierarchyElement: element,
+        elementName: element.name,
         keyDimensions: element.keyDimensions,
         formatDimensions: element.formatDimensions,
         extraDimensions: elementExtraDimensions,
@@ -406,6 +179,7 @@ export function getQueriesForHierarchy(
   );
 
   return {
+    hierarchyName: hierarchyName,
     restMembers: [
       ...queriesForHierarchy.elementsExtraDimensions,
       ...queriesForHierarchy.restDimensions,
@@ -418,16 +192,20 @@ export function getQueriesForHierarchy(
         queriesForHierarchy.queriesInfo.length - 1
       ]!,
     ].map((queryInfo, idx) => ({
-      hierarchyElement: queryInfo.hierarchyElement,
-      hierarchyElementFilterDimensions: queryInfo.prevLevelsKeyDimensions,
+      elementName: queryInfo.elementName,
+      keyDimensions: [
+        ...queryInfo.prevLevelsKeyDimensions,
+        ...queryInfo.keyDimensions,
+      ],
       query: {
         ...analysis.query,
         members: [
           ...queryInfo.prevLevelsKeyDimensions,
           ...queryInfo.keyDimensions,
+          ...queryInfo.formatDimensions,
           ...queryInfo.prevLevelsExtraDimensions,
           ...queryInfo.extraDimensions,
-          // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions
+          // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
           ...(idx === queriesForHierarchy.queriesInfo.length
             ? queriesForHierarchy.restDimensions
             : []),
@@ -437,3 +215,5 @@ export function getQueriesForHierarchy(
     })),
   };
 }
+
+export type QueryHierarchyAnalysis = ReturnType<typeof analyzeQueryHierarchy>;

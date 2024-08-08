@@ -1,12 +1,10 @@
 import * as semanticLayer from "../index.js";
 
+import { expect, it } from "vitest";
 import {
   analyzeQuery,
-  getQueriesForHierarchy,
+  analyzeQueryHierarchy,
 } from "../lib/query-builder/analyzer.js";
-import { assert, expect, it } from "vitest";
-
-import exp from "constants";
 
 const customersModel = semanticLayer
   .model()
@@ -452,17 +450,29 @@ it("can analyze a query", () => {
   const queryAnalysis = analyzeQuery(queryBuilder, query);
 
   expect(queryAnalysis).toMatchObject({
-    query,
+    query: {
+      members: ["artists.name", "invoices.invoice_date", "invoices.total"],
+      filters: [
+        {
+          operator: "equals",
+          member: "genres.name",
+          value: ["Rock"],
+        },
+      ],
+      order: [
+        {
+          member: "artists.name",
+          direction: "asc",
+        },
+      ],
+      limit: 1,
+    },
     dimensions: ["artists.name", "invoices.invoice_date"],
     metrics: ["invoices.total"],
     hierarchies: {
-      categorical: [{ name: "artist" }, { name: "artists.artist" }],
-      temporal: [{ name: "invoices.invoice_date" }],
-      all: [
-        { name: "artist" },
-        { name: "artists.artist" },
-        { name: "invoices.invoice_date" },
-      ],
+      categorical: ["artist", "artists.artist"],
+      temporal: ["invoices.invoice_date"],
+      all: ["artist", "artists.artist", "invoices.invoice_date"],
     },
   });
 });
@@ -491,12 +501,14 @@ it("can generate queries for a hierarchy", () => {
 
   const queryAnalysis = analyzeQuery(queryBuilder, query);
 
-  const queriesForHierarchyArtist = getQueriesForHierarchy(
+  const queriesForHierarchyArtist = analyzeQueryHierarchy(
+    queryBuilder,
     queryAnalysis,
     "artist",
   );
 
   expect(queriesForHierarchyArtist).toMatchObject({
+    hierarchyName: "artist",
     restMembers: [
       "customers.full_name",
       "customers.email",
@@ -507,15 +519,10 @@ it("can generate queries for a hierarchy", () => {
     ],
     queriesInfo: [
       {
-        hierarchyElement: {
-          name: "artist",
-          dimensions: ["artists.artist_id", "artists.name"],
-          keyDimensions: ["artists.artist_id"],
-          formatDimensions: ["artists.name"],
-        },
-        hierarchyElementFilterDimensions: [],
+        elementName: "artist",
+        keyDimensions: ["artists.artist_id"],
         query: {
-          members: ["artists.artist_id", "invoices.total"],
+          members: ["artists.artist_id", "artists.name", "invoices.total"],
           filters: [
             {
               operator: "equals",
@@ -532,46 +539,13 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        hierarchyElement: {
-          name: "album",
-          dimensions: ["albums.album_id", "albums.title"],
-          keyDimensions: ["albums.album_id"],
-          formatDimensions: ["albums.title"],
-        },
-        hierarchyElementFilterDimensions: ["artists.artist_id"],
-        query: {
-          members: ["artists.artist_id", "albums.album_id", "invoices.total"],
-          filters: [
-            {
-              operator: "equals",
-              member: "genres.name",
-              value: ["Rock"],
-            },
-          ],
-          order: [
-            {
-              member: "artists.name",
-              direction: "asc",
-            },
-          ],
-        },
-      },
-      {
-        hierarchyElement: {
-          name: "track",
-          dimensions: ["tracks.track_id", "tracks.name"],
-          keyDimensions: ["tracks.track_id"],
-          formatDimensions: ["tracks.name"],
-        },
-        hierarchyElementFilterDimensions: [
-          "artists.artist_id",
-          "albums.album_id",
-        ],
+        elementName: "album",
+        keyDimensions: ["artists.artist_id", "albums.album_id"],
         query: {
           members: [
             "artists.artist_id",
             "albums.album_id",
-            "tracks.track_id",
+            "albums.title",
             "invoices.total",
           ],
           filters: [
@@ -590,21 +564,48 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        hierarchyElement: {
-          name: "track",
-          dimensions: ["tracks.track_id", "tracks.name"],
-          keyDimensions: ["tracks.track_id"],
-          formatDimensions: ["tracks.name"],
-        },
-        hierarchyElementFilterDimensions: [
+        elementName: "track",
+        keyDimensions: [
           "artists.artist_id",
           "albums.album_id",
+          "tracks.track_id",
         ],
         query: {
           members: [
             "artists.artist_id",
             "albums.album_id",
             "tracks.track_id",
+            "tracks.name",
+            "invoices.total",
+          ],
+          filters: [
+            {
+              operator: "equals",
+              member: "genres.name",
+              value: ["Rock"],
+            },
+          ],
+          order: [
+            {
+              member: "artists.name",
+              direction: "asc",
+            },
+          ],
+        },
+      },
+      {
+        elementName: "track",
+        keyDimensions: [
+          "artists.artist_id",
+          "albums.album_id",
+          "tracks.track_id",
+        ],
+        query: {
+          members: [
+            "artists.artist_id",
+            "albums.album_id",
+            "tracks.track_id",
+            "tracks.name",
             "customers.full_name",
             "customers.email",
             "customers.phone",
@@ -630,12 +631,14 @@ it("can generate queries for a hierarchy", () => {
     ],
   });
 
-  const queriesForHierarchyCustomerPersonalInformation = getQueriesForHierarchy(
+  const queriesForHierarchyCustomerPersonalInformation = analyzeQueryHierarchy(
+    queryBuilder,
     queryAnalysis,
     "customers.personal_information",
   );
 
   expect(queriesForHierarchyCustomerPersonalInformation).toMatchObject({
+    hierarchyName: "customers.personal_information",
     restMembers: [
       "customers.email",
       "customers.phone",
@@ -647,24 +650,12 @@ it("can generate queries for a hierarchy", () => {
     ],
     queriesInfo: [
       {
-        hierarchyElement: {
-          name: "personal_information",
-          dimensions: [
-            "customers.customer_id",
-            "customers.first_name",
-            "customers.last_name",
-            "customers.full_name",
-            "customers.email",
-            "customers.fax",
-            "customers.phone",
-          ],
-          keyDimensions: ["customers.customer_id"],
-          formatDimensions: ["customers.full_name"],
-        },
-        hierarchyElementFilterDimensions: [],
+        elementName: "personal_information",
+        keyDimensions: ["customers.customer_id"],
         query: {
           members: [
             "customers.customer_id",
+            "customers.full_name",
             "customers.email",
             "customers.phone",
             "invoices.total",
@@ -685,24 +676,12 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        hierarchyElement: {
-          name: "personal_information",
-          dimensions: [
-            "customers.customer_id",
-            "customers.first_name",
-            "customers.last_name",
-            "customers.full_name",
-            "customers.email",
-            "customers.fax",
-            "customers.phone",
-          ],
-          keyDimensions: ["customers.customer_id"],
-          formatDimensions: ["customers.full_name"],
-        },
-        hierarchyElementFilterDimensions: [],
+        elementName: "personal_information",
+        keyDimensions: ["customers.customer_id"],
         query: {
           members: [
             "customers.customer_id",
+            "customers.full_name",
             "customers.email",
             "customers.phone",
             "artists.name",

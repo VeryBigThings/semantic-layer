@@ -12,4 +12,5 @@ export * from "./dialect.js";
 export * from "./hierarchy.js";
 
 import * as helpers from "./helpers.js";
-export { helpers };
+import * as analyzer from "./query-builder/analyzer.js";
+export { helpers, analyzer };
