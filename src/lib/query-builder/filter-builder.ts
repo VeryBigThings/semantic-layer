@@ -74,7 +74,7 @@ export class FilterBuilder {
       }
       if (this.filterType === "metric" && member.isMetric()) {
         const prefix = this.metricPrefixes?.[member.model.name];
-        const sql = member.getAlias(this.queryBuilder.dialect);
+        const sql = member.getQuotedAlias(this.queryBuilder.dialect);
         return sqlAsSqlWithBindings(
           prefix
             ? `${this.queryBuilder.dialect.asIdentifier(prefix)}.${sql}`
@@ -179,7 +179,6 @@ export class FilterFragmentBuilderRegistry<T = never> {
 }
 
 export type AnyFilterFragmentBuilderRegistry =
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   FilterFragmentBuilderRegistry<any>;
 export type GetFilterFragmentBuilderRegistryPayload<T> =
   T extends FilterFragmentBuilderRegistry<infer P> ? P : never;

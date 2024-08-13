@@ -148,7 +148,7 @@ function buildQuerySegmentJoinQuery(
 
       sqlQuery.select(
         queryBuilder.dialect.fragment(
-          `${sql} as ${dimension.getAlias(queryBuilder.dialect)}`,
+          `${sql} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
           bindings,
         ),
       );
@@ -214,17 +214,17 @@ function buildQuerySegment(
     const dimension = queryBuilder.repository.getDimension(dimensionName);
     sqlQuery.select(
       queryBuilder.dialect.fragment(
-        `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
+        `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${dimension.getAlias(queryBuilder.dialect)}`,
+        )} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
     if (hasMetrics) {
       sqlQuery.groupBy(
         queryBuilder.dialect.fragment(
-          `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
-            queryBuilder.dialect,
-          )}`,
+          `${queryBuilder.dialect.asIdentifier(
+            alias,
+          )}.${dimension.getQuotedAlias(queryBuilder.dialect)}`,
         ),
       );
     }
@@ -236,7 +236,7 @@ function buildQuerySegment(
 
     sqlQuery.select(
       queryBuilder.dialect.fragment(
-        `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
+        `${sql} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
         bindings,
       ),
     );
@@ -284,9 +284,11 @@ export function buildQuery(
 
     rootSqlQuery.select(
       queryBuilder.dialect.fragment(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${dimension.getAlias(
+        `${queryBuilder.dialect.asIdentifier(
+          rootAlias,
+        )}.${dimension.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${dimension.getAlias(queryBuilder.dialect)}`,
+        )} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
   }
@@ -297,9 +299,11 @@ export function buildQuery(
 
     rootSqlQuery.select(
       queryBuilder.dialect.fragment(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${metric.getAlias(
+        `${queryBuilder.dialect.asIdentifier(
+          rootAlias,
+        )}.${metric.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${metric.getAlias(queryBuilder.dialect)}`,
+        )} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
   }
@@ -313,11 +317,11 @@ export function buildQuery(
             .map((dimension) => {
               return `${queryBuilder.dialect.asIdentifier(
                 rootAlias,
-              )}.${dimension.getAlias(
+              )}.${dimension.getQuotedAlias(
                 queryBuilder.dialect,
               )} = ${queryBuilder.dialect.asIdentifier(
                 alias,
-              )}.${dimension.getAlias(queryBuilder.dialect)}`;
+              )}.${dimension.getQuotedAlias(queryBuilder.dialect)}`;
             })
             .join(" and ")
         : "1 = 1";
@@ -332,9 +336,11 @@ export function buildQuery(
         const metric = queryBuilder.repository.getMetric(metricName);
         rootSqlQuery.select(
           queryBuilder.dialect.fragment(
-            `${queryBuilder.dialect.asIdentifier(alias)}.${metric.getAlias(
+            `${queryBuilder.dialect.asIdentifier(
+              alias,
+            )}.${metric.getQuotedAlias(
               queryBuilder.dialect,
-            )} as ${metric.getAlias(queryBuilder.dialect)}`,
+            )} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
           ),
         );
       }
@@ -366,7 +372,7 @@ export function buildQuery(
   ).map(({ member, direction }) => {
     const memberSql = queryBuilder.repository
       .getMember(member)
-      .getAlias(queryBuilder.dialect);
+      .getQuotedAlias(queryBuilder.dialect);
     return `${memberSql} ${direction}`;
   });
 

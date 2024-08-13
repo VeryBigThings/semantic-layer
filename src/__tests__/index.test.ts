@@ -47,7 +47,7 @@ describe("semantic layer", async () => {
       await client.end();
       await container.stop();
     };
-  }, 60000);
+  });
 
   describe("models from tables", async () => {
     const customersModel = semanticLayer

@@ -1,4 +1,6 @@
 import { Replace, Simplify } from "type-fest";
+import { HierarchyElement, HierarchyElementConfig } from "./hierarchy.js";
+import { exhaustiveCheck } from "./util.js";
 
 export interface AndConnective<F = never> {
   operator: "and";
@@ -14,7 +16,6 @@ export type FilterType = "dimension" | "metric";
 
 export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryFilter = QueryFilter<any>;
 
 export type OrderDirection = "asc" | "desc";
@@ -86,7 +87,7 @@ export interface SqlWithBindings {
   bindings: unknown[];
 }
 
-export const GranularityIndex = {
+export const TemporalGranularityIndex = {
   time: {
     description: "Time of underlying field. Example output: 00:00:00",
     type: "time",
@@ -143,21 +144,21 @@ export const GranularityIndex = {
   },
 } as const satisfies Record<string, { description: string; type: MemberType }>;
 
-export type GranularityIndex = typeof GranularityIndex;
+export type TemporalGranularityIndex = typeof TemporalGranularityIndex;
 
-export type GranularityToMemberType = {
-  [K in keyof GranularityIndex]: GranularityIndex[K]["type"];
+export type TemporalGranularityToMemberType = {
+  [K in keyof TemporalGranularityIndex]: TemporalGranularityIndex[K]["type"];
 };
 
-function granularities<T extends (keyof GranularityIndex)[]>(
+function temporalGranularities<T extends (keyof TemporalGranularityIndex)[]>(
   ...granularities: T
 ): T[number][] {
   return granularities;
 }
 
-export const GranularityByDimensionType = {
-  time: granularities("hour", "hour_of_day", "minute"),
-  date: granularities(
+export const TemporalGranularityByDimensionType = {
+  time: temporalGranularities("hour", "minute"),
+  date: temporalGranularities(
     "year",
     "quarter",
     "quarter_of_year",
@@ -167,9 +168,7 @@ export const GranularityByDimensionType = {
     "week_num",
     "day_of_month",
   ),
-  datetime: granularities(
-    "time",
-    "date",
+  datetime: temporalGranularities(
     "year",
     "quarter",
     "quarter_of_year",
@@ -177,23 +176,83 @@ export const GranularityByDimensionType = {
     "month_num",
     "week",
     "week_num",
+    "date",
     "day_of_month",
+    "time",
     "hour",
     "hour_of_day",
     "minute",
   ),
 } as const;
 
-export type GranularityByDimensionType = typeof GranularityByDimensionType;
-export type Granularity = keyof typeof GranularityIndex;
+export type TemporalGranularityByDimensionType =
+  typeof TemporalGranularityByDimensionType;
+export type TemporalGranularity = keyof typeof TemporalGranularityIndex;
 
-export type DimensionWithGranularity<
+export type DimensionWithTemporalGranularity<
   D extends string,
-  T extends keyof GranularityByDimensionType,
-  GT extends keyof GranularityIndex = GranularityByDimensionType[T][number],
+  T extends keyof TemporalGranularityByDimensionType,
+  GT extends
+    keyof TemporalGranularityIndex = TemporalGranularityByDimensionType[T][number],
 > = {
-  [K in GT as `${D}.${K}`]: GranularityToMemberType[K];
+  [K in GT as `${D}.${K}`]: TemporalGranularityToMemberType[K];
 };
+
+const temporalHierarchyElementsByDimensionType: {
+  [K in keyof TemporalGranularityByDimensionType]: TemporalGranularityByDimensionType[K];
+} = {
+  time: [],
+  date: ["year", "quarter", "month", "week"],
+  datetime: ["year", "quarter", "month", "week", "date"],
+};
+
+export function makeTemporalHierarchyElementsForDimension(
+  dimensionName: string,
+  dimensionType: "time" | "date" | "datetime",
+) {
+  switch (dimensionType) {
+    case "time":
+      return [
+        ...temporalHierarchyElementsByDimensionType.time.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+
+    case "date": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.date.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    case "datetime": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.datetime.map(
+          (granularity) => {
+            const granularityDimensionName = `${dimensionName}.${granularity}`;
+            return new HierarchyElement(granularityDimensionName, [
+              granularityDimensionName,
+            ]);
+          },
+        ),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    default:
+      exhaustiveCheck(
+        dimensionType,
+        `Unrecognized dimension type: ${dimensionType}`,
+      );
+  }
+}
 
 export type MemberType =
   | "string"
@@ -215,10 +274,12 @@ export type MemberTypeToType<MT extends MemberType> = MT extends "number"
           ? boolean
           : string;
 
-export type MemberFormat =
+export type MemberFormat<MT extends MemberType = MemberType> =
   | "percentage"
   | "currency"
-  | ((value: MemberTypeToType<MemberType>) => string);
+  | ((value: MemberTypeToType<MT>) => string);
+
+export type AnyMemberFormat = MemberFormat<any>;
 
 export type MemberNameToType = { [k in never]: MemberType };
 
@@ -265,7 +326,6 @@ export type MergeInferredSqlQueryResultTypeWithOverrides<
 export type InferSqlQueryResultType<
   T,
   TOverrides extends Record<string, unknown> = never,
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
 > = T extends SqlQueryResult<infer RT, any>
   ? [TOverrides] extends [never]
     ? RT
@@ -292,7 +352,7 @@ export type IntrospectionResult = Record<
   {
     memberType: "dimension" | "metric";
     path: string;
-    format?: MemberFormat | undefined;
+    format?: AnyMemberFormat | undefined;
     type: MemberType | "unknown";
     description?: string | undefined;
     isPrimaryKey: boolean;
@@ -311,14 +371,19 @@ export type InputQuery<DN extends string, MN extends string, F = never> = {
   offset?: number;
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
 export type InputQueryDN<Q> = Q extends InputQuery<infer DN, any, any>
   ? DN
   : never;
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
+
 export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
   ? MN
   : never;
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyInputQuery = InputQuery<string, string, any>;
+
+export type HierarchyType = "categorical" | "temporal";
+export interface HierarchyConfig {
+  name: string;
+  type: HierarchyType;
+  elements: [HierarchyElementConfig, ...HierarchyElementConfig[]];
+}

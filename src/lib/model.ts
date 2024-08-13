@@ -1,18 +1,107 @@
+import { Get, Simplify } from "type-fest";
 import {
-  DimensionWithGranularity,
-  Granularity,
-  GranularityByDimensionType,
-  GranularityIndex,
+  AnyHierarchyElement,
+  makeHierarchyElementInitMaker,
+} from "./hierarchy.js";
+import {
+  DimensionWithTemporalGranularity,
+  HierarchyType,
   MemberFormat,
   MemberNameToType,
-  MemberType,
   SqlWithBindings,
+  TemporalGranularity,
+  TemporalGranularityByDimensionType,
+  TemporalGranularityIndex,
+  makeTemporalHierarchyElementsForDimension,
 } from "./types.js";
 
 import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
 
 export type NextColumnRefOrDimensionRefAlias = () => string;
+
+export interface MemberSqlFnArgs<C, DN extends string = string> {
+  identifier: (name: string) => IdentifierRef;
+  model: {
+    column: (name: string) => ColumnRef;
+    dimension: (name: DN) => DimensionRef;
+  };
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
+  getContext: () => C;
+}
+
+export type MemberSqlFn<C, DN extends string = string> = (
+  args: MemberSqlFnArgs<C, DN>,
+) => ModelRef;
+
+export type MetricSqlFn<C, DN extends string = string> = (
+  args: MemberSqlFnArgs<C, DN>,
+) => SqlWithRefs;
+
+export type ModelSqlFn<C> = (args: {
+  identifier: (name: string) => IdentifierRef;
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
+  getContext: () => C;
+}) => ModelRef;
+
+export type WithTemporalGranularityDimensions<
+  N extends string,
+  T extends string,
+> = T extends keyof TemporalGranularityByDimensionType
+  ? { [k in N]: T } & DimensionWithTemporalGranularity<N, T>
+  : { [k in N]: T };
+
+// TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
+export type DimensionProps<C, DN extends string = string> = Simplify<
+  {
+    sql?: MemberSqlFn<C, DN>;
+    primaryKey?: boolean;
+    description?: string;
+  } & (
+    | { type: "string"; format?: MemberFormat<"string"> }
+    | { type: "number"; format?: MemberFormat<"number"> }
+    | { type: "date"; format?: MemberFormat<"date">; omitGranularity?: boolean }
+    | {
+        type: "datetime";
+        format?: MemberFormat<"datetime">;
+        omitGranularity?: boolean;
+      }
+    | { type: "time"; format?: MemberFormat<"time">; omitGranularity?: boolean }
+    | { type: "boolean"; format?: MemberFormat<"boolean"> }
+  )
+>;
+
+export type AnyDimensionProps = DimensionProps<any, string>;
+
+export type DimensionHasTemporalGranularity<DP extends AnyDimensionProps> = Get<
+  DP,
+  "type"
+> extends "datetime" | "date" | "time"
+  ? Get<DP, "omitGranularity"> extends true
+    ? false
+    : true
+  : false;
+
+// TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
+export type MetricProps<C, DN extends string = string> = Simplify<
+  {
+    sql?: MemberSqlFn<C, DN>;
+    description?: string;
+  } & (
+    | { type: "string"; format?: MemberFormat<"string"> }
+    | { type: "number"; format?: MemberFormat<"number"> }
+    | { type: "date"; format?: MemberFormat<"date"> }
+    | { type: "datetime"; format?: MemberFormat<"datetime"> }
+    | { type: "time"; format?: MemberFormat<"time"> }
+    | { type: "boolean"; format?: MemberFormat<"boolean"> }
+  )
+>;
+export type AnyMetricProps = MetricProps<any, string>;
+
+export type AnyModel<C = any> = Model<C, any, any, any, any>;
+export type ModelConfig<C> =
+  | { type: "table"; name: string | ModelSqlFn<C> }
+  | { type: "sqlQuery"; alias: string; sql: ModelSqlFn<C> };
 
 export abstract class ModelRef {
   public abstract render(
@@ -151,62 +240,11 @@ export class SqlWithRefs extends ModelRef {
   }
 }
 
-export interface MemberSqlFnArgs<C, DN extends string = string> {
-  identifier: (name: string) => IdentifierRef;
-  model: {
-    column: (name: string) => ColumnRef;
-    dimension: (name: DN) => DimensionRef;
-  };
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
-  getContext: () => C;
-}
-
-export type MemberSqlFn<C, DN extends string = string> = (
-  args: MemberSqlFnArgs<C, DN>,
-) => ModelRef;
-
-export type MetricSqlFn<C, DN extends string = string> = (
-  args: MemberSqlFnArgs<C, DN>,
-) => SqlWithRefs;
-
-export type ModelSqlFn<C> = (args: {
-  identifier: (name: string) => IdentifierRef;
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
-  getContext: () => C;
-}) => ModelRef;
-
 function typeHasGranularity(
   type: string,
-): type is keyof GranularityByDimensionType {
-  return type in GranularityByDimensionType;
+): type is keyof TemporalGranularityByDimensionType {
+  return type in TemporalGranularityByDimensionType;
 }
-
-export type WithGranularityDimensions<
-  N extends string,
-  T extends string,
-> = T extends keyof GranularityByDimensionType
-  ? { [k in N]: T } & DimensionWithGranularity<N, T>
-  : { [k in N]: T };
-
-export interface DimensionProps<C, DN extends string = string> {
-  type: MemberType;
-  sql?: MemberSqlFn<C, DN>;
-  format?: MemberFormat;
-  primaryKey?: boolean;
-  description?: string;
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyDimensionProps = DimensionProps<any, string>;
-export interface MetricProps<C, DN extends string = string> {
-  type: MemberType;
-  sql: MetricSqlFn<C, DN>;
-  format?: MemberFormat;
-  description?: string;
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyMetricProps = MetricProps<any, string>;
 
 export abstract class Member {
   public abstract readonly name: string;
@@ -217,10 +255,11 @@ export abstract class Member {
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
-  getAlias(dialect: AnyBaseDialect) {
-    return dialect.asIdentifier(
-      `${this.model.name}___${this.name.replaceAll(".", "___")}`,
-    );
+  getQuotedAlias(dialect: AnyBaseDialect) {
+    return dialect.asIdentifier(this.getAlias());
+  }
+  getAlias() {
+    return `${this.model.name}___${this.name.replaceAll(".", "___")}`;
   }
   getPath() {
     return `${this.model.name}.${this.name}`;
@@ -258,6 +297,19 @@ export abstract class Member {
   getFormat() {
     return this.props.format;
   }
+  unsafeFormatValue(value: unknown) {
+    const format = this.getFormat();
+    if (typeof format === "function") {
+      return (format as (value: unknown) => string)(value);
+    }
+    if (format === "currency") {
+      return `$${value}`;
+    }
+    if (format === "percentage") {
+      return `${value}%`;
+    }
+    return String(value);
+  }
   abstract clone(model: AnyModel): Member;
 }
 
@@ -266,7 +318,7 @@ export class Dimension extends Member {
     public readonly model: AnyModel,
     public readonly name: string,
     public readonly props: AnyDimensionProps,
-    public readonly granularity?: Granularity,
+    public readonly granularity?: TemporalGranularity,
   ) {
     super();
   }
@@ -372,20 +424,24 @@ export class Metric extends Member {
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyModel<C = any> = Model<C, any, any, any>;
-export type ModelConfig<C> =
-  | { type: "table"; name: string | ModelSqlFn<C> }
-  | { type: "sqlQuery"; alias: string; sql: ModelSqlFn<C> };
-
 export class Model<
   C,
   N extends string,
   D extends MemberNameToType = MemberNameToType,
   M extends MemberNameToType = MemberNameToType,
+  G extends string = never,
 > {
   public readonly dimensions: Record<string, Dimension> = {};
   public readonly metrics: Record<string, Metric> = {};
+  public readonly categoricalHierarchies: {
+    name: string;
+    elements: AnyHierarchyElement[];
+  }[] = [];
+  public readonly temporalHierarchies: {
+    name: string;
+    elements: AnyHierarchyElement[];
+  }[] = [];
+  public readonly hierarchyNames: Set<string> = new Set();
 
   constructor(
     public readonly name: N,
@@ -394,38 +450,57 @@ export class Model<
   withDimension<
     DN1 extends string,
     DP extends DimensionProps<C, string & keyof D>,
+    DG extends boolean = DimensionHasTemporalGranularity<DP>,
   >(
     name: Exclude<DN1, keyof D | keyof M>,
     dimension: DP,
-  ): Model<C, N, D & WithGranularityDimensions<DN1, DP["type"]>, M> {
+  ): Model<
+    C,
+    N,
+    DG extends true
+      ? D & WithTemporalGranularityDimensions<DN1, DP["type"]>
+      : D & { [k in DN1]: DP["type"] },
+    M,
+    DG extends true ? G | DN1 : G
+  > {
     invariant(
       !(this.dimensions[name] || this.metrics[name]),
       `Member "${name}" already exists`,
     );
 
     this.dimensions[name] = new Dimension(this, name, dimension);
-    if (typeHasGranularity(dimension.type)) {
-      const granularity = GranularityByDimensionType[dimension.type];
-      for (const g of granularity) {
+    if (
+      typeHasGranularity(dimension.type) &&
+      dimension.omitGranularity !== true
+    ) {
+      const granularityDimensions =
+        TemporalGranularityByDimensionType[dimension.type];
+      for (const g of granularityDimensions) {
         const { format: _format, ...dimensionWithoutFormat } = dimension;
         this.dimensions[`${name}.${g}`] = new Dimension(
           this,
           `${name}.${g}`,
           {
             ...dimensionWithoutFormat,
-            type: GranularityIndex[g].type,
-            description: GranularityIndex[g].description,
+            type: TemporalGranularityIndex[g].type,
+            description: TemporalGranularityIndex[g].description,
+            format: (value: unknown) => `${value}`,
           },
           g,
         );
       }
+      this.unsafeWithHierarchy(
+        name,
+        makeTemporalHierarchyElementsForDimension(name, dimension.type),
+        "temporal",
+      );
     }
     return this;
   }
   withMetric<MN1 extends string, MP extends MetricProps<C, string & keyof D>>(
     name: Exclude<MN1, keyof M | keyof D>,
     metric: MP,
-  ): Model<C, N, D, M & { [k in MN1]: MP["type"] }> {
+  ): Model<C, N, D, M & { [k in MN1]: MP["type"] }, G> {
     invariant(
       !(this.dimensions[name] || this.metrics[name]),
       `Member "${name}" already exists`,
@@ -433,6 +508,45 @@ export class Model<
 
     this.metrics[name] = new Metric(this, name, metric);
     return this;
+  }
+  unsafeWithHierarchy(
+    hierarchyName: string,
+    elements: AnyHierarchyElement[],
+    type: HierarchyType,
+  ) {
+    invariant(
+      this.hierarchyNames.has(hierarchyName) === false,
+      `Granularity ${hierarchyName} already exists`,
+    );
+    this.hierarchyNames.add(hierarchyName);
+    if (type === "categorical") {
+      this.categoricalHierarchies.push({ name: hierarchyName, elements });
+    } else if (type === "temporal") {
+      this.temporalHierarchies.push({ name: hierarchyName, elements });
+    }
+    return this;
+  }
+  withCategoricalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
+    builder: (args: {
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
+  ): Model<C, N, D, M, G | GN> {
+    const elements = builder({
+      element: makeHierarchyElementInitMaker(),
+    });
+    return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
+  }
+  withTemporalHierarchy<GN extends string>(
+    hierarchyName: Exclude<GN, G>,
+    builder: (args: {
+      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+    }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
+  ): Model<C, N, D, M, G | GN> {
+    const elements = builder({
+      element: makeHierarchyElementInitMaker(),
+    });
+    return this.unsafeWithHierarchy(hierarchyName, elements, "temporal");
   }
   getMetric(name: string & keyof M) {
     const metric = this.metrics[name];
@@ -459,28 +573,26 @@ export class Model<
     return Object.values(this.metrics);
   }
   getTableName(dialect: AnyBaseDialect, context: C) {
-    if (this.config.type === "table") {
-      if (typeof this.config.name === "string") {
-        return {
-          sql: this.config.name
-            .split(".")
-            .map((v) => dialect.asIdentifier(v))
-            .join("."),
-          bindings: [],
-        };
-      }
+    invariant(this.config.type === "table", "Model is not a table");
 
-      const result = this.config.name({
-        identifier: (name: string) => new IdentifierRef(name),
-        sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
-          new SqlWithRefs([...strings], values),
-        getContext: () => context,
-      });
-
-      return result.render(dialect, context);
+    if (typeof this.config.name === "string") {
+      return {
+        sql: this.config.name
+          .split(".")
+          .map((v) => dialect.asIdentifier(v))
+          .join("."),
+        bindings: [],
+      };
     }
 
-    throw new Error("Model is not a table");
+    const result = this.config.name({
+      identifier: (name: string) => new IdentifierRef(name),
+      sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
+        new SqlWithRefs([...strings], values),
+      getContext: () => context,
+    });
+
+    return result.render(dialect, context);
   }
   getAs(dialect: AnyBaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
@@ -501,12 +613,17 @@ export class Model<
     return result.render(dialect, context);
   }
   clone<N extends string>(name: N) {
-    const newModel = new Model<C, N, D, M>(name, this.config);
+    const newModel = new Model<C, N, D, M, G>(name, this.config);
     for (const [key, value] of Object.entries(this.dimensions)) {
       newModel.dimensions[key] = value.clone(newModel);
     }
     for (const [key, value] of Object.entries(this.metrics)) {
       newModel.metrics[key] = value.clone(newModel);
+    }
+    newModel.temporalHierarchies.push(...this.temporalHierarchies);
+    newModel.categoricalHierarchies.push(...this.categoricalHierarchies);
+    for (const hierarchyName of this.hierarchyNames) {
+      newModel.hierarchyNames.add(hierarchyName);
     }
     return newModel;
   }
@@ -517,9 +634,7 @@ const VALID_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 export function model<C = undefined>() {
   return {
     withName: <N extends string>(name: N) => {
-      if (!VALID_NAME_RE.test(name)) {
-        throw new Error(`Invalid model name: ${name}`);
-      }
+      invariant(VALID_NAME_RE.test(name), `Invalid model name: ${name}`);
 
       return {
         fromTable: (tableName?: string | ModelSqlFn<C>) => {

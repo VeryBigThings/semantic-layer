@@ -29,7 +29,6 @@ function makeQueryFilterFragmentBuilder<T extends keyof typeof DOCUMENTATION>(
   {
     operator: T;
     member: string;
-    // biome-ignore lint/suspicious/noExplicitAny: We refine this type down the line
     value: any;
   }
 > {

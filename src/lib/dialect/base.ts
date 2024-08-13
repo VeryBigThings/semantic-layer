@@ -1,11 +1,14 @@
 import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
 
-import { Granularity } from "../types.js";
+import { TemporalGranularity } from "../types.js";
 
 export type DialectParamsType = "array" | "object";
 
 export abstract class BaseDialect<P extends DialectParamsType> {
-  abstract withGranularity(granularity: Granularity, sql: string): string;
+  abstract withGranularity(
+    granularity: TemporalGranularity,
+    sql: string,
+  ): string;
 
   abstract asIdentifier(value: string): string;
 
@@ -36,5 +39,4 @@ export abstract class BaseDialect<P extends DialectParamsType> {
   ): SqlFragment;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyBaseDialect = BaseDialect<any>;

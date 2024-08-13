@@ -1,5 +1,5 @@
-import { exhaustiveCheck } from "../query-builder/util.js";
-import { Granularity } from "../types.js";
+import { TemporalGranularity } from "../types.js";
+import { exhaustiveCheck } from "../util.js";
 import { BaseDialect } from "./base.js";
 import { SqlFragment } from "./sql-query-builder.js";
 
@@ -26,7 +26,7 @@ export class MSSQLDialect extends BaseDialect<"object"> {
       return `@param${questionCount}`;
     });
   }
-  withGranularity(granularity: Granularity, sql: string) {
+  withGranularity(granularity: TemporalGranularity, sql: string) {
     switch (granularity) {
       case "time":
         return `FORMAT(${sql}, 'HH:mm:ss')`;

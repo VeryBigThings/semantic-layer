@@ -1,6 +1,8 @@
 import {
   AnyInputQuery,
+  AnyMemberFormat,
   FilterType,
+  HierarchyConfig,
   InputQuery,
   IntrospectionResult,
   MemberNameToType,
@@ -10,15 +12,23 @@ import {
   SqlQueryResult,
 } from "./types.js";
 
+import invariant from "tiny-invariant";
 import { Simplify } from "type-fest";
 import { AnyBaseDialect } from "./dialect/base.js";
 import { SqlQuery } from "./dialect/sql-query-builder/to-sql.js";
+import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
+
+function isValidGranularityConfigElements(
+  elements: HierarchyElementConfig[],
+): elements is [HierarchyElementConfig, ...HierarchyElementConfig[]] {
+  return elements.length > 0;
+}
 
 function transformInputQueryToQuery(
   queryBuilder: AnyQueryBuilder,
@@ -53,13 +63,96 @@ export class QueryBuilder<
   M extends MemberNameToType,
   F,
   P,
+  G,
 > {
   public readonly querySchema: QuerySchema;
+  public readonly hierarchies: HierarchyConfig[];
+  public readonly hierarchiesByName: Record<string, HierarchyConfig>;
   constructor(
     public readonly repository: AnyRepository,
     public readonly dialect: AnyBaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
+    this.hierarchies = this.getGranularityConfigs(repository);
+    this.hierarchiesByName = this.hierarchies.reduce<
+      Record<string, HierarchyConfig>
+    >((acc, hierarchy) => {
+      acc[hierarchy.name] = hierarchy;
+      return acc;
+    }, {});
+  }
+
+  private getGranularityConfigs(repository: AnyRepository) {
+    const hierarchies: HierarchyConfig[] = [];
+    for (const hierarchy of repository.categoricalHierarchies) {
+      const elements = hierarchy.elements.map((element) =>
+        element.getConfig(repository),
+      );
+      invariant(
+        isValidGranularityConfigElements(elements),
+        "Granularity requires at least one element",
+      );
+      hierarchies.push({
+        name: hierarchy.name,
+        type: "categorical",
+        elements,
+      });
+    }
+    for (const model of repository.getModels()) {
+      for (const hierarchy of model.categoricalHierarchies) {
+        const elements = hierarchy.elements.map((element) =>
+          element.getConfig(model),
+        );
+        invariant(
+          isValidGranularityConfigElements(elements),
+          "Granularity requires at least one element",
+        );
+        hierarchies.push({
+          name: `${model.name}.${hierarchy.name}`,
+          type: "categorical",
+          elements,
+        });
+      }
+      for (const hierarchy of model.temporalHierarchies) {
+        const elements = hierarchy.elements.map((element) =>
+          element.getConfig(model),
+        );
+        invariant(
+          isValidGranularityConfigElements(elements),
+          "Granularity requires at least one element",
+        );
+        hierarchies.push({
+          name: `${model.name}.${hierarchy.name}`,
+          type: "temporal",
+          elements,
+        });
+      }
+    }
+    for (const hierarchy of repository.temporalHierarchies) {
+      const elements = hierarchy.elements.map((element) =>
+        element.getConfig(repository),
+      );
+      invariant(
+        isValidGranularityConfigElements(elements),
+        "Granularity requires at least one element",
+      );
+      hierarchies.push({
+        name: hierarchy.name,
+        type: "temporal",
+        elements,
+      });
+    }
+    return hierarchies;
+  }
+
+  unsafeGetHierarchy(hierarchyName: string) {
+    const hierarchy = this.hierarchiesByName[hierarchyName];
+    invariant(hierarchy, `Hierarchy ${hierarchyName} not found`);
+    return hierarchy;
+  }
+
+  getHierarchy<G1 extends G>(hierarchyName: G1 & string) {
+    return this.unsafeGetHierarchy(hierarchyName);
   }
 
   unsafeBuildGenericQueryWithoutSchemaParse(
@@ -145,7 +238,7 @@ export class QueryBuilder<
       acc[memberName.replaceAll(".", "___")] = {
         memberType: isDimension ? "dimension" : "metric",
         path: member.getPath(),
-        format: member.getFormat(),
+        format: member.getFormat() as AnyMemberFormat,
         type: member.getType(),
         description: member.getDescription(),
         isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
@@ -158,12 +251,11 @@ export class QueryBuilder<
 }
 
 export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any,
   infer D,
   infer M,
   infer F,
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  any,
   any
 >
   ? InputQuery<
@@ -173,5 +265,4 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
     >
   : never;
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any>;
+export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any, any>;

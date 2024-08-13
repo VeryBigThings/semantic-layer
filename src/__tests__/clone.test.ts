@@ -19,10 +19,23 @@ const userModel = semanticLayer
     type: "string",
     sql: ({ model }) => model.column("LastName"),
   })
+  .withDimension("datetime", {
+    type: "datetime",
+    sql: ({ model }) => model.column("DateTime"),
+  })
   .withMetric("count", {
     type: "string",
     sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("UserId")})`,
-  });
+  })
+  .withCategoricalHierarchy("customer", ({ element }) => [
+    element("user")
+      .withDimensions(["user_id", "first_name", "last_name"])
+      .withFormat(
+        ["first_name", "last_name"],
+        ({ dimension }) =>
+          `${dimension("first_name")} ${dimension("last_name")}`,
+      ),
+  ]);
 
 const customerModel = userModel.clone("customer");
 const employeeModel = userModel.clone("employee");
@@ -71,6 +84,12 @@ const queryBuilder = repository.build("postgresql");
 
 describe("clone", async () => {
   it("can clone a model", async () => {
+    assert.deepEqual(
+      userModel.categoricalHierarchies,
+      customerModel.categoricalHierarchies,
+    );
+    assert.deepEqual(userModel.hierarchyNames, customerModel.hierarchyNames);
+
     const query = queryBuilder.buildQuery({
       members: [
         "customer.user_id",

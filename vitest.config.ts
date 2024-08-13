@@ -12,6 +12,8 @@ export default defineConfig((_configEnv) => {
       env: {
         TZ: "UTC",
       },
+      testTimeout: 30000,
+      hookTimeout: 60000,
     },
   };
 

@@ -393,7 +393,7 @@ describe("mssql dialect", () => {
     return async () => {
       await container.stop();
     };
-  }, 60000);
+  });
 
   describe("test", () => {
     it("can retrieve data", async () => {
