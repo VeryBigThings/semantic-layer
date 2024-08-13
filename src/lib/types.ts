@@ -185,52 +185,6 @@ export const TemporalGranularityByDimensionType = {
   ),
 } as const;
 
-export function makeTemporalHierarchyElementsForDimension(
-  dimensionName: string,
-  dimensionType: "time" | "date" | "datetime",
-) {
-  switch (dimensionType) {
-    case "time":
-      return [
-        ...TemporalGranularityByDimensionType.time.map((granularity) => {
-          const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new HierarchyElement(granularityDimensionName, [
-            granularityDimensionName,
-          ]);
-        }),
-        new HierarchyElement(dimensionName, [dimensionName]),
-      ];
-
-    case "date": {
-      return [
-        ...TemporalGranularityByDimensionType.date.map((granularity) => {
-          const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new HierarchyElement(granularityDimensionName, [
-            granularityDimensionName,
-          ]);
-        }),
-        new HierarchyElement(dimensionName, [dimensionName]),
-      ];
-    }
-    case "datetime": {
-      return [
-        ...TemporalGranularityByDimensionType.datetime.map((granularity) => {
-          const granularityDimensionName = `${dimensionName}.${granularity}`;
-          return new HierarchyElement(granularityDimensionName, [
-            granularityDimensionName,
-          ]);
-        }),
-        new HierarchyElement(dimensionName, [dimensionName]),
-      ];
-    }
-    default:
-      exhaustiveCheck(
-        dimensionType,
-        `Unrecognized dimension type: ${dimensionType}`,
-      );
-  }
-}
-
 export type TemporalGranularityByDimensionType =
   typeof TemporalGranularityByDimensionType;
 export type TemporalGranularity = keyof typeof TemporalGranularityIndex;
@@ -243,6 +197,62 @@ export type DimensionWithTemporalGranularity<
 > = {
   [K in GT as `${D}.${K}`]: TemporalGranularityToMemberType[K];
 };
+
+const temporalHierarchyElementsByDimensionType: {
+  [K in keyof TemporalGranularityByDimensionType]: TemporalGranularityByDimensionType[K];
+} = {
+  time: [],
+  date: ["year", "quarter", "month", "week"],
+  datetime: ["year", "quarter", "month", "week", "date"],
+};
+
+export function makeTemporalHierarchyElementsForDimension(
+  dimensionName: string,
+  dimensionType: "time" | "date" | "datetime",
+) {
+  switch (dimensionType) {
+    case "time":
+      return [
+        ...temporalHierarchyElementsByDimensionType.time.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+
+    case "date": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.date.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    case "datetime": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.datetime.map(
+          (granularity) => {
+            const granularityDimensionName = `${dimensionName}.${granularity}`;
+            return new HierarchyElement(granularityDimensionName, [
+              granularityDimensionName,
+            ]);
+          },
+        ),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    default:
+      exhaustiveCheck(
+        dimensionType,
+        `Unrecognized dimension type: ${dimensionType}`,
+      );
+  }
+}
 
 export type MemberType =
   | "string"

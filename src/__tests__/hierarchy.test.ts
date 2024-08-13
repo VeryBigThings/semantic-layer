@@ -1,6 +1,6 @@
 import * as semanticLayer from "../index.js";
 
-import { assert, it } from "vitest";
+import { assert, expect, it } from "vitest";
 
 const customersModel = semanticLayer
   .model()
@@ -486,27 +486,13 @@ const repository = semanticLayer
 const queryBuilder = repository.build("postgresql");
 
 it("can correctly generate hierarchies", () => {
-  const hierarchiesWithoutFormatters = queryBuilder.hierarchies.map(
-    (hierarchy) => {
-      const elements = hierarchy.elements.map(
-        ({ formatter: _formatter, ...element }) => {
-          return element;
-        },
-      );
-      return {
-        ...hierarchy,
-        elements: elements,
-      };
-    },
-  );
-
   for (const hierarchy of queryBuilder.hierarchies) {
     for (const element of hierarchy.elements) {
       assert.isFunction(element.formatter);
     }
   }
 
-  assert.deepEqual(hierarchiesWithoutFormatters, [
+  expect(queryBuilder.hierarchies).toMatchObject([
     {
       name: "album",
       type: "categorical",
@@ -696,40 +682,16 @@ it("can correctly generate hierarchies", () => {
           formatDimensions: ["invoices.invoice_date.quarter"],
         },
         {
-          name: "invoice_date.quarter_of_year",
-          dimensions: ["invoices.invoice_date.quarter_of_year"],
-          keyDimensions: ["invoices.invoice_date.quarter_of_year"],
-          formatDimensions: ["invoices.invoice_date.quarter_of_year"],
-        },
-        {
           name: "invoice_date.month",
           dimensions: ["invoices.invoice_date.month"],
           keyDimensions: ["invoices.invoice_date.month"],
           formatDimensions: ["invoices.invoice_date.month"],
         },
         {
-          name: "invoice_date.month_num",
-          dimensions: ["invoices.invoice_date.month_num"],
-          keyDimensions: ["invoices.invoice_date.month_num"],
-          formatDimensions: ["invoices.invoice_date.month_num"],
-        },
-        {
           name: "invoice_date.week",
           dimensions: ["invoices.invoice_date.week"],
           keyDimensions: ["invoices.invoice_date.week"],
           formatDimensions: ["invoices.invoice_date.week"],
-        },
-        {
-          name: "invoice_date.week_num",
-          dimensions: ["invoices.invoice_date.week_num"],
-          keyDimensions: ["invoices.invoice_date.week_num"],
-          formatDimensions: ["invoices.invoice_date.week_num"],
-        },
-        {
-          name: "invoice_date.day_of_month",
-          dimensions: ["invoices.invoice_date.day_of_month"],
-          keyDimensions: ["invoices.invoice_date.day_of_month"],
-          formatDimensions: ["invoices.invoice_date.day_of_month"],
         },
         {
           name: "invoice_date",

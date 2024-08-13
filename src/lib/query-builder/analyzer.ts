@@ -6,7 +6,7 @@ import {
 } from "../types.js";
 
 import { compareBy } from "compare-by";
-import invariant from "tiny-invariant";
+import { HierarchyElementConfig } from "../hierarchy.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 
 const hierarchyOrderComparator = compareBy([
@@ -43,10 +43,18 @@ function getQueryHierarchies(
 
   const result = seenHierarchies
     .sort(hierarchyOrderComparator)
-    .reduce<Record<HierarchyType | "all", string[]>>(
-      (acc, { hierarchy }) => {
-        acc.all.push(hierarchy.name);
-        acc[hierarchy.type].push(hierarchy.name);
+    .reduce<
+      Record<
+        HierarchyType | "all",
+        { hierarchy: HierarchyConfig; level: number }[]
+      >
+    >(
+      (acc, { hierarchy, level }) => {
+        acc.all.push({ hierarchy, level });
+        acc[hierarchy.type].push({
+          hierarchy,
+          level,
+        });
         return acc;
       },
       { categorical: [], temporal: [], all: [] },
@@ -96,23 +104,16 @@ export function analyzeQuery(
 
 export type QueryAnalysis = ReturnType<typeof analyzeQuery>;
 
+// TODO: Change args to take in hierarchy instead of hierarchy name
 export function analyzeQueryHierarchy(
-  queryBuilder: AnyQueryBuilder,
   analysis: QueryAnalysis,
-  hierarchyName: string,
+  hierarchy: HierarchyConfig,
 ) {
-  const queryHierarchyName = analysis.hierarchies.all.find(
-    (h) => h === hierarchyName,
-  );
-  invariant(queryHierarchyName, `Hierarchy ${hierarchyName} not found`);
-
-  const hierarchy = queryBuilder.getHierarchy(queryHierarchyName);
-
   const queriesForHierarchy = hierarchy.elements.reduce<{
     elementsExtraDimensions: string[];
     restDimensions: string[];
     queriesInfo: {
-      elementName: string;
+      element: HierarchyElementConfig;
       keyDimensions: string[];
       prevLevelsKeyDimensions: string[];
       formatDimensions: string[];
@@ -153,7 +154,7 @@ export function analyzeQueryHierarchy(
       acc.elementsExtraDimensions.push(...elementExtraDimensions);
 
       const queryInfo = {
-        elementName: element.name,
+        element: element,
         keyDimensions: element.keyDimensions,
         formatDimensions: element.formatDimensions,
         extraDimensions: elementExtraDimensions,
@@ -179,7 +180,7 @@ export function analyzeQueryHierarchy(
   );
 
   return {
-    hierarchyName: hierarchyName,
+    hierarchy,
     restMembers: [
       ...queriesForHierarchy.elementsExtraDimensions,
       ...queriesForHierarchy.restDimensions,
@@ -192,7 +193,7 @@ export function analyzeQueryHierarchy(
         queriesForHierarchy.queriesInfo.length - 1
       ]!,
     ].map((queryInfo, idx) => ({
-      elementName: queryInfo.elementName,
+      element: queryInfo.element,
       keyDimensions: [
         ...queryInfo.prevLevelsKeyDimensions,
         ...queryInfo.keyDimensions,
@@ -200,16 +201,25 @@ export function analyzeQueryHierarchy(
       query: {
         ...analysis.query,
         members: [
-          ...queryInfo.prevLevelsKeyDimensions,
-          ...queryInfo.keyDimensions,
-          ...queryInfo.formatDimensions,
-          ...queryInfo.prevLevelsExtraDimensions,
-          ...queryInfo.extraDimensions,
-          // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
-          ...(idx === queriesForHierarchy.queriesInfo.length
-            ? queriesForHierarchy.restDimensions
-            : []),
-          ...analysis.metrics,
+          ...new Set([
+            ...queryInfo.prevLevelsKeyDimensions,
+            ...queryInfo.keyDimensions,
+            ...queryInfo.formatDimensions,
+            ...queryInfo.prevLevelsExtraDimensions,
+            ...queryInfo.extraDimensions,
+            // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
+            ...(idx === queriesForHierarchy.queriesInfo.length
+              ? queriesForHierarchy.restDimensions
+              : []),
+            ...analysis.metrics,
+          ]),
+        ],
+        order: [
+          ...queryInfo.formatDimensions.map((dimension) => ({
+            member: dimension,
+            direction: "asc" as const,
+          })),
+          ...(analysis.query.order ?? []),
         ],
       },
     })),

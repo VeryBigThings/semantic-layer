@@ -470,9 +470,174 @@ it("can analyze a query", () => {
     dimensions: ["artists.name", "invoices.invoice_date"],
     metrics: ["invoices.total"],
     hierarchies: {
-      categorical: ["artist", "artists.artist"],
-      temporal: ["invoices.invoice_date"],
-      all: ["artist", "artists.artist", "invoices.invoice_date"],
+      categorical: [
+        {
+          hierarchy: {
+            name: "artist",
+            type: "categorical",
+            elements: [
+              {
+                name: "artist",
+                dimensions: ["artists.artist_id", "artists.name"],
+                keyDimensions: ["artists.artist_id"],
+                formatDimensions: ["artists.name"],
+              },
+              {
+                name: "album",
+                dimensions: ["albums.album_id", "albums.title"],
+                keyDimensions: ["albums.album_id"],
+                formatDimensions: ["albums.title"],
+              },
+              {
+                name: "track",
+                dimensions: ["tracks.track_id", "tracks.name"],
+                keyDimensions: ["tracks.track_id"],
+                formatDimensions: ["tracks.name"],
+              },
+            ],
+          },
+          level: 0,
+        },
+        {
+          hierarchy: {
+            name: "artists.artist",
+            type: "categorical",
+            elements: [
+              {
+                name: "artist",
+                dimensions: ["artists.artist_id", "artists.name"],
+                keyDimensions: ["artists.artist_id"],
+                formatDimensions: ["artists.name"],
+              },
+            ],
+          },
+          level: 0,
+        },
+      ],
+      temporal: [
+        {
+          hierarchy: {
+            name: "invoices.invoice_date",
+            type: "temporal",
+            elements: [
+              {
+                name: "invoice_date.year",
+                dimensions: ["invoices.invoice_date.year"],
+                keyDimensions: ["invoices.invoice_date.year"],
+                formatDimensions: ["invoices.invoice_date.year"],
+              },
+              {
+                name: "invoice_date.quarter",
+                dimensions: ["invoices.invoice_date.quarter"],
+                keyDimensions: ["invoices.invoice_date.quarter"],
+                formatDimensions: ["invoices.invoice_date.quarter"],
+              },
+              {
+                name: "invoice_date.month",
+                dimensions: ["invoices.invoice_date.month"],
+                keyDimensions: ["invoices.invoice_date.month"],
+                formatDimensions: ["invoices.invoice_date.month"],
+              },
+              {
+                name: "invoice_date.week",
+                dimensions: ["invoices.invoice_date.week"],
+                keyDimensions: ["invoices.invoice_date.week"],
+                formatDimensions: ["invoices.invoice_date.week"],
+              },
+              {
+                name: "invoice_date",
+                dimensions: ["invoices.invoice_date"],
+                keyDimensions: ["invoices.invoice_date"],
+                formatDimensions: ["invoices.invoice_date"],
+              },
+            ],
+          },
+          level: 4,
+        },
+      ],
+      all: [
+        {
+          hierarchy: {
+            name: "artist",
+            type: "categorical",
+            elements: [
+              {
+                name: "artist",
+                dimensions: ["artists.artist_id", "artists.name"],
+                keyDimensions: ["artists.artist_id"],
+                formatDimensions: ["artists.name"],
+              },
+              {
+                name: "album",
+                dimensions: ["albums.album_id", "albums.title"],
+                keyDimensions: ["albums.album_id"],
+                formatDimensions: ["albums.title"],
+              },
+              {
+                name: "track",
+                dimensions: ["tracks.track_id", "tracks.name"],
+                keyDimensions: ["tracks.track_id"],
+                formatDimensions: ["tracks.name"],
+              },
+            ],
+          },
+          level: 0,
+        },
+        {
+          hierarchy: {
+            name: "artists.artist",
+            type: "categorical",
+            elements: [
+              {
+                name: "artist",
+                dimensions: ["artists.artist_id", "artists.name"],
+                keyDimensions: ["artists.artist_id"],
+                formatDimensions: ["artists.name"],
+              },
+            ],
+          },
+          level: 0,
+        },
+        {
+          hierarchy: {
+            name: "invoices.invoice_date",
+            type: "temporal",
+            elements: [
+              {
+                name: "invoice_date.year",
+                dimensions: ["invoices.invoice_date.year"],
+                keyDimensions: ["invoices.invoice_date.year"],
+                formatDimensions: ["invoices.invoice_date.year"],
+              },
+              {
+                name: "invoice_date.quarter",
+                dimensions: ["invoices.invoice_date.quarter"],
+                keyDimensions: ["invoices.invoice_date.quarter"],
+                formatDimensions: ["invoices.invoice_date.quarter"],
+              },
+              {
+                name: "invoice_date.month",
+                dimensions: ["invoices.invoice_date.month"],
+                keyDimensions: ["invoices.invoice_date.month"],
+                formatDimensions: ["invoices.invoice_date.month"],
+              },
+              {
+                name: "invoice_date.week",
+                dimensions: ["invoices.invoice_date.week"],
+                keyDimensions: ["invoices.invoice_date.week"],
+                formatDimensions: ["invoices.invoice_date.week"],
+              },
+              {
+                name: "invoice_date",
+                dimensions: ["invoices.invoice_date"],
+                keyDimensions: ["invoices.invoice_date"],
+                formatDimensions: ["invoices.invoice_date"],
+              },
+            ],
+          },
+          level: 4,
+        },
+      ],
     },
   });
 });
@@ -501,14 +666,42 @@ it("can generate queries for a hierarchy", () => {
 
   const queryAnalysis = analyzeQuery(queryBuilder, query);
 
+  const hierarchy1 = queryAnalysis.hierarchies.all.find(
+    ({ hierarchy }) => hierarchy.name === "artist",
+  )?.hierarchy;
+
+  expect(hierarchy1).toBeDefined();
+
   const queriesForHierarchyArtist = analyzeQueryHierarchy(
-    queryBuilder,
     queryAnalysis,
-    "artist",
+    hierarchy1!,
   );
 
   expect(queriesForHierarchyArtist).toMatchObject({
-    hierarchyName: "artist",
+    hierarchy: {
+      name: "artist",
+      type: "categorical",
+      elements: [
+        {
+          name: "artist",
+          dimensions: ["artists.artist_id", "artists.name"],
+          keyDimensions: ["artists.artist_id"],
+          formatDimensions: ["artists.name"],
+        },
+        {
+          name: "album",
+          dimensions: ["albums.album_id", "albums.title"],
+          keyDimensions: ["albums.album_id"],
+          formatDimensions: ["albums.title"],
+        },
+        {
+          name: "track",
+          dimensions: ["tracks.track_id", "tracks.name"],
+          keyDimensions: ["tracks.track_id"],
+          formatDimensions: ["tracks.name"],
+        },
+      ],
+    },
     restMembers: [
       "customers.full_name",
       "customers.email",
@@ -519,7 +712,12 @@ it("can generate queries for a hierarchy", () => {
     ],
     queriesInfo: [
       {
-        elementName: "artist",
+        element: {
+          name: "artist",
+          dimensions: ["artists.artist_id", "artists.name"],
+          keyDimensions: ["artists.artist_id"],
+          formatDimensions: ["artists.name"],
+        },
         keyDimensions: ["artists.artist_id"],
         query: {
           members: ["artists.artist_id", "artists.name", "invoices.total"],
@@ -535,11 +733,20 @@ it("can generate queries for a hierarchy", () => {
               member: "artists.name",
               direction: "asc",
             },
+            {
+              member: "artists.name",
+              direction: "asc",
+            },
           ],
         },
       },
       {
-        elementName: "album",
+        element: {
+          name: "album",
+          dimensions: ["albums.album_id", "albums.title"],
+          keyDimensions: ["albums.album_id"],
+          formatDimensions: ["albums.title"],
+        },
         keyDimensions: ["artists.artist_id", "albums.album_id"],
         query: {
           members: [
@@ -557,6 +764,10 @@ it("can generate queries for a hierarchy", () => {
           ],
           order: [
             {
+              member: "albums.title",
+              direction: "asc",
+            },
+            {
               member: "artists.name",
               direction: "asc",
             },
@@ -564,7 +775,12 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        elementName: "track",
+        element: {
+          name: "track",
+          dimensions: ["tracks.track_id", "tracks.name"],
+          keyDimensions: ["tracks.track_id"],
+          formatDimensions: ["tracks.name"],
+        },
         keyDimensions: [
           "artists.artist_id",
           "albums.album_id",
@@ -587,6 +803,10 @@ it("can generate queries for a hierarchy", () => {
           ],
           order: [
             {
+              member: "tracks.name",
+              direction: "asc",
+            },
+            {
               member: "artists.name",
               direction: "asc",
             },
@@ -594,7 +814,12 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        elementName: "track",
+        element: {
+          name: "track",
+          dimensions: ["tracks.track_id", "tracks.name"],
+          keyDimensions: ["tracks.track_id"],
+          formatDimensions: ["tracks.name"],
+        },
         keyDimensions: [
           "artists.artist_id",
           "albums.album_id",
@@ -610,7 +835,6 @@ it("can generate queries for a hierarchy", () => {
             "customers.email",
             "customers.phone",
             "invoices.invoice_date",
-            "tracks.track_id",
             "invoices.total",
           ],
           filters: [
@@ -622,6 +846,10 @@ it("can generate queries for a hierarchy", () => {
           ],
           order: [
             {
+              member: "tracks.name",
+              direction: "asc",
+            },
+            {
               member: "artists.name",
               direction: "asc",
             },
@@ -631,14 +859,38 @@ it("can generate queries for a hierarchy", () => {
     ],
   });
 
+  const hierarchy2 = queryAnalysis.hierarchies.all.find(
+    ({ hierarchy }) => hierarchy.name === "customers.personal_information",
+  )?.hierarchy;
+
+  expect(hierarchy2).toBeDefined();
+
   const queriesForHierarchyCustomerPersonalInformation = analyzeQueryHierarchy(
-    queryBuilder,
     queryAnalysis,
-    "customers.personal_information",
+    hierarchy2!,
   );
 
   expect(queriesForHierarchyCustomerPersonalInformation).toMatchObject({
-    hierarchyName: "customers.personal_information",
+    hierarchy: {
+      name: "customers.personal_information",
+      type: "categorical",
+      elements: [
+        {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
+      ],
+    },
     restMembers: [
       "customers.email",
       "customers.phone",
@@ -650,7 +902,20 @@ it("can generate queries for a hierarchy", () => {
     ],
     queriesInfo: [
       {
-        elementName: "personal_information",
+        element: {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
         keyDimensions: ["customers.customer_id"],
         query: {
           members: [
@@ -669,6 +934,10 @@ it("can generate queries for a hierarchy", () => {
           ],
           order: [
             {
+              member: "customers.full_name",
+              direction: "asc",
+            },
+            {
               member: "artists.name",
               direction: "asc",
             },
@@ -676,7 +945,20 @@ it("can generate queries for a hierarchy", () => {
         },
       },
       {
-        elementName: "personal_information",
+        element: {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
         keyDimensions: ["customers.customer_id"],
         query: {
           members: [
@@ -698,6 +980,162 @@ it("can generate queries for a hierarchy", () => {
             },
           ],
           order: [
+            {
+              member: "customers.full_name",
+              direction: "asc",
+            },
+            {
+              member: "artists.name",
+              direction: "asc",
+            },
+          ],
+        },
+      },
+    ],
+  });
+});
+
+it("can generate queries for a hierarchy that wasn't present in the original query", () => {
+  const query: semanticLayer.QueryBuilderQuery<typeof queryBuilder> = {
+    members: [
+      "artists.name",
+      "albums.title",
+      "tracks.track_id",
+      "invoices.invoice_date",
+      "invoices.total",
+    ],
+    filters: [
+      {
+        operator: "equals",
+        member: "genres.name",
+        value: ["Rock"],
+      },
+    ],
+    order: [{ member: "artists.name", direction: "asc" }],
+  };
+
+  const queryAnalysis = analyzeQuery(queryBuilder, query);
+  const queryHierarchies = queryAnalysis.hierarchies.all;
+
+  expect(queryHierarchies).toMatchObject([
+    { hierarchy: { name: "artist" }, level: 0 },
+    { hierarchy: { name: "artists.artist" }, level: 0 },
+    { hierarchy: { name: "invoices.invoice_date" }, level: 4 },
+  ]);
+
+  const queriesForHierarchyCustomerPersonalInformation = analyzeQueryHierarchy(
+    queryAnalysis,
+    queryBuilder.getHierarchy("customers.personal_information"),
+  );
+
+  expect(queriesForHierarchyCustomerPersonalInformation).toMatchObject({
+    hierarchy: {
+      name: "customers.personal_information",
+      type: "categorical",
+      elements: [
+        {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
+      ],
+    },
+    restMembers: [
+      "artists.name",
+      "albums.title",
+      "tracks.track_id",
+      "invoices.invoice_date",
+      "invoices.total",
+    ],
+    queriesInfo: [
+      {
+        element: {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
+        keyDimensions: ["customers.customer_id"],
+        query: {
+          members: [
+            "customers.customer_id",
+            "customers.full_name",
+            "invoices.total",
+          ],
+          filters: [
+            {
+              operator: "equals",
+              member: "genres.name",
+              value: ["Rock"],
+            },
+          ],
+          order: [
+            {
+              member: "customers.full_name",
+              direction: "asc",
+            },
+            {
+              member: "artists.name",
+              direction: "asc",
+            },
+          ],
+        },
+      },
+      {
+        element: {
+          name: "personal_information",
+          dimensions: [
+            "customers.customer_id",
+            "customers.first_name",
+            "customers.last_name",
+            "customers.full_name",
+            "customers.email",
+            "customers.fax",
+            "customers.phone",
+          ],
+          keyDimensions: ["customers.customer_id"],
+          formatDimensions: ["customers.full_name"],
+        },
+        keyDimensions: ["customers.customer_id"],
+        query: {
+          members: [
+            "customers.customer_id",
+            "customers.full_name",
+            "artists.name",
+            "albums.title",
+            "tracks.track_id",
+            "invoices.invoice_date",
+            "invoices.total",
+          ],
+          filters: [
+            {
+              operator: "equals",
+              member: "genres.name",
+              value: ["Rock"],
+            },
+          ],
+          order: [
+            {
+              member: "customers.full_name",
+              direction: "asc",
+            },
             {
               member: "artists.name",
               direction: "asc",
