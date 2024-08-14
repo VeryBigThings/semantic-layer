@@ -29,7 +29,7 @@ function makeQueryFilterFragmentBuilder<T extends keyof typeof DOCUMENTATION>(
   {
     operator: T;
     member: string;
-    value: object;
+    value: any;
   }
 > {
   return filterFragmentBuilder(

@@ -1,33 +1,30 @@
 import * as assert from "node:assert/strict";
 import * as semanticLayer from "../index.js";
 
-import { after, before, describe, it } from "node:test";
-import {
-  PostgreSqlContainer,
-  StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { beforeAll, describe, it } from "vitest";
 import { InferSqlQueryResultType, QueryBuilderQuery } from "../index.js";
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import pg from "pg";
+import { generateErrorMessage } from "zod-error";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 // import { format as sqlFormat } from "sql-formatter";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
-await describe("semantic layer", async () => {
-  let container: StartedPostgreSqlContainer;
+describe("semantic layer", async () => {
   let client: pg.Client;
 
-  before(async () => {
+  beforeAll(async () => {
     const bootstrapSql = await fs.readFile(
-      path.join(__dirname, "Chinook_PostgreSql.sql"),
+      path.join(__dirname, "sqls/Chinook_PostgreSql.sql"),
       "utf-8",
     );
 
-    container = await new PostgreSqlContainer().start();
+    const container = await new PostgreSqlContainer().start();
 
     client = new pg.Client({
       host: container.getHost(),
@@ -45,14 +42,14 @@ await describe("semantic layer", async () => {
     const timezone = timezoneResult.rows[0].TimeZone;
 
     assert.equal(timezone, "UTC");
+
+    return async () => {
+      await client.end();
+      await container.stop();
+    };
   });
 
-  after(async () => {
-    await client.end();
-    await container.stop();
-  });
-
-  await describe("models from tables", async () => {
+  describe("models from tables", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -87,8 +84,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("count", {
         type: "string",
-        aggregateWith: "count",
-        sql: ({ model }) => model.column("CustomerId"),
+        sql: ({ model, sql }) =>
+          sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
       });
 
     const invoicesModel = semanticLayer
@@ -110,8 +107,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const invoiceLinesModel = semanticLayer
@@ -133,13 +130,13 @@ await describe("semantic layer", async () => {
       })
       .withMetric("quantity", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Quantity"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0))`,
       })
-      .withMetric("total_unit_price", {
+      .withMetric("unit_price", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("UnitPrice"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
       });
 
     const tracksModel = semanticLayer
@@ -216,11 +213,65 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("can query one dimension and one metric", async () => {
+    it("can report errors", async () => {
+      const result = queryBuilder.querySchema.safeParse({
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
+        filters: [
+          { operator: "equals", member: "customers.customer_id1", value: 1 },
+          { operator: "gte", member: "customers.customer_id", value: ["a"] },
+          {
+            operator: "nonExistingOperator",
+            member: "customers.customer_id2",
+            value: 1,
+          },
+          {
+            operator: "inQuery",
+            member: "customers.customer_id",
+            value: {
+              members: ["customers.customer_id"],
+              filters: [
+                {
+                  operator: "equals",
+                  member: "customers.customer_id2",
+                  value: [1],
+                },
+              ],
+            },
+          },
+        ],
+        limit: 10,
+      });
+
+      if (result.success) {
+        throw new Error("Expected error");
+      }
+
+      const formattedErrors = generateErrorMessage(result.error.issues, {
+        delimiter: { error: "\n" },
+        code: { enabled: false },
+        path: { label: "Error at ", enabled: true, type: "objectNotation" },
+        message: { label: "", enabled: true },
+        transform: ({ messageComponent, pathComponent }) => {
+          return `${pathComponent}: ${messageComponent}`;
+        },
+      });
+
+      const expectedFormattedErrors = [
+        "Error at filters[0].member: Member not found",
+        "Error at filters[0].value: Expected array, received number",
+        "Error at filters[1].value[0]: Expected number, received nan",
+        "Error at filters[2].operator: Invalid discriminator value. Expected 'and' | 'or' | 'equals' | 'in' | 'notEquals' | 'notIn' | 'notSet' | 'set' | 'contains' | 'notContains' | 'startsWith' | 'notStartsWith' | 'endsWith' | 'notEndsWith' | 'gt' | 'gte' | 'lt' | 'lte' | 'inDateRange' | 'notInDateRange' | 'beforeDate' | 'afterDate' | 'inQuery' | 'notInQuery'",
+        "Error at filters[3].value.filters[0].member: Member not found",
+      ].join("\n");
+
+      assert.deepEqual(formattedErrors, expectedFormattedErrors);
+    });
+
+    it("can query one dimension and one metric", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
         limit: 10,
       });
 
@@ -243,11 +294,14 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query one dimension and multiple metrics", async () => {
+    it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total", "invoice_lines.total_unit_price"],
-        order: { "customers.customer_id": "asc" },
+        members: [
+          "customers.customer_id",
+          "invoices.total",
+          "invoice_lines.unit_price",
+        ],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
         limit: 10,
       });
 
@@ -259,63 +313,60 @@ await describe("semantic layer", async () => {
         {
           customers___customer_id: 1,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 2,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 3,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 4,
           invoices___total: "39.62",
-          invoice_lines___total_unit_price: "39.62",
+          invoice_lines___unit_price: "39.62",
         },
         {
           customers___customer_id: 5,
           invoices___total: "40.62",
-          invoice_lines___total_unit_price: "40.62",
+          invoice_lines___unit_price: "40.62",
         },
         {
           customers___customer_id: 6,
           invoices___total: "49.62",
-          invoice_lines___total_unit_price: "49.62",
+          invoice_lines___unit_price: "49.62",
         },
         {
           customers___customer_id: 7,
           invoices___total: "42.62",
-          invoice_lines___total_unit_price: "42.62",
+          invoice_lines___unit_price: "42.62",
         },
         {
           customers___customer_id: 8,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 9,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
         {
           customers___customer_id: 10,
           invoices___total: "37.62",
-          invoice_lines___total_unit_price: "37.62",
+          invoice_lines___unit_price: "37.62",
         },
       ]);
     });
 
-    await it("can query a metric and slice it correctly by a non primary key dimension", async () => {
+    it("can query a metric and slice it correctly by a non primary key dimension", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
-        metrics: ["customers.count"],
-        order: {
-          "customers.country": "asc",
-        },
+        members: ["customers.country", "customers.count"],
+        order: [{ member: "customers.country", direction: "asc" }],
       });
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -351,10 +402,10 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("will correctly load distinct dimensions when no metrics are loaded", async () => {
+    it("will correctly load distinct dimensions when no metrics are loaded", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
-        order: { "customers.country": "asc" },
+        members: ["customers.country"],
+        order: [{ member: "customers.country", direction: "asc" }],
         limit: 10,
       });
 
@@ -377,16 +428,15 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("will remove non projected members from order clause", async () => {
+    it("will remove non projected members from order clause", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: [
+        members: [
           "customers.customer_id",
           "customers.full_name",
           "invoice_lines.invoice_id",
         ],
-        metrics: [],
         limit: 10,
-        order: { "invoices.invoice_date": "asc" },
+        order: [{ member: "invoices.invoice_date", direction: "asc" }],
       });
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -448,16 +498,15 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query one dimension and metric and filter by a different metric", async () => {
+    it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
         limit: 10,
         filters: [
           {
             operator: "lt",
-            member: "invoice_lines.total_unit_price",
+            member: "invoice_lines.unit_price",
             value: [38],
           },
         ],
@@ -482,9 +531,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query a metric and filter by a dimension", async () => {
+    it("can query a metric and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
-        metrics: ["invoices.total"],
+        members: ["invoices.total"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -498,9 +547,9 @@ await describe("semantic layer", async () => {
       assert.deepEqual(result.rows, [{ invoices___total: "39.62" }]);
     });
 
-    await it("can query multiple metrics and filter by a dimension", async () => {
+    it("can query multiple metrics and filter by a dimension", async () => {
       const query = queryBuilder.buildQuery({
-        metrics: ["invoices.total", "invoice_lines.quantity"],
+        members: ["invoices.total", "invoice_lines.quantity"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -516,9 +565,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can query dimensions only", async () => {
+    it("can query dimensions only", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id", "albums.title"],
+        members: ["customers.customer_id", "albums.title"],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -576,9 +625,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can correctly query datetime granularities", async () => {
+    it("can correctly query datetime granularities", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: [
+        members: [
           "invoices.invoice_id",
           "invoices.invoice_date",
           "invoices.invoice_date.time",
@@ -628,13 +677,13 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("can introspect if dimension is a primary key", () => {
+    it("can introspect if dimension is a primary key", () => {
       assert.ok(
         repository.getDimension("customers.customer_id").isPrimaryKey(),
       );
     });
 
-    await it("can introspect if dimension is a granularity", () => {
+    it("can introspect if dimension is a granularity", () => {
       assert.ok(
         repository
           .getDimension("invoices.invoice_date.day_of_month")
@@ -642,116 +691,16 @@ await describe("semantic layer", async () => {
       );
     });
 
-    await it("can query adhoc metrics", async () => {
+    it("can filter by results of another query", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: [
-          { aggregateWith: "count", dimension: "invoices.invoice_id" },
-          "invoice_lines.total_unit_price",
-        ],
-        order: { "customers.customer_id": "asc" },
-        limit: 5,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "37.62",
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "39.62",
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_id___adhoc_count: "7",
-          invoice_lines___total_unit_price: "40.62",
-        },
-      ]);
-    });
-
-    await it("can query adhoc metrics on date/time granularity column", async () => {
-      const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: [
-          { aggregateWith: "min", dimension: "invoices.invoice_date.quarter" },
-          { aggregateWith: "min", dimension: "invoices.invoice_date" },
-        ],
-        order: { "customers.customer_id": "asc" },
-        limit: 5,
-      });
-
-      const result = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
-
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          invoices___invoice_date___quarter___adhoc_min: "2010-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2010-03-11T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 2,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-01-01T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 3,
-          invoices___invoice_date___quarter___adhoc_min: "2010-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2010-03-11T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 4,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q1",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-01-02T00:00:00.000Z",
-          ),
-        },
-        {
-          customers___customer_id: 5,
-          invoices___invoice_date___quarter___adhoc_min: "2009-Q4",
-          invoices___invoice_date___adhoc_min: new Date(
-            "2009-12-08T00:00:00.000Z",
-          ),
-        },
-      ]);
-    });
-
-    await it("can filter by results of another query", async () => {
-      const query = queryBuilder.buildQuery({
-        dimensions: ["customers.country"],
-        order: { "customers.country": "asc" },
+        members: ["customers.country"],
+        order: [{ member: "customers.country", direction: "asc" }],
         filters: [
           {
             operator: "inQuery",
             member: "customers.country",
             value: {
-              dimensions: ["customers.country"],
+              members: ["customers.country"],
               filters: [
                 {
                   operator: "equals",
@@ -774,7 +723,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("models from sql queries", async () => {
+  describe("models from sql queries", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -804,8 +753,8 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const repository = semanticLayer
@@ -823,11 +772,10 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("can query one dimension and multiple metrics", async () => {
+    it("can query one dimension and multiple metrics", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
         limit: 10,
       });
 
@@ -881,8 +829,8 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("query schema", async () => {
-    await it("can parse a valid query", () => {
+  describe("query schema", async () => {
+    it("can parse a valid query", () => {
       const customersModel = semanticLayer
         .model()
         .withName("customers")
@@ -912,8 +860,8 @@ await describe("semantic layer", async () => {
         })
         .withMetric("total", {
           type: "string",
-          aggregateWith: "sum",
-          sql: ({ model }) => model.column("Total"),
+          sql: ({ model, sql }) =>
+            sql`SUM(COALESCE(${model.column("Total")}, 0))`,
         });
 
       const repository = semanticLayer
@@ -932,9 +880,8 @@ await describe("semantic layer", async () => {
       const queryBuilder = repository.build("postgresql");
 
       const query = {
-        dimensions: ["customers.customer_id"],
-        metrics: ["invoices.total"],
-        order: { "customers.customer_id": "asc" },
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
         filters: [
           { operator: "equals", member: "customers.customer_id", value: [1] },
         ],
@@ -949,33 +896,35 @@ await describe("semantic layer", async () => {
       assert.deepEqual(jsonSchema, {
         type: "object",
         properties: {
-          dimensions: {
-            type: "array",
-            items: { type: "string", description: "Dimension name" },
-          },
-          metrics: {
+          members: {
             type: "array",
             items: {
-              anyOf: [
-                { type: "string", description: "Metric name" },
-                {
-                  type: "object",
-                  properties: {
-                    aggregateWith: {
-                      type: "string",
-                      enum: ["sum", "count", "min", "max", "avg"],
-                    },
-                    dimension: {
-                      type: "string",
-                      description: "Dimension name",
-                    },
-                  },
-                  required: ["aggregateWith", "dimension"],
-                  additionalProperties: false,
-                  description: "Ad hoc metric",
+              type: "string",
+              description: "Dimension or metric name",
+            },
+            minItems: 1,
+          },
+          limit: {
+            type: "number",
+          },
+          offset: {
+            type: "number",
+          },
+          order: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                member: {
+                  type: "string",
                 },
-              ],
-              description: "Metric name",
+                direction: {
+                  type: "string",
+                  enum: ["asc", "desc"],
+                },
+              },
+              required: ["member", "direction"],
+              additionalProperties: false,
             },
           },
           filters: {
@@ -985,8 +934,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "and" },
-                    filters: { $ref: "#/properties/filters" },
+                    operator: {
+                      type: "string",
+                      const: "and",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
@@ -995,8 +949,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "or" },
-                    filters: { $ref: "#/properties/filters" },
+                    operator: {
+                      type: "string",
+                      const: "or",
+                    },
+                    filters: {
+                      $ref: "#/properties/filters",
+                    },
                   },
                   required: ["operator", "filters"],
                   additionalProperties: false,
@@ -1005,19 +964,37 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "equals" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "equals",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
+                      minItems: 1,
                     },
                   },
                   required: ["operator", "member", "value"],
@@ -1028,19 +1005,37 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "in" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "in",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
+                      minItems: 1,
                     },
                   },
                   required: ["operator", "member", "value"],
@@ -1051,19 +1046,37 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notEquals" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notEquals",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
+                      minItems: 1,
                     },
                   },
                   required: ["operator", "member", "value"],
@@ -1074,19 +1087,37 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notIn" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notIn",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       type: "array",
                       items: {
                         anyOf: [
-                          { type: "string" },
-                          { type: "number" },
-                          { type: "integer", format: "int64" },
-                          { type: "boolean" },
-                          { type: "string", format: "date-time" },
+                          {
+                            type: "string",
+                          },
+                          {
+                            type: "number",
+                          },
+                          {
+                            type: "integer",
+                            format: "int64",
+                          },
+                          {
+                            type: "boolean",
+                          },
+                          {
+                            type: "string",
+                            format: "date-time",
+                          },
                         ],
                       },
+                      minItems: 1,
                     },
                   },
                   required: ["operator", "member", "value"],
@@ -1097,8 +1128,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notSet" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notSet",
+                    },
+                    member: {
+                      type: "string",
+                    },
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
@@ -1107,8 +1143,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "set" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "set",
+                    },
+                    member: {
+                      type: "string",
+                    },
                   },
                   required: ["operator", "member"],
                   additionalProperties: false,
@@ -1117,9 +1158,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "contains" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "contains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1129,9 +1181,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notContains" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notContains",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1141,9 +1204,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "startsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "startsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1153,9 +1227,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notStartsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notStartsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1165,9 +1250,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "endsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "endsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1177,9 +1273,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notEndsWith" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "string" } },
+                    operator: {
+                      type: "string",
+                      const: "notEndsWith",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1189,9 +1296,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "gt" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "gt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1201,9 +1319,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "gte" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "gte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1213,9 +1342,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "lt" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "lt",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1225,9 +1365,20 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "lte" },
-                    member: { type: "string" },
-                    value: { type: "array", items: { type: "number" } },
+                    operator: {
+                      type: "string",
+                      const: "lte",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      type: "array",
+                      items: {
+                        type: "number",
+                      },
+                      minItems: 1,
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1237,24 +1388,41 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "inDateRange" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "inDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       anyOf: [
-                        { type: "string" },
+                        {
+                          type: "string",
+                        },
                         {
                           type: "object",
                           properties: {
                             startDate: {
                               anyOf: [
-                                { type: "string" },
-                                { type: "string", format: "date-time" },
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
                               ],
                             },
                             endDate: {
                               anyOf: [
-                                { type: "string" },
-                                { type: "string", format: "date-time" },
+                                {
+                                  type: "string",
+                                },
+                                {
+                                  type: "string",
+                                  format: "date-time",
+                                },
                               ],
                             },
                           },
@@ -1272,8 +1440,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notInDateRange" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "notInDateRange",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       $ref: "#/properties/filters/items/anyOf/18/properties/value",
                     },
@@ -1286,12 +1459,22 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "beforeDate" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "beforeDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       anyOf: [
-                        { type: "string" },
-                        { type: "string", format: "date-time" },
+                        {
+                          type: "string",
+                        },
+                        {
+                          type: "string",
+                          format: "date-time",
+                        },
                       ],
                     },
                   },
@@ -1303,8 +1486,13 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "afterDate" },
-                    member: { type: "string" },
+                    operator: {
+                      type: "string",
+                      const: "afterDate",
+                    },
+                    member: {
+                      type: "string",
+                    },
                     value: {
                       $ref: "#/properties/filters/items/anyOf/20/properties/value",
                     },
@@ -1317,9 +1505,16 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "inQuery" },
-                    member: { type: "string" },
-                    value: { $ref: "#" },
+                    operator: {
+                      type: "string",
+                      const: "inQuery",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      $ref: "#",
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1329,9 +1524,16 @@ await describe("semantic layer", async () => {
                 {
                   type: "object",
                   properties: {
-                    operator: { type: "string", const: "notInQuery" },
-                    member: { type: "string" },
-                    value: { $ref: "#" },
+                    operator: {
+                      type: "string",
+                      const: "notInQuery",
+                    },
+                    member: {
+                      type: "string",
+                    },
+                    value: {
+                      $ref: "#",
+                    },
                   },
                   required: ["operator", "member", "value"],
                   additionalProperties: false,
@@ -1343,13 +1545,8 @@ await describe("semantic layer", async () => {
                 "Query filters. Top level filters are connected with AND connective. Filters can be nested with AND and OR connectives.",
             },
           },
-          limit: { type: "number" },
-          offset: { type: "number" },
-          order: {
-            type: "object",
-            additionalProperties: { type: "string", enum: ["asc", "desc"] },
-          },
         },
+        required: ["members"],
         additionalProperties: false,
         description: "Query schema",
         $schema: "http://json-schema.org/draft-07/schema#",
@@ -1357,7 +1554,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("model descriptions and query introspection", async () => {
+  describe("model descriptions and query introspection", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -1386,9 +1583,9 @@ await describe("semantic layer", async () => {
       })
       .withMetric("total", {
         type: "string",
-        aggregateWith: "sum",
         format: "percentage",
-        sql: ({ model }) => model.column("Total"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
       });
 
     const repository = semanticLayer
@@ -1406,7 +1603,7 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("allows access to the model descriptions", () => {
+    it("allows access to the model descriptions", () => {
       const docs: string[] = [];
       const dimensions = repository.getDimensions();
       const metrics = repository.getMetrics();
@@ -1439,14 +1636,14 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("allows introspection of a query", () => {
+    it("allows introspection of a query", () => {
       const query: QueryBuilderQuery<typeof queryBuilder> = {
-        dimensions: [
+        members: [
           "customers.customer_id",
           "invoices.invoice_id",
           "invoices.customer_id",
+          "invoices.total",
         ],
-        metrics: ["invoices.total"],
       };
 
       const introspection = queryBuilder.introspect(query);
@@ -1492,7 +1689,7 @@ await describe("semantic layer", async () => {
     });
   });
 
-  await describe("full repository", async () => {
+  describe("full repository", async () => {
     const customersModel = semanticLayer
       .model()
       .withName("customers")
@@ -1591,15 +1788,11 @@ await describe("semantic layer", async () => {
         type: "string",
         sql: ({ model }) => model.column("BillingPostalCode"),
       })
-      .withDimension("total", {
-        type: "string",
-        sql: ({ model }) => model.column("Total"),
-      })
-      .withMetric("sum_total", {
+      .withMetric("total", {
         type: "number",
-        aggregateWith: "sum",
-        description: "Sum of the invoice totals across models.",
-        sql: ({ model }) => model.dimension("total"),
+        description: "Invoice total.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
       });
 
     const invoiceLinesModel = semanticLayer
@@ -1619,25 +1812,17 @@ await describe("semantic layer", async () => {
         type: "number",
         sql: ({ model }) => model.column("TrackId"),
       })
-      .withDimension("unit_price", {
-        type: "string",
-        sql: ({ model }) => model.column("UnitPrice"),
-      })
-      .withDimension("quantity", {
-        type: "string",
-        sql: ({ model }) => model.column("Quantity"),
-      })
-      .withMetric("sum_quantity", {
+      .withMetric("quantity", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track quantities across models.",
-        sql: ({ model }) => model.dimension("quantity"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0))`,
       })
-      .withMetric("sum_unit_price", {
+      .withMetric("unit_price", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track unit prices across models.",
-        sql: ({ model }) => model.dimension("unit_price"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
       });
 
     const tracksModel = semanticLayer
@@ -1677,15 +1862,12 @@ await describe("semantic layer", async () => {
         type: "number",
         sql: ({ model }) => model.column("Bytes"),
       })
-      .withDimension("unit_price", {
-        type: "string",
-        sql: ({ model }) => model.column("UnitPrice"),
-      })
-      .withMetric("sum_unit_price", {
+      .withMetric("unit_price", {
         type: "number",
-        aggregateWith: "sum",
         description: "Sum of the track unit prices across models.",
-        sql: ({ model }) => model.dimension("unit_price"),
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
+        format: (value) => `Price: $${value}`,
       });
 
     const albumsModel = semanticLayer
@@ -1718,6 +1900,7 @@ await describe("semantic layer", async () => {
       .withDimension("name", {
         type: "string",
         sql: ({ model }) => model.column("Name"),
+        format: (value) => `Artist: ${value}`,
       });
 
     const mediaTypeModel = semanticLayer
@@ -1862,9 +2045,9 @@ await describe("semantic layer", async () => {
 
     const queryBuilder = repository.build("postgresql");
 
-    await it("should return distinct results for dimension only query", async () => {
+    it("should return distinct results for dimension only query", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["artists.name"],
+        members: ["artists.name"],
         filters: [
           {
             operator: "equals",
@@ -1872,7 +2055,7 @@ await describe("semantic layer", async () => {
             value: ["Rock"],
           },
         ],
-        order: { "artists.name": "asc" },
+        order: [{ member: "artists.name", direction: "asc" }],
         limit: 10,
       });
 
@@ -1915,9 +2098,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("should return order results by default", async () => {
+    it("should return order results by default", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["artists.name"],
+        members: ["artists.name"],
         filters: [
           {
             operator: "equals",
@@ -1967,10 +2150,9 @@ await describe("semantic layer", async () => {
       ]);
     });
 
-    await it("should return same query after it's parsed by schema", async () => {
+    it("parsed query should equal original query", async () => {
       const query = {
-        dimensions: ["artists.name"],
-        metrics: ["tracks.sum_unit_price"],
+        members: ["artists.name", "tracks.unit_price"],
         filters: [
           {
             operator: "equals",
@@ -1978,21 +2160,27 @@ await describe("semantic layer", async () => {
             value: ["Rock"],
           },
         ],
-        order: { "artists.name": "asc" },
+        order: [{ member: "artists.name", direction: "asc" }],
         limit: 10,
       };
 
       const parsedQuery = queryBuilder.querySchema.parse(query);
-      assert.deepEqual(query, parsedQuery);
+
+      assert.deepEqual(parsedQuery, query);
     });
 
-    await it("should correctly perform a query with multiple ad hoc metrics", async () => {
+    it("can filter by contains", async () => {
       const query = queryBuilder.buildQuery({
-        dimensions: ["genres.name"],
-        metrics: [
-          { aggregateWith: "count", dimension: "invoice_lines.invoice_id" },
-          { aggregateWith: "sum", dimension: "tracks.unit_price" },
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "contains",
+            member: "artists.name",
+            value: ["ac"],
+          },
         ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
       });
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -2002,124 +2190,177 @@ await describe("semantic layer", async () => {
 
       assert.deepEqual(result.rows, [
         {
-          genres___name: "Alternative",
-          invoice_lines___invoice_id___adhoc_count: "14",
-          tracks___unit_price___adhoc_sum: "13.86",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can filter by notContains", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notContains",
+            member: "artists.name",
+            value: ["cor"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
         {
-          genres___name: "Alternative & Punk",
-          invoice_lines___invoice_id___adhoc_count: "244",
-          tracks___unit_price___adhoc_sum: "200.97",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can filter by startsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "startsWith",
+            member: "artists.name",
+            value: ["ac"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
         {
-          genres___name: "Blues",
-          invoice_lines___invoice_id___adhoc_count: "61",
-          tracks___unit_price___adhoc_sum: "52.47",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can filter by notStartsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notStartsWith",
+            member: "artists.name",
+            value: ["a cor"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
         {
-          genres___name: "Bossa Nova",
-          invoice_lines___invoice_id___adhoc_count: "15",
-          tracks___unit_price___adhoc_sum: "13.86",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can filter by endsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "endsWith",
+            member: "artists.name",
+            value: ["dc"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
         {
-          genres___name: "Classical",
-          invoice_lines___invoice_id___adhoc_count: "41",
-          tracks___unit_price___adhoc_sum: "35.64",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can filter by notEndsWith", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name"],
+        filters: [
+          {
+            operator: "notEndsWith",
+            member: "artists.name",
+            value: ["som"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
         {
-          genres___name: "Comedy",
-          invoice_lines___invoice_id___adhoc_count: "9",
-          tracks___unit_price___adhoc_sum: "15.92",
+          artists___name: "AC/DC",
         },
+      ]);
+    });
+
+    it("can return formatting function from introspection", async () => {
+      const queryInput: QueryBuilderQuery<typeof queryBuilder> = {
+        members: ["artists.name", "tracks.unit_price"],
+        filters: [
+          {
+            operator: "equals",
+            member: "genres.name",
+            value: ["Rock"],
+          },
+        ],
+        order: [{ member: "artists.name", direction: "asc" }],
+        limit: 1,
+      };
+
+      const query = queryBuilder.buildQuery(queryInput);
+
+      const result = await client.query(query.sql, query.bindings);
+
+      const introspection = queryBuilder.introspect(queryInput);
+
+      const formattedResult = result.rows.map((row) =>
+        Object.fromEntries(
+          Object.entries(introspection).map(([column, columnIntrospection]) => {
+            const { format } = columnIntrospection;
+            if (format && format instanceof Function) {
+              return [column, format(row[column])];
+            }
+            return [column, row[column]];
+          }),
+        ),
+      );
+
+      assert.deepEqual(formattedResult, [
         {
-          genres___name: "Drama",
-          invoice_lines___invoice_id___adhoc_count: "29",
-          tracks___unit_price___adhoc_sum: "53.73",
-        },
-        {
-          genres___name: "Easy Listening",
-          invoice_lines___invoice_id___adhoc_count: "10",
-          tracks___unit_price___adhoc_sum: "9.90",
-        },
-        {
-          genres___name: "Electronica/Dance",
-          invoice_lines___invoice_id___adhoc_count: "12",
-          tracks___unit_price___adhoc_sum: "10.89",
-        },
-        {
-          genres___name: "Heavy Metal",
-          invoice_lines___invoice_id___adhoc_count: "12",
-          tracks___unit_price___adhoc_sum: "11.88",
-        },
-        {
-          genres___name: "Hip Hop/Rap",
-          invoice_lines___invoice_id___adhoc_count: "17",
-          tracks___unit_price___adhoc_sum: "14.85",
-        },
-        {
-          genres___name: "Jazz",
-          invoice_lines___invoice_id___adhoc_count: "80",
-          tracks___unit_price___adhoc_sum: "67.32",
-        },
-        {
-          genres___name: "Latin",
-          invoice_lines___invoice_id___adhoc_count: "386",
-          tracks___unit_price___adhoc_sum: "336.60",
-        },
-        {
-          genres___name: "Metal",
-          invoice_lines___invoice_id___adhoc_count: "264",
-          tracks___unit_price___adhoc_sum: "228.69",
-        },
-        {
-          genres___name: "Pop",
-          invoice_lines___invoice_id___adhoc_count: "28",
-          tracks___unit_price___adhoc_sum: "25.74",
-        },
-        {
-          genres___name: "R&B/Soul",
-          invoice_lines___invoice_id___adhoc_count: "41",
-          tracks___unit_price___adhoc_sum: "36.63",
-        },
-        {
-          genres___name: "Reggae",
-          invoice_lines___invoice_id___adhoc_count: "30",
-          tracks___unit_price___adhoc_sum: "27.72",
-        },
-        {
-          genres___name: "Rock",
-          invoice_lines___invoice_id___adhoc_count: "835",
-          tracks___unit_price___adhoc_sum: "737.55",
-        },
-        {
-          genres___name: "Rock And Roll",
-          invoice_lines___invoice_id___adhoc_count: "6",
-          tracks___unit_price___adhoc_sum: "5.94",
-        },
-        {
-          genres___name: "Sci Fi & Fantasy",
-          invoice_lines___invoice_id___adhoc_count: "20",
-          tracks___unit_price___adhoc_sum: "39.80",
-        },
-        {
-          genres___name: "Science Fiction",
-          invoice_lines___invoice_id___adhoc_count: "6",
-          tracks___unit_price___adhoc_sum: "9.95",
-        },
-        {
-          genres___name: "Soundtrack",
-          invoice_lines___invoice_id___adhoc_count: "20",
-          tracks___unit_price___adhoc_sum: "18.81",
-        },
-        {
-          genres___name: "TV Shows",
-          invoice_lines___invoice_id___adhoc_count: "47",
-          tracks___unit_price___adhoc_sum: "85.57",
-        },
-        {
-          genres___name: "World",
-          invoice_lines___invoice_id___adhoc_count: "13",
-          tracks___unit_price___adhoc_sum: "12.87",
+          artists___name: "Artist: AC/DC",
+          tracks___unit_price: "Price: $17.82",
         },
       ]);
     });
@@ -2181,35 +2422,35 @@ await describe("semantic layer", async () => {
           } = ${getContext().customerId}`,
       );
 
-    await it("propagates context to all sql functions", async () => {
+    it("propagates context to all sql functions", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
-          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+          members: ["customers.customer_id", "invoices.invoice_id"],
         },
         { customerId: 1 },
       );
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as customers on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $6',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $6 offset $7',
       );
 
       // First 5 bindings are for the customerId, last one is for the limit
-      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000]);
+      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000, 0]);
     });
 
-    await it("propagates context to query filters", async () => {
+    it("propagates context to query filters", async () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
-          dimensions: ["customers.customer_id", "invoices.invoice_id"],
+          members: ["customers.customer_id", "invoices.invoice_id"],
           filters: [
             {
               operator: "inQuery",
               member: "customers.customer_id",
               value: {
-                dimensions: ["customers.customer_id"],
+                members: ["customers.customer_id"],
                 filters: [
                   {
                     operator: "equals",
@@ -2226,13 +2467,242 @@ await describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as customers on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers_query"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as customers where "customers"."CustomerId" || cast($9 as text) = $10) as "customers_query") as "q0" order by "customers___customer_id" asc limit $11)) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $12',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."customers___customer_id" as "customers___customer_id", "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers_query"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "customers_query") as "q0" order by "customers___customer_id" asc limit $11 offset $12)) as "invoices_query") as "q0" order by "customers___customer_id" asc limit $13 offset $14',
       );
 
       assert.deepEqual(
         query.bindings,
-        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 5000],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 0, 5000, 0],
       );
+    });
+  });
+
+  describe("tables with schemas", async () => {
+    type QueryContext = {
+      schema: string;
+    };
+
+    const customersModel = semanticLayer
+      .model<QueryContext>()
+      .withName("customers")
+      .fromTable("public.Customer")
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("CustomerId"),
+      });
+
+    const invoicesModel = semanticLayer
+      .model<QueryContext>()
+      .withName("invoices")
+      .fromSqlQuery(
+        ({ sql, identifier, getContext }) =>
+          sql`select * from ${identifier(getContext().schema)}.${identifier(
+            "Invoice",
+          )}`,
+      )
+      .withDimension("invoice_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("customer_id", {
+        type: "number",
+        sql: ({ model }) => model.column("CustomerId"),
+      });
+
+    const invoiceLinesModel = semanticLayer
+      .model<QueryContext>()
+      .withName("invoice_lines")
+      .fromTable(
+        ({ sql, identifier, getContext }) =>
+          sql`${identifier(getContext().schema)}.${identifier("InvoiceLine")}`,
+      )
+      .withDimension("invoice_line_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceLineId"),
+      })
+      .withDimension("invoice_id", {
+        type: "number",
+        sql: ({ model }) => model.column("InvoiceId"),
+      });
+
+    const repository = semanticLayer
+      .repository<QueryContext>()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .withModel(invoiceLinesModel)
+      .joinOneToMany(
+        "customers",
+        "invoices",
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
+      )
+      .joinOneToMany(
+        "invoices",
+        "invoice_lines",
+        ({ sql, models }) =>
+          sql`${models.invoices.dimension(
+            "invoice_id",
+          )} = ${models.invoice_lines.dimension("invoice_id")}`,
+      );
+
+    it("can build SQL with namespaced tables (1)", async () => {
+      const queryBuilder = repository.build("postgresql");
+      const query = queryBuilder.buildQuery(
+        {
+          members: [
+            "customers.customer_id",
+            "invoices.invoice_id",
+            "invoice_lines.invoice_line_id",
+          ],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select "invoice_lines_query"."customers___customer_id" as "customers___customer_id", "invoice_lines_query"."invoices___invoice_id" as "invoices___invoice_id", "invoice_lines_query"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."Customer"."CustomerId" as "customers___customer_id" from "public"."InvoiceLine" right join (select * from "public"."Invoice") as "invoices" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId" right join "public"."Customer" on "public"."Customer"."CustomerId" = "invoices"."CustomerId") as "invoice_lines_query") as "q0" order by "customers___customer_id" asc limit $1 offset $2',
+      );
+
+      assert.deepEqual(query.bindings, [5000, 0]);
+    });
+
+    it("can build SQL with namespaced tables (2)", async () => {
+      const queryBuilder = repository.build("postgresql");
+      const query = queryBuilder.buildQuery(
+        {
+          members: ["invoices.invoice_id"],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit $1 offset $2',
+      );
+
+      assert.deepEqual(query.bindings, [5000, 0]);
+    });
+
+    it("can build SQL for ANSI", () => {
+      const ansiQueryBuilder = repository.build("ansi");
+      const query = ansiQueryBuilder.buildQuery(
+        {
+          members: ["invoices.invoice_id"],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices_query"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "invoices_query") as "q0" order by "invoices___invoice_id" asc limit ? offset ?',
+      );
+
+      assert.deepEqual(query.bindings, [5000, 0]);
+    });
+
+    it("can build SQL for Databricks", () => {
+      const ansiQueryBuilder = repository.build("databricks");
+      const query = ansiQueryBuilder.buildQuery(
+        {
+          members: ["invoices.invoice_id"],
+        },
+        { schema: "public" },
+      );
+
+      assert.equal(
+        query.sql,
+        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices_query`.`invoices___invoice_id` as `invoices___invoice_id` from (select distinct `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `invoices_query`) as `q0` order by `invoices___invoice_id` asc limit ? offset ?",
+      );
+
+      assert.deepEqual(query.bindings, [5000, 0]);
+    });
+  });
+
+  describe("repository without custom SQL", async () => {
+    const customersModel = semanticLayer
+      .model()
+      .withName("Customer")
+      .fromTable("Customer")
+      .withDimension("CustomerId", {
+        type: "number",
+        primaryKey: true,
+      })
+      .withDimension("FirstName", {
+        type: "string",
+      })
+      .withDimension("LastName", {
+        type: "string",
+      })
+
+      .withMetric("Count", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
+      });
+
+    const invoicesModel = semanticLayer
+      .model()
+      .withName("Invoice")
+      .fromTable("Invoice")
+      .withDimension("InvoiceId", {
+        type: "number",
+        primaryKey: true,
+      })
+      .withDimension("CustomerId", {
+        type: "number",
+      })
+      .withDimension("InvoiceDate", {
+        type: "datetime",
+      })
+      .withMetric("Total", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
+      });
+
+    const repository = semanticLayer
+      .repository()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .joinOneToMany(
+        "Customer",
+        "Invoice",
+        ({ sql, models }) =>
+          sql`${models.Customer.dimension(
+            "CustomerId",
+          )} = ${models.Invoice.dimension("CustomerId")}`,
+      );
+
+    const queryBuilder = repository.build("postgresql");
+
+    it("generates correct SQL", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["Customer.CustomerId", "Invoice.InvoiceId", "Invoice.Total"],
+        order: [{ member: "Customer.CustomerId", direction: "asc" }],
+        filters: [
+          { operator: "equals", member: "Customer.CustomerId", value: [1] },
+          { operator: "equals", member: "Invoice.InvoiceId", value: [98] },
+        ],
+        limit: 10,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          Customer___CustomerId: 1,
+          Invoice___Total: "3.98",
+          Invoice___InvoiceId: 98,
+        },
+      ]);
     });
   });
 });

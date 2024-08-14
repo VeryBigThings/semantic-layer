@@ -1,4 +1,6 @@
 import { Replace, Simplify } from "type-fest";
+import { HierarchyElement, HierarchyElementConfig } from "./hierarchy.js";
+import { exhaustiveCheck } from "./util.js";
 
 export interface AndConnective<F = never> {
   operator: "and";
@@ -14,67 +16,57 @@ export type FilterType = "dimension" | "metric";
 
 export type QueryFilter<F> = F | AndConnective<F> | OrConnective<F>;
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export type AnyQueryFilter = QueryFilter<any>;
 
-export type AggregateWith = "count" | "sum" | "avg" | "min" | "max";
-export interface QueryAdHocMetric<DN extends string = string> {
-  aggregateWith: AggregateWith;
-  dimension: DN;
-}
+export type OrderDirection = "asc" | "desc";
+export type Order<DN extends string = string, MN extends string = string> = {
+  member: DN | MN;
+  direction: OrderDirection;
+};
 
-export type QueryMetric<
-  MN extends string = string,
-  DN extends string = string,
-> = MN | QueryAdHocMetric<DN>;
-
-export type WithInQueryFilter<F extends AnyQueryFilter, Q extends AnyQuery> = [
-  Extract<F, { operator: "inQuery" }>,
-] extends [never]
+export type WithInQueryFilter<
+  F extends AnyQueryFilter,
+  Q extends AnyInputQuery,
+> = [Extract<F, { operator: "inQuery" }>] extends [never]
   ? F
   :
       | Exclude<F, { operator: "inQuery" }>
-      | { operator: "inQuery"; member: QueryDN<Q> | QueryMN<Q>; value: Q };
+      | {
+          operator: "inQuery";
+          member: InputQueryDN<Q> | InputQueryMN<Q>;
+          value: Q;
+        };
 
 export type WithNotInQueryFilter<
   F extends AnyQueryFilter,
-  Q extends AnyQuery,
+  Q extends AnyInputQuery,
 > = [Extract<F, { operator: "notInQuery" }>] extends [never]
   ? F
   :
       | Exclude<F, { operator: "notInQuery" }>
-      | { operator: "notInQuery"; member: QueryDN<Q> | QueryMN<Q>; value: Q };
+      | {
+          operator: "notInQuery";
+          member: InputQueryDN<Q> | InputQueryMN<Q>;
+          value: Q;
+        };
 
-export type Query<DN extends string, MN extends string, F = never> = {
-  dimensions?: DN[];
-  metrics?: QueryMetric<MN, DN>[];
-  order?: { [K in DN | MN]?: "asc" | "desc" };
-  filters?: WithNotInQueryFilter<
-    WithInQueryFilter<QueryFilter<F>, Query<DN, MN, F>>,
-    Query<DN, MN, F>
-  >[];
+export type Query = {
+  dimensions?: string[];
+  metrics?: string[];
+  order?: Order[];
+  filters?: AnyQueryFilter;
   limit?: number;
   offset?: number;
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type QueryDN<Q> = Q extends Query<infer DN, any, any> ? DN : never;
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type QueryMN<Q> = Q extends Query<any, infer MN, any> ? MN : never;
-
-// biome-ignore lint/suspicious/noExplicitAny: Any used for inference
-export type AnyQuery = Query<string, string, any>;
-
 export interface ModelQuery {
   dimensions: Set<string>;
   metrics: Set<string>;
-  adHocMetrics: Set<QueryAdHocMetric>;
 }
 
 export interface QuerySegmentQuery {
   dimensions: string[];
   metrics: string[];
-  adHocMetrics: QueryAdHocMetric[];
   filters: AnyQueryFilter[];
 }
 
@@ -95,7 +87,7 @@ export interface SqlWithBindings {
   bindings: unknown[];
 }
 
-export const GranularityIndex = {
+export const TemporalGranularityIndex = {
   time: {
     description: "Time of underlying field. Example output: 00:00:00",
     type: "time",
@@ -143,7 +135,7 @@ export const GranularityIndex = {
   },
   hour_of_day: {
     description: "Hour of underlying field. Example output: 00",
-    type: "string",
+    type: "number",
   },
   minute: {
     description:
@@ -152,21 +144,21 @@ export const GranularityIndex = {
   },
 } as const satisfies Record<string, { description: string; type: MemberType }>;
 
-export type GranularityIndex = typeof GranularityIndex;
+export type TemporalGranularityIndex = typeof TemporalGranularityIndex;
 
-export type GranularityToMemberType = {
-  [K in keyof GranularityIndex]: GranularityIndex[K]["type"];
+export type TemporalGranularityToMemberType = {
+  [K in keyof TemporalGranularityIndex]: TemporalGranularityIndex[K]["type"];
 };
 
-function granularities<T extends (keyof GranularityIndex)[]>(
+function temporalGranularities<T extends (keyof TemporalGranularityIndex)[]>(
   ...granularities: T
 ): T[number][] {
   return granularities;
 }
 
-export const GranularityByDimensionType = {
-  time: granularities("hour", "hour_of_day", "minute"),
-  date: granularities(
+export const TemporalGranularityByDimensionType = {
+  time: temporalGranularities("hour", "minute"),
+  date: temporalGranularities(
     "year",
     "quarter",
     "quarter_of_year",
@@ -176,9 +168,7 @@ export const GranularityByDimensionType = {
     "week_num",
     "day_of_month",
   ),
-  datetime: granularities(
-    "time",
-    "date",
+  datetime: temporalGranularities(
     "year",
     "quarter",
     "quarter_of_year",
@@ -186,23 +176,83 @@ export const GranularityByDimensionType = {
     "month_num",
     "week",
     "week_num",
+    "date",
     "day_of_month",
+    "time",
     "hour",
     "hour_of_day",
     "minute",
   ),
 } as const;
 
-export type GranularityByDimensionType = typeof GranularityByDimensionType;
-export type Granularity = keyof typeof GranularityIndex;
+export type TemporalGranularityByDimensionType =
+  typeof TemporalGranularityByDimensionType;
+export type TemporalGranularity = keyof typeof TemporalGranularityIndex;
 
-export type DimensionWithGranularity<
+export type DimensionWithTemporalGranularity<
   D extends string,
-  T extends keyof GranularityByDimensionType,
-  GT extends keyof GranularityIndex = GranularityByDimensionType[T][number],
+  T extends keyof TemporalGranularityByDimensionType,
+  GT extends
+    keyof TemporalGranularityIndex = TemporalGranularityByDimensionType[T][number],
 > = {
-  [K in GT as `${D}.${K}`]: GranularityToMemberType[K];
+  [K in GT as `${D}.${K}`]: TemporalGranularityToMemberType[K];
 };
+
+const temporalHierarchyElementsByDimensionType: {
+  [K in keyof TemporalGranularityByDimensionType]: TemporalGranularityByDimensionType[K];
+} = {
+  time: [],
+  date: ["year", "quarter", "month", "week"],
+  datetime: ["year", "quarter", "month", "week", "date"],
+};
+
+export function makeTemporalHierarchyElementsForDimension(
+  dimensionName: string,
+  dimensionType: "time" | "date" | "datetime",
+) {
+  switch (dimensionType) {
+    case "time":
+      return [
+        ...temporalHierarchyElementsByDimensionType.time.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+
+    case "date": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.date.map((granularity) => {
+          const granularityDimensionName = `${dimensionName}.${granularity}`;
+          return new HierarchyElement(granularityDimensionName, [
+            granularityDimensionName,
+          ]);
+        }),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    case "datetime": {
+      return [
+        ...temporalHierarchyElementsByDimensionType.datetime.map(
+          (granularity) => {
+            const granularityDimensionName = `${dimensionName}.${granularity}`;
+            return new HierarchyElement(granularityDimensionName, [
+              granularityDimensionName,
+            ]);
+          },
+        ),
+        new HierarchyElement(dimensionName, [dimensionName]),
+      ];
+    }
+    default:
+      exhaustiveCheck(
+        dimensionType,
+        `Unrecognized dimension type: ${dimensionType}`,
+      );
+  }
+}
 
 export type MemberType =
   | "string"
@@ -211,7 +261,25 @@ export type MemberType =
   | "datetime"
   | "time"
   | "boolean";
-export type MemberFormat = "percentage" | "currency";
+
+export type MemberTypeToType<MT extends MemberType> = MT extends "number"
+  ? number
+  : MT extends "date"
+    ? Date
+    : MT extends "datetime"
+      ? Date
+      : MT extends "time"
+        ? string
+        : MT extends "boolean"
+          ? boolean
+          : string;
+
+export type MemberFormat<MT extends MemberType = MemberType> =
+  | "percentage"
+  | "currency"
+  | ((value: MemberTypeToType<MT>) => string);
+
+export type AnyMemberFormat = MemberFormat<any>;
 
 export type MemberNameToType = { [k in never]: MemberType };
 
@@ -245,9 +313,9 @@ export type ProcessTOverridesNames<T extends Record<string, unknown>> = {
 };
 
 // biome-ignore lint/correctness/noUnusedVariables: We need the RT generic param to be present so we can extract it to infer the return type later
-export interface SqlQueryResult<RT extends Record<string, unknown>> {
+export interface SqlQueryResult<RT extends Record<string, unknown>, P> {
   sql: string;
-  bindings: unknown[];
+  bindings: P;
 }
 
 export type MergeInferredSqlQueryResultTypeWithOverrides<
@@ -258,7 +326,7 @@ export type MergeInferredSqlQueryResultTypeWithOverrides<
 export type InferSqlQueryResultType<
   T,
   TOverrides extends Record<string, unknown> = never,
-> = T extends SqlQueryResult<infer RT>
+> = T extends SqlQueryResult<infer RT, any>
   ? [TOverrides] extends [never]
     ? RT
     : Simplify<
@@ -269,33 +337,53 @@ export type InferSqlQueryResultType<
       >
   : never;
 
-export type QueryMemberName<T> = T extends string[] ? T[number] : never;
+export type QueryMemberName<T extends unknown[]> = T[number] & string;
 export type QueryMetricName<T> = Extract<
   T extends unknown[] ? T[number] : never,
   string
 >;
-export type QueryAdHocMetricName<
-  T,
-  AM = Extract<T extends unknown[] ? T[number] : never, QueryAdHocMetric>,
-> = AM extends QueryAdHocMetric
-  ? `${AM["dimension"]}.adhoc_${AM["aggregateWith"]}`
-  : never;
 
 export type QueryAdHocMetricType<N extends string> = {
   [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
 };
-
-export type AvailableDialects = "postgresql";
 
 export type IntrospectionResult = Record<
   string,
   {
     memberType: "dimension" | "metric";
     path: string;
-    format?: MemberFormat | undefined;
+    format?: AnyMemberFormat | undefined;
     type: MemberType | "unknown";
     description?: string | undefined;
     isPrimaryKey: boolean;
     isGranularity: boolean;
   }
 >;
+
+export type InputQuery<DN extends string, MN extends string, F = never> = {
+  members: (DN | MN)[];
+  order?: Order<DN, MN>[];
+  filters?: WithNotInQueryFilter<
+    WithInQueryFilter<QueryFilter<F>, InputQuery<DN, MN, F>>,
+    InputQuery<DN, MN, F>
+  >[];
+  limit?: number;
+  offset?: number;
+};
+
+export type InputQueryDN<Q> = Q extends InputQuery<infer DN, any, any>
+  ? DN
+  : never;
+
+export type InputQueryMN<Q> = Q extends InputQuery<any, infer MN, any>
+  ? MN
+  : never;
+
+export type AnyInputQuery = InputQuery<string, string, any>;
+
+export type HierarchyType = "categorical" | "temporal";
+export interface HierarchyConfig {
+  name: string;
+  type: HierarchyType;
+  elements: [HierarchyElementConfig, ...HierarchyElementConfig[]];
+}

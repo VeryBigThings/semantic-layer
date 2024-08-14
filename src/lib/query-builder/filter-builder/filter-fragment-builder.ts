@@ -18,6 +18,13 @@ export class FilterFragmentBuilder<
     valueSchema: Z,
     private readonly builder: FilterFragmentBuilderFn<T>,
   ) {
+    /*
+		Make sure to always use z.object with operator as literal for all filters because
+		down the line (when generating query schema) we are building a discriminated union
+		and we need to be able to discriminate between all filters. In the process of query
+		schema building we are doing some type assertions where we assume that we can cast all filters
+		to ZodAnyObject, so make sure this invariant is always true.
+		*/
     if (valueSchema) {
       if (typeof valueSchema === "function") {
         this.fragmentBuilderSchema = (queryBuilder: AnyQueryBuilder) => {
@@ -67,7 +74,6 @@ export class FilterFragmentBuilder<
 export type AnyFilterFragmentBuilder = FilterFragmentBuilder<
   string,
   ZodSchema | ((queryBuilder: AnyQueryBuilder) => ZodSchema) | null,
-  // biome-ignore lint/suspicious/noExplicitAny: <explanation>
   any
 >;
 

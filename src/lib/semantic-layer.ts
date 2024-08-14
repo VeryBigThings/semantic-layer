@@ -4,5 +4,13 @@ export * from "./join.js";
 export * from "./query-schema.js";
 export * from "./query-builder.js";
 export * from "./query-builder/filter-builder.js";
-export { BaseDialect } from "./dialect/base.js";
+export * from "./dialect/base.js";
+export * from "./dialect/sql-query-builder.js";
+export * from "./dialect/sql-query-builder/to-sql.js";
 export * from "./query-builder/filter-builder/filter-fragment-builder.js";
+export * from "./dialect.js";
+export * from "./hierarchy.js";
+
+import * as helpers from "./helpers.js";
+import * as analyzer from "./query-builder/analyzer.js";
+export { helpers, analyzer };

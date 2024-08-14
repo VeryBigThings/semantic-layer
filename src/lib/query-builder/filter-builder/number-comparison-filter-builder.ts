@@ -21,7 +21,7 @@ function makeNumberComparisonFilterBuilder<
   return filterFragmentBuilder(
     operator,
     DOCUMENTATION[operator],
-    z.array(z.number({ coerce: true })),
+    z.array(z.number({ coerce: true })).min(1),
     (_builder, _context, member, filter) => {
       const { sqls, bindings } = filter.value.reduce<{
         sqls: string[];

@@ -8,9 +8,11 @@ function makeNotEqualsFilterFragmentBuilder<T extends string>(name: T) {
   return filterFragmentBuilder(
     name,
     DOCUMENTATION,
-    z.array(
-      z.union([z.string(), z.number(), z.bigint(), z.boolean(), z.date()]),
-    ),
+    z
+      .array(
+        z.union([z.string(), z.number(), z.bigint(), z.boolean(), z.date()]),
+      )
+      .min(1),
     (_builder, _context, member, filter) => {
       if (filter.value.length === 1) {
         return {

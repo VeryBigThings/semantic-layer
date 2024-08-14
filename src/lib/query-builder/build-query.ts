@@ -1,21 +1,13 @@
 import * as graphlib from "@dagrejs/graphlib";
 
-import {
-  AnyQuery,
-  ModelQuery,
-  QueryAdHocMetric,
-  QueryMetric,
-  QuerySegment,
-} from "../types.js";
+import { ModelQuery, Order, Query, QuerySegment } from "../types.js";
 
-import knex from "knex";
 import invariant from "tiny-invariant";
-import { BaseDialect } from "../dialect/base.js";
+import { AnyBaseDialect } from "../dialect/base.js";
 import type { AnyJoin } from "../join.js";
 import { AnyModel } from "../model.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import { getAdHocAlias } from "../util.js";
 
 interface ReferencedModels {
   all: string[];
@@ -23,67 +15,59 @@ interface ReferencedModels {
   metrics: string[];
 }
 
-function getAdHocMetricAlias(adHocMetric: QueryAdHocMetric) {
-  return getAdHocAlias(adHocMetric.dimension, adHocMetric.aggregateWith);
-}
-
-function getSortableMetric(metrics: QueryMetric[] | undefined) {
-  for (const metric of metrics ?? []) {
-    if (typeof metric === "string") {
-      return metric;
-    }
-  }
-}
-
-function getDefaultOrderBy(repository: AnyRepository, query: AnyQuery) {
+function getDefaultOrderBy(repository: AnyRepository, query: Query): Order[] {
   const firstDimensionName = query.dimensions?.[0];
-  const firstMetricName = getSortableMetric(query.metrics);
+  const firstMetricName = query.metrics?.[0];
 
   for (const dimensionName of query.dimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
     if (dimension.getGranularity()) {
-      return { [dimensionName]: "asc" };
+      return [{ member: dimensionName, direction: "asc" }];
     }
   }
 
   if (firstMetricName) {
-    return { [firstMetricName]: "desc" };
+    return [{ member: firstMetricName, direction: "desc" }];
   }
 
   if (firstDimensionName) {
-    return { [firstDimensionName]: "asc" };
+    return [{ member: firstDimensionName, direction: "asc" }];
   }
 
-  return {};
+  return [];
 }
 
 function initializeQuerySegment(
-  client: knex.Knex,
-  dialect: BaseDialect,
+  dialect: AnyBaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return client(model.config.name);
+    const { sql, bindings } = model.getTableName(dialect, context);
+    return dialect.from(dialect.fragment(sql, bindings));
   }
   const modelSql = model.getSql(dialect, context);
-  return client(
-    client.raw(`(${modelSql.sql}) as ${model.config.alias}`, modelSql.bindings),
+  return dialect.from(
+    dialect.fragment(
+      `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
+      modelSql.bindings,
+    ),
   );
 }
 
 function getJoinSubject(
-  client: knex.Knex,
-  dialect: BaseDialect,
+  dialect: AnyBaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    return model.config.name;
+    const { sql, bindings } = model.getTableName(dialect, context);
+    return dialect.fragment(sql, bindings);
   }
+
   const modelSql = model.getSql(dialect, context);
-  return client.raw(
-    `(${modelSql.sql}) as ${model.config.alias}`,
+  return dialect.fragment(
+    `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
     modelSql.bindings,
   );
 }
@@ -98,12 +82,7 @@ function buildQuerySegmentJoinQuery(
 ) {
   const visitedModels = new Set<string>();
   const model = queryBuilder.repository.getModel(source);
-  const sqlQuery = initializeQuerySegment(
-    queryBuilder.client,
-    queryBuilder.dialect,
-    context,
-    model,
-  );
+  const sqlQuery = initializeQuerySegment(queryBuilder.dialect, context, model);
 
   const modelStack: { modelName: string; join?: AnyJoin }[] = [
     { modelName: source },
@@ -119,14 +98,12 @@ function buildQuerySegmentJoinQuery(
     const modelQuery = modelQueries[modelName];
     const model = queryBuilder.repository.getModel(modelName);
     const hasMetrics = modelQuery?.metrics && modelQuery.metrics.size > 0;
-    const hasAdHocMetrics =
-      modelQuery?.adHocMetrics && modelQuery.adHocMetrics.size > 0;
     const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
       (modelName) => !visitedModels.has(modelName),
     );
     const dimensionNames = new Set(modelQuery?.dimensions || []);
 
-    if (hasMetrics || hasAdHocMetrics) {
+    if (hasMetrics) {
       for (const d of model.getPrimaryKeyDimensions()) {
         dimensionNames.add(d.getPath());
       }
@@ -139,7 +116,6 @@ function buildQuerySegmentJoinQuery(
         .render(queryBuilder.repository, queryBuilder.dialect);
       const rightModel = queryBuilder.repository.getModel(join.right);
       const joinSubject = getJoinSubject(
-        queryBuilder.client,
         queryBuilder.dialect,
         context,
         rightModel,
@@ -147,7 +123,7 @@ function buildQuerySegmentJoinQuery(
 
       sqlQuery[joinType](
         joinSubject,
-        queryBuilder.client.raw(joinOn.sql, joinOn.bindings),
+        queryBuilder.dialect.fragment(joinOn.sql, joinOn.bindings),
       );
 
       // We have a join that is multiplying the rows, so we need to use DISTINCT
@@ -158,29 +134,12 @@ function buildQuerySegmentJoinQuery(
 
     for (const metricName of modelQuery?.metrics || []) {
       const metric = queryBuilder.repository.getMetric(metricName);
-      const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
-      sqlQuery.select(
-        queryBuilder.client.raw(
-          `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
-          bindings,
-        ),
-      );
-    }
+      const aliasedRefs =
+        metric.getRefsSqls(queryBuilder.dialect, context) ?? [];
 
-    for (const adHocMetric of modelQuery?.adHocMetrics || []) {
-      const dimension = queryBuilder.repository.getDimension(
-        adHocMetric.dimension,
-      );
-      const { sql, bindings } = dimension.getSqlWithoutGranularity(
-        queryBuilder.dialect,
-        context,
-      );
-      sqlQuery.select(
-        queryBuilder.client.raw(
-          `${sql} as ${getAdHocMetricAlias(adHocMetric)}`,
-          bindings,
-        ),
-      );
+      for (const { sql, bindings } of aliasedRefs) {
+        sqlQuery.select(queryBuilder.dialect.fragment(sql, bindings));
+      }
     }
 
     for (const dimensionName of dimensionNames) {
@@ -188,8 +147,8 @@ function buildQuerySegmentJoinQuery(
       const { sql, bindings } = dimension.getSql(queryBuilder.dialect, context);
 
       sqlQuery.select(
-        queryBuilder.client.raw(
-          `${sql} as ${dimension.getAlias(queryBuilder.dialect)}`,
+        queryBuilder.dialect.fragment(
+          `${sql} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
           bindings,
         ),
       );
@@ -206,7 +165,6 @@ function buildQuerySegmentJoinQuery(
   return sqlQuery;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity
 function buildQuerySegment(
   queryBuilder: AnyQueryBuilder,
   context: unknown,
@@ -232,10 +190,7 @@ function buildQuerySegment(
 
   // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
   // otherwise GROUP BY will take care of it
-  if (
-    (segment.query.metrics?.length ?? 0) === 0 &&
-    (segment.query.adHocMetrics?.length ?? 0) === 0
-  ) {
+  if ((segment.query.metrics?.length ?? 0) === 0) {
     initialSqlQuery.distinct();
   }
 
@@ -246,32 +201,30 @@ function buildQuerySegment(
 
     if (filter) {
       initialSqlQuery.where(
-        queryBuilder.client.raw(filter.sql, filter.bindings),
+        queryBuilder.dialect.fragment(filter.sql, filter.bindings),
       );
     }
   }
 
   const alias = `${source}_query`;
-  const sqlQuery = queryBuilder.client(initialSqlQuery.as(alias));
-  const hasMetrics =
-    (segment.query.metrics && segment.query.metrics.length > 0) ||
-    (segment.query.adHocMetrics && segment.query.adHocMetrics.length > 0);
+  const sqlQuery = queryBuilder.dialect.from(initialSqlQuery.as(alias));
+  const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;
 
   for (const dimensionName of segment.query.dimensions || []) {
     const dimension = queryBuilder.repository.getDimension(dimensionName);
     sqlQuery.select(
-      queryBuilder.client.raw(
-        `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
+      queryBuilder.dialect.fragment(
+        `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${dimension.getAlias(queryBuilder.dialect)}`,
+        )} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
     if (hasMetrics) {
       sqlQuery.groupBy(
-        queryBuilder.client.raw(
-          `${queryBuilder.dialect.asIdentifier(alias)}.${dimension.getAlias(
-            queryBuilder.dialect,
-          )}`,
+        queryBuilder.dialect.fragment(
+          `${queryBuilder.dialect.asIdentifier(
+            alias,
+          )}.${dimension.getQuotedAlias(queryBuilder.dialect)}`,
         ),
       );
     }
@@ -279,37 +232,13 @@ function buildQuerySegment(
 
   for (const metricName of segment.query.metrics || []) {
     const metric = queryBuilder.repository.getMetric(metricName);
-    const { sql, bindings } = metric.getAggregateSql(
-      queryBuilder.dialect,
-      context,
-      alias,
-    );
+    const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
 
     sqlQuery.select(
-      queryBuilder.client.raw(
-        `${sql} as ${metric.getAlias(queryBuilder.dialect)}`,
+      queryBuilder.dialect.fragment(
+        `${sql} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
         bindings,
       ),
-    );
-  }
-
-  for (const adHocMetric of segment.query.adHocMetrics || []) {
-    const dimension = queryBuilder.repository.getDimension(
-      adHocMetric.dimension,
-    );
-    const initialSql = queryBuilder.dialect.aggregate(
-      adHocMetric.aggregateWith,
-      `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
-        adHocMetric,
-      )}`,
-    );
-    const dimensionGranularity = dimension.getGranularity();
-    const sql = dimensionGranularity
-      ? queryBuilder.dialect.withGranularity(dimensionGranularity, initialSql)
-      : initialSql;
-
-    sqlQuery.select(
-      queryBuilder.client.raw(`${sql} as ${getAdHocMetricAlias(adHocMetric)}`),
     );
   }
 
@@ -324,7 +253,7 @@ function getAlias(index: number) {
 export function buildQuery(
   queryBuilder: AnyQueryBuilder,
   context: unknown,
-  query: AnyQuery,
+  query: Query,
   referencedModels: ReferencedModels,
   joinGraph: graphlib.Graph,
   segments: QuerySegment[],
@@ -345,7 +274,7 @@ export function buildQuery(
   });
 
   const rootAlias = getAlias(0);
-  const rootSqlQuery = queryBuilder.client(
+  const rootSqlQuery = queryBuilder.dialect.from(
     initialSqlQuerySegment.sqlQuery.as(rootAlias),
   );
 
@@ -354,10 +283,12 @@ export function buildQuery(
     const dimension = queryBuilder.repository.getDimension(dimensionName);
 
     rootSqlQuery.select(
-      queryBuilder.client.raw(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${dimension.getAlias(
+      queryBuilder.dialect.fragment(
+        `${queryBuilder.dialect.asIdentifier(
+          rootAlias,
+        )}.${dimension.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${dimension.getAlias(queryBuilder.dialect)}`,
+        )} as ${dimension.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
   }
@@ -367,21 +298,12 @@ export function buildQuery(
     const metric = queryBuilder.repository.getMetric(metricName);
 
     rootSqlQuery.select(
-      queryBuilder.client.raw(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${metric.getAlias(
+      queryBuilder.dialect.fragment(
+        `${queryBuilder.dialect.asIdentifier(
+          rootAlias,
+        )}.${metric.getQuotedAlias(
           queryBuilder.dialect,
-        )} as ${metric.getAlias(queryBuilder.dialect)}`,
-      ),
-    );
-  }
-
-  for (const adHocMetric of initialSqlQuerySegment.projectedQuery
-    .adHocMetrics || []) {
-    rootSqlQuery.select(
-      queryBuilder.client.raw(
-        `${queryBuilder.dialect.asIdentifier(rootAlias)}.${getAdHocMetricAlias(
-          adHocMetric,
-        )} as ${getAdHocMetricAlias(adHocMetric)}`,
+        )} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
       ),
     );
   }
@@ -395,41 +317,33 @@ export function buildQuery(
             .map((dimension) => {
               return `${queryBuilder.dialect.asIdentifier(
                 rootAlias,
-              )}.${dimension.getAlias(
+              )}.${dimension.getQuotedAlias(
                 queryBuilder.dialect,
               )} = ${queryBuilder.dialect.asIdentifier(
                 alias,
-              )}.${dimension.getAlias(queryBuilder.dialect)}`;
+              )}.${dimension.getQuotedAlias(queryBuilder.dialect)}`;
             })
             .join(" and ")
         : "1 = 1";
 
     rootSqlQuery.innerJoin(
       segment.sqlQuery.as(alias),
-      queryBuilder.client.raw(joinOn),
+      queryBuilder.dialect.fragment(joinOn),
     );
 
     for (const metricName of segment.projectedQuery.metrics || []) {
       if ((query.metrics ?? []).includes(metricName)) {
         const metric = queryBuilder.repository.getMetric(metricName);
         rootSqlQuery.select(
-          queryBuilder.client.raw(
-            `${queryBuilder.dialect.asIdentifier(alias)}.${metric.getAlias(
+          queryBuilder.dialect.fragment(
+            `${queryBuilder.dialect.asIdentifier(
+              alias,
+            )}.${metric.getQuotedAlias(
               queryBuilder.dialect,
-            )} as ${metric.getAlias(queryBuilder.dialect)}`,
+            )} as ${metric.getQuotedAlias(queryBuilder.dialect)}`,
           ),
         );
       }
-    }
-
-    for (const adHocMetric of segment.projectedQuery.adHocMetrics || []) {
-      rootSqlQuery.select(
-        queryBuilder.client.raw(
-          `${queryBuilder.dialect.asIdentifier(alias)}.${getAdHocMetricAlias(
-            adHocMetric,
-          )} as ${getAdHocMetricAlias(adHocMetric)}`,
-        ),
-      );
     }
   }
 
@@ -447,21 +361,23 @@ export function buildQuery(
       .getFilterBuilder("metric", referencedModels.metrics, metricPrefixes)
       .buildFilters(query.filters, "and", context);
     if (filter) {
-      rootSqlQuery.where(queryBuilder.client.raw(filter.sql, filter.bindings));
+      rootSqlQuery.where(
+        queryBuilder.dialect.fragment(filter.sql, filter.bindings),
+      );
     }
   }
 
-  const orderBy = Object.entries(
-    query.order || getDefaultOrderBy(queryBuilder.repository, query),
-  ).map(([member, direction]) => {
+  const orderBy = (
+    query.order || getDefaultOrderBy(queryBuilder.repository, query)
+  ).map(({ member, direction }) => {
     const memberSql = queryBuilder.repository
       .getMember(member)
-      .getAlias(queryBuilder.dialect);
+      .getQuotedAlias(queryBuilder.dialect);
     return `${memberSql} ${direction}`;
   });
 
   if (orderBy.length > 0) {
-    rootSqlQuery.orderByRaw(orderBy.join(", "));
+    rootSqlQuery.orderBy(orderBy.join(", "));
   }
 
   rootSqlQuery.limit(query.limit ?? 5000);
