@@ -1,6 +1,6 @@
-import { SqlFragment, SqlQueryBuilder } from "../sql-query-builder.js";
+import { SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
 
-import { AnyBaseDialect } from "../base.js";
+import { AnyBaseDialect } from "../dialect/base.js";
 
 export class SqlQuery {
   constructor(

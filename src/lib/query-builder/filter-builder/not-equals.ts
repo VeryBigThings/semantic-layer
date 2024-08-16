@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const DOCUMENTATION =
@@ -15,15 +16,15 @@ function makeNotEqualsFilterFragmentBuilder<T extends string>(name: T) {
       .min(1),
     (_builder, _context, member, filter) => {
       if (filter.value.length === 1) {
-        return {
+        return SqlFragment.make({
           sql: `${member.sql} <> ?`,
           bindings: [...member.bindings, filter.value[0]],
-        };
+        });
       }
-      return {
+      return SqlFragment.make({
         sql: `${member.sql} not in (${filter.value.map(() => "?").join(", ")})`,
         bindings: [...member.bindings, ...filter.value],
-      };
+      });
     },
   );
 }

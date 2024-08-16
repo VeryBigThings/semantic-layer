@@ -3,7 +3,6 @@ import {
   AnyQueryFilter,
   FilterType,
   OrConnective,
-  SqlWithBindings,
 } from "../types.js";
 import {
   afterDate as filterAfterDate,
@@ -46,7 +45,7 @@ import {
 } from "./filter-builder/query-filter-builder.js";
 
 import { AnyQueryBuilder } from "../query-builder.js";
-import { sqlAsSqlWithBindings } from "./util.js";
+import { SqlFragment } from "../sql-builder.js";
 
 export class FilterBuilder {
   private readonly referencedModels: Set<string>;
@@ -63,10 +62,7 @@ export class FilterBuilder {
   ) {
     this.referencedModels = new Set(referencedModels);
   }
-  getMemberSql(
-    memberName: string,
-    context: unknown,
-  ): SqlWithBindings | undefined {
+  getMemberSql(memberName: string, context: unknown): SqlFragment | undefined {
     const member = this.queryBuilder.repository.getMember(memberName);
     if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
@@ -75,7 +71,7 @@ export class FilterBuilder {
       if (this.filterType === "metric" && member.isMetric()) {
         const prefix = this.metricPrefixes?.[member.model.name];
         const sql = member.getQuotedAlias(this.queryBuilder.dialect);
-        return sqlAsSqlWithBindings(
+        return SqlFragment.fromSql(
           prefix
             ? `${this.queryBuilder.dialect.asIdentifier(prefix)}.${sql}`
             : sql,
@@ -84,19 +80,16 @@ export class FilterBuilder {
     }
   }
 
-  buildOr(filter: OrConnective, context: unknown): SqlWithBindings | undefined {
+  buildOr(filter: OrConnective, context: unknown): SqlFragment | undefined {
     return this.buildFilters(filter.filters, "or", context);
   }
-  buildAnd(
-    filter: AndConnective,
-    context: unknown,
-  ): SqlWithBindings | undefined {
+  buildAnd(filter: AndConnective, context: unknown): SqlFragment | undefined {
     return this.buildFilters(filter.filters, "and", context);
   }
   buildFilter(
     filter: AnyQueryFilter,
     context: unknown,
-  ): SqlWithBindings | undefined {
+  ): SqlFragment | undefined {
     if (filter.operator === "and") {
       return this.buildAnd(filter, context);
     }
@@ -116,7 +109,7 @@ export class FilterBuilder {
     filters: AnyQueryFilter[],
     connective: "and" | "or",
     context: unknown,
-  ): SqlWithBindings | undefined {
+  ): SqlFragment | undefined {
     const result = filters.reduce<{ sqls: string[]; bindings: unknown[] }>(
       (acc, filter) => {
         const result = this.buildFilter(filter, context);
@@ -134,16 +127,16 @@ export class FilterBuilder {
     }
 
     if (result.sqls.length === 1) {
-      return {
+      return SqlFragment.make({
         sql: result.sqls[0]!,
         bindings: result.bindings,
-      };
+      });
     }
 
-    return {
+    return SqlFragment.make({
       sql: `(${result.sqls.join(` ${connective} `)})`,
       bindings: result.bindings,
-    };
+    });
   }
 }
 

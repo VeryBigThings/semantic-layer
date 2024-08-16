@@ -18,7 +18,7 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import type { Dimension, Metric } from "./model.js";
+import type { Dimension, Metric } from "./model/member.js";
 import {
   AnyFilterFragmentBuilderRegistry,
   GetFilterFragmentBuilderRegistryPayload,

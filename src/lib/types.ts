@@ -82,11 +82,6 @@ export interface QuerySegment {
   metricModel: string | null;
 }
 
-export interface SqlWithBindings {
-  sql: string;
-  bindings: unknown[];
-}
-
 export const TemporalGranularityIndex = {
   time: {
     description: "Time of underlying field. Example output: 00:00:00",

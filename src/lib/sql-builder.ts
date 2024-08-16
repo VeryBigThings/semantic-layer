@@ -1,6 +1,6 @@
-import { SqlQuery, toSQL } from "./sql-query-builder/to-sql.js";
+import { SqlQuery, toSQL } from "./sql-builder/to-sql.js";
 
-import { AnyBaseDialect } from "./base.js";
+import { AnyBaseDialect } from "./dialect/base.js";
 
 export interface QueryJoin {
   table: string | SqlFragment | SqlQueryBuilder;
@@ -122,4 +122,10 @@ export class SqlFragment {
     public sql: string,
     public bindings: unknown[] = [],
   ) {}
+  static make({ sql, bindings }: { sql: string; bindings: unknown[] }) {
+    return new SqlFragment(sql, bindings);
+  }
+  static fromSql(sql: string) {
+    return new SqlFragment(sql, []);
+  }
 }

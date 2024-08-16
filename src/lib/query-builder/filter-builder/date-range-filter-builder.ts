@@ -2,6 +2,7 @@ import * as chrono from "chrono-node";
 
 import dayjs from "dayjs";
 import { z } from "zod";
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const Schema = z.union([
@@ -59,10 +60,10 @@ function makeDateRangeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
       const [firstDate, lastDate] = parseDateRange(filter.value);
       const sql = `${member.sql} ${isNot ? "not between" : "between"} ? and ?`;
       const bindings: unknown[] = [...member.bindings, firstDate, lastDate];
-      return {
+      return SqlFragment.make({
         sql,
         bindings,
-      };
+      });
     },
   );
 }

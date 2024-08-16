@@ -1,3 +1,4 @@
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const DOCUMENTATION = {
@@ -15,10 +16,10 @@ function makeNullCheckFilterBuilder<T extends keyof typeof DOCUMENTATION>(
     null,
     (_builder, _context, member) => {
       const sql = `${member.sql} is ${isNull ? "" : "not"} null`;
-      return {
+      return SqlFragment.make({
         sql,
         bindings: [...member.bindings],
-      };
+      });
     },
   );
 }

@@ -5,6 +5,7 @@ import {
 
 import { z } from "zod";
 import { AnyQueryBuilder } from "../../query-builder.js";
+import { SqlFragment } from "../../sql-builder.js";
 
 export type InOrNotIn = "in" | "notIn";
 
@@ -38,22 +39,17 @@ function makeQueryFilterFragmentBuilder<T extends keyof typeof DOCUMENTATION>(
     (queryBuilder) => {
       return z.lazy(() => queryBuilder.querySchema);
     },
-    (
-      filterBuilder,
-      context,
-      member,
-      filter,
-    ): { sql: string; bindings: unknown[] } => {
+    (filterBuilder, context, member, filter): SqlFragment => {
       const { sql, bindings } =
         filterBuilder.queryBuilder.unsafeBuildGenericQueryWithoutSchemaParse(
           filter.value,
           context,
         );
 
-      return {
+      return SqlFragment.make({
         sql: `${member.sql} ${inOrNotInToSQL[inOrNotIn]} (${sql})`,
         bindings: [...member.bindings, ...bindings],
-      };
+      });
     },
   );
 }

@@ -1,7 +1,7 @@
+import { SqlFragment } from "../sql-builder.js";
 import { TemporalGranularity } from "../types.js";
 import { exhaustiveCheck } from "../util.js";
 import { BaseDialect } from "./base.js";
-import { SqlFragment } from "./sql-query-builder.js";
 
 export class AnsiDialect extends BaseDialect<"array"> {
   withGranularity(granularity: TemporalGranularity, sql: string) {

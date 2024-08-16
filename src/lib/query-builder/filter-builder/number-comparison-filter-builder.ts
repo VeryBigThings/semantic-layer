@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const OPERATOR_MAPPING = {
@@ -35,10 +36,10 @@ function makeNumberComparisonFilterBuilder<
         { sqls: [], bindings: [] },
       );
 
-      return {
+      return SqlFragment.make({
         sql: `(${sqls.join(" and ")})`,
         bindings,
-      };
+      });
     },
   );
 }

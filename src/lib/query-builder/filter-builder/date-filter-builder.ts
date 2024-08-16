@@ -2,6 +2,7 @@ import * as chrono from "chrono-node";
 
 import dayjs from "dayjs";
 import { z } from "zod";
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const Schema = z.union([z.string(), z.date()]);
@@ -36,10 +37,10 @@ function makeDateFilterBuilder<T extends keyof typeof DOCUMENTATION>(name: T) {
       const date = parseDate(filter.value);
       const sql = `${member.sql} ${name === "beforeDate" ? "<" : ">"} ?`;
       const bindings: unknown[] = [...member.bindings, date];
-      return {
+      return SqlFragment.make({
         sql,
         bindings,
-      };
+      });
     },
   );
 }

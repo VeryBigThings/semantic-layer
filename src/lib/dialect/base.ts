@@ -1,4 +1,4 @@
-import { From, SqlFragment, SqlQueryBuilder } from "./sql-query-builder.js";
+import { From, SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
 
 import { TemporalGranularity } from "../types.js";
 

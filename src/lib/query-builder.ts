@@ -15,7 +15,6 @@ import {
 import invariant from "tiny-invariant";
 import { Simplify } from "type-fest";
 import { AnyBaseDialect } from "./dialect/base.js";
-import { SqlQuery } from "./dialect/sql-query-builder/to-sql.js";
 import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
@@ -23,6 +22,7 @@ import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
 import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
+import { SqlQuery } from "./sql-builder/to-sql.js";
 
 function isValidGranularityConfigElements(
   elements: HierarchyElementConfig[],

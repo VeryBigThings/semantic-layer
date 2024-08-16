@@ -2,13 +2,13 @@ import invariant from "tiny-invariant";
 import type { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
 import type { AnyRepository } from "./repository.js";
-import { SqlWithBindings } from "./types.js";
+import { SqlFragment } from "./sql-builder.js";
 
 export abstract class JoinRef {
   public abstract render(
     repository: AnyRepository,
     dialect: AnyBaseDialect,
-  ): SqlWithBindings;
+  ): SqlFragment;
 }
 
 export class JoinDimensionRef<
@@ -41,10 +41,10 @@ export class JoinColumnRef<N extends string> extends JoinRef {
   render(repository: AnyRepository, dialect: AnyBaseDialect) {
     const model = repository.getModel(this.model);
     const { sql: asSql, bindings } = model.getAs(dialect, this.context);
-    return {
+    return SqlFragment.make({
       sql: `${asSql}.${dialect.asIdentifier(this.column)}`,
       bindings,
-    };
+    });
   }
 }
 
@@ -53,10 +53,10 @@ export class JoinIdentifierRef extends JoinRef {
     super();
   }
   render(_repository: AnyRepository, dialect: AnyBaseDialect) {
-    return {
+    return SqlFragment.make({
       sql: dialect.asIdentifier(this.identifier),
       bindings: [],
-    };
+    });
   }
 }
 
@@ -97,10 +97,10 @@ export class JoinOnDef {
       }
     }
 
-    return {
+    return SqlFragment.make({
       sql: sql.join(""),
       bindings,
-    };
+    });
   }
 }
 

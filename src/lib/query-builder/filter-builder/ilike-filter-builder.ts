@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SqlFragment } from "../../sql-builder.js";
 import { filterFragmentBuilder } from "./filter-fragment-builder.js";
 
 const DOCUMENTATION = {
@@ -47,10 +48,10 @@ function makeILikeFilterBuilder<T extends keyof typeof DOCUMENTATION>(
         { sqls: [], bindings: [] },
       );
 
-      return {
+      return SqlFragment.make({
         sql: `(${sqls.join(` ${connective} `)})`,
         bindings,
-      };
+      });
     },
   );
 }
