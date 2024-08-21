@@ -5,6 +5,7 @@ import {
 import {
   HierarchyType,
   MemberNameToType,
+  MemberType,
   TemporalGranularityByDimensionType,
   TemporalGranularityIndex,
   makeTemporalHierarchyElementsForDimension,
@@ -20,25 +21,32 @@ import {
   MetricProps,
   WithTemporalGranularityDimensions,
 } from "./model/member.js";
-import { IdentifierRef, ModelRef, SqlWithRefs } from "./model/ref.js";
+import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
+import { IdentifierRef, SqlFn } from "./sql-fn.js";
 
-export type AnyModel<C = any> = Model<C, any, any, any, any>;
+export type AnyModel<C = any> = Model<
+  C,
+  string,
+  { [k in string]: MemberType },
+  { [k in string]: MemberType },
+  any
+>;
 export type ModelConfig<C> =
   | { type: "table"; name: string | ModelSqlFn<C> }
   | { type: "sqlQuery"; alias: string; sql: ModelSqlFn<C> };
 
 export type ModelSqlFn<C> = (args: {
   identifier: (name: string) => IdentifierRef;
-  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlWithRefs;
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlFn;
   getContext: () => C;
-}) => ModelRef;
+}) => SqlFn;
 
-function typeHasGranularity(
+/*function typeHasGranularity(
   type: string,
 ): type is keyof TemporalGranularityByDimensionType {
   return type in TemporalGranularityByDimensionType;
-}
+}*/
 
 export class Model<
   C,
@@ -86,8 +94,10 @@ export class Model<
 
     this.dimensions[name] = new Dimension(this, name, dimension);
     if (
-      typeHasGranularity(dimension.type) &&
-      dimension.omitGranularity !== true
+      // TODO: figure out why typeHasGranularity is not working anymore
+      dimension.type === "datetime" ||
+      dimension.type === "date" ||
+      (dimension.type === "time" && dimension.omitGranularity !== true)
     ) {
       const granularityDimensions =
         TemporalGranularityByDimensionType[dimension.type];
@@ -188,7 +198,7 @@ export class Model<
   getMetrics() {
     return Object.values(this.metrics);
   }
-  getTableName(dialect: AnyBaseDialect, context: C) {
+  getTableName(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
     invariant(this.config.type === "table", "Model is not a table");
 
     if (typeof this.config.name === "string") {
@@ -204,13 +214,13 @@ export class Model<
     const result = this.config.name({
       identifier: (name: string) => new IdentifierRef(name),
       sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
-        new SqlWithRefs([...strings], values),
+        new SqlFn([...strings], values),
       getContext: () => context,
     });
 
-    return result.render(dialect, context);
+    return result.render(repository, dialect);
   }
-  getAs(dialect: AnyBaseDialect, context: C) {
+  getAs(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
     if (this.config.type === "sqlQuery") {
       return SqlFragment.make({
         sql: dialect.asIdentifier(this.config.alias),
@@ -218,18 +228,18 @@ export class Model<
       });
     }
 
-    return this.getTableName(dialect, context);
+    return this.getTableName(repository, dialect, context);
   }
-  getSql(dialect: AnyBaseDialect, context: C) {
+  getSql(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
     invariant(this.config.type === "sqlQuery", "Model is not an SQL query");
 
     const result = this.config.sql({
       identifier: (name: string) => new IdentifierRef(name),
       sql: (strings: TemplateStringsArray, ...values: unknown[]) =>
-        new SqlWithRefs([...strings], values),
+        new SqlFn([...strings], values),
       getContext: () => context,
     });
-    return result.render(dialect, context);
+    return result.render(repository, dialect);
   }
   clone<N extends string>(name: N) {
     const newModel = new Model<C, N, D, M, G>(name, this.config);

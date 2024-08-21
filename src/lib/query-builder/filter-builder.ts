@@ -66,7 +66,11 @@ export class FilterBuilder {
     const member = this.queryBuilder.repository.getMember(memberName);
     if (this.referencedModels.has(member.model.name)) {
       if (this.filterType === "dimension" && member.isDimension()) {
-        return member.getSql(this.queryBuilder.dialect, context);
+        return member.getSql(
+          this.queryBuilder.repository,
+          this.queryBuilder.dialect,
+          context,
+        );
       }
       if (this.filterType === "metric" && member.isMetric()) {
         const prefix = this.metricPrefixes?.[member.model.name];

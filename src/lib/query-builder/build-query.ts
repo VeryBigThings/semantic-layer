@@ -38,15 +38,16 @@ function getDefaultOrderBy(repository: AnyRepository, query: Query): Order[] {
 }
 
 function initializeQuerySegment(
+  repository: AnyRepository,
   dialect: AnyBaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    const { sql, bindings } = model.getTableName(dialect, context);
+    const { sql, bindings } = model.getTableName(repository, dialect, context);
     return dialect.from(dialect.fragment(sql, bindings));
   }
-  const modelSql = model.getSql(dialect, context);
+  const modelSql = model.getSql(repository, dialect, context);
   return dialect.from(
     dialect.fragment(
       `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
@@ -56,16 +57,17 @@ function initializeQuerySegment(
 }
 
 function getJoinSubject(
+  repository: AnyRepository,
   dialect: AnyBaseDialect,
   context: unknown,
   model: AnyModel,
 ) {
   if (model.config.type === "table") {
-    const { sql, bindings } = model.getTableName(dialect, context);
+    const { sql, bindings } = model.getTableName(repository, dialect, context);
     return dialect.fragment(sql, bindings);
   }
 
-  const modelSql = model.getSql(dialect, context);
+  const modelSql = model.getSql(repository, dialect, context);
   return dialect.fragment(
     `(${modelSql.sql}) as ${dialect.asIdentifier(model.config.alias)}`,
     modelSql.bindings,
@@ -82,7 +84,12 @@ function buildQuerySegmentJoinQuery(
 ) {
   const visitedModels = new Set<string>();
   const model = queryBuilder.repository.getModel(source);
-  const sqlQuery = initializeQuerySegment(queryBuilder.dialect, context, model);
+  const sqlQuery = initializeQuerySegment(
+    queryBuilder.repository,
+    queryBuilder.dialect,
+    context,
+    model,
+  );
 
   const modelStack: { modelName: string; join?: AnyJoin }[] = [
     { modelName: source },
@@ -116,6 +123,7 @@ function buildQuerySegmentJoinQuery(
         .render(queryBuilder.repository, queryBuilder.dialect);
       const rightModel = queryBuilder.repository.getModel(join.right);
       const joinSubject = getJoinSubject(
+        queryBuilder.repository,
         queryBuilder.dialect,
         context,
         rightModel,
@@ -135,7 +143,11 @@ function buildQuerySegmentJoinQuery(
     for (const metricName of modelQuery?.metrics || []) {
       const metric = queryBuilder.repository.getMetric(metricName);
       const aliasedRefs =
-        metric.getRefsSqls(queryBuilder.dialect, context) ?? [];
+        metric.getRefsSqls(
+          queryBuilder.repository,
+          queryBuilder.dialect,
+          context,
+        ) ?? [];
 
       for (const { sql, bindings } of aliasedRefs) {
         sqlQuery.select(queryBuilder.dialect.fragment(sql, bindings));
@@ -144,7 +156,11 @@ function buildQuerySegmentJoinQuery(
 
     for (const dimensionName of dimensionNames) {
       const dimension = queryBuilder.repository.getDimension(dimensionName);
-      const { sql, bindings } = dimension.getSql(queryBuilder.dialect, context);
+      const { sql, bindings } = dimension.getSql(
+        queryBuilder.repository,
+        queryBuilder.dialect,
+        context,
+      );
 
       sqlQuery.select(
         queryBuilder.dialect.fragment(
@@ -232,7 +248,11 @@ function buildQuerySegment(
 
   for (const metricName of segment.query.metrics || []) {
     const metric = queryBuilder.repository.getMetric(metricName);
-    const { sql, bindings } = metric.getSql(queryBuilder.dialect, context);
+    const { sql, bindings } = metric.getSql(
+      queryBuilder.repository,
+      queryBuilder.dialect,
+      context,
+    );
 
     sqlQuery.select(
       queryBuilder.dialect.fragment(

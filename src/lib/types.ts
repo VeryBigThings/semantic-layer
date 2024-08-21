@@ -382,3 +382,10 @@ export interface HierarchyConfig {
   type: HierarchyType;
   elements: [HierarchyElementConfig, ...HierarchyElementConfig[]];
 }
+
+export type ModelMemberWithoutModelPrefix<
+  TModelName extends string,
+  TDimensionName extends string,
+> = TDimensionName extends `${TModelName}.${infer D}` ? D : never;
+
+export type NextColumnRefOrDimensionRefAlias = () => string;

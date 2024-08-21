@@ -12,8 +12,6 @@ import {
   JOIN_WEIGHTS,
   JoinDimensions,
   JoinFn,
-  JoinIdentifierRef,
-  JoinOnDef,
   REVERSED_JOIN,
   makeModelJoinPayload,
 } from "./join.js";
@@ -29,6 +27,7 @@ import { HierarchyType, MemberNameToType } from "./types.js";
 import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
 import { QueryBuilder } from "./query-builder.js";
+import { IdentifierRef, SqlFn } from "./sql-fn.js";
 
 export type ModelC<T> = T extends Model<infer C, any, any, any, any>
   ? C
@@ -189,14 +188,17 @@ export class Repository<
     );
 
     const joinSqlDef = (context: C) => {
-      const models = {
-        [model1.name]: makeModelJoinPayload(model1, context),
-        [model2.name]: makeModelJoinPayload(model2, context),
-      } as JoinDimensions<string & keyof D, N1, N2>;
+      const models = [model1, model2].reduce(
+        (acc, model) => {
+          acc[model.name as N1 | N2] = makeModelJoinPayload(model, context);
+          return acc;
+        },
+        {} as JoinDimensions<string & keyof D, N1 | N2>,
+      );
 
       return joinSqlDefFn({
-        sql: (strings, ...values) => new JoinOnDef([...strings], values),
-        identifier: (name) => new JoinIdentifierRef(name),
+        sql: (strings, ...values) => new SqlFn([...strings], values),
+        identifier: (name) => new IdentifierRef(name),
         models,
         getContext: () => context,
       });

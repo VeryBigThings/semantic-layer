@@ -1,6 +1,6 @@
 export type * from "./repository.js";
 export type * from "./model.js";
-export type * from "./model/ref.js";
+export type * from "./sql-fn.js";
 export type * from "./model/member.js";
 export type * from "./join.js";
 export type * from "./query-schema.js";
