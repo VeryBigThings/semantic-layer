@@ -15,10 +15,10 @@ import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
 import {
   BasicDimension,
-  DimensionHasTemporalGranularity,
   BasicDimensionProps,
   BasicMetric,
   BasicMetricProps,
+  DimensionHasTemporalGranularity,
   WithTemporalGranularityDimensions,
 } from "./model/member.js";
 import { AnyRepository } from "./repository.js";

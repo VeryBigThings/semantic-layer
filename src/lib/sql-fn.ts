@@ -1,7 +1,7 @@
 import { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
-import { AnyRepository } from "./repository.js";
 import { BasicDimension } from "./model/member.js";
+import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
 
 export abstract class Ref {

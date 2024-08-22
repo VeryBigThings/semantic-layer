@@ -2,10 +2,10 @@ import * as graphlib from "@dagrejs/graphlib";
 
 import { ModelQuery, Order, Query, QuerySegment } from "../types.js";
 
+import invariant from "tiny-invariant";
 import type { AnyJoin } from "../join.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import invariant from "tiny-invariant";
 
 interface ReferencedModels {
   all: string[];
@@ -255,7 +255,7 @@ export function buildRootQuery(
   joinGraph: graphlib.Graph,
   segments: QuerySegment[],
 ) {
-  /*if (segments.length === 1) {
+  if (segments.length === 1) {
     const sqlQuerySegment = buildSegmentQuery(
       queryBuilder,
       context,
@@ -265,7 +265,7 @@ export function buildRootQuery(
     );
 
     return sqlQuerySegment.sqlQuery;
-  }*/
+  }
 
   const sqlQuerySegments = segments.map((segment) =>
     buildSegmentQuery(queryBuilder, context, joinGraph, segment),
