@@ -16,7 +16,7 @@ import {
   makeModelJoinPayload,
 } from "./join.js";
 import { AnyModel, Model } from "./model.js";
-import type { Dimension, Metric } from "./model/member.js";
+import type { BasicDimension, BasicMetric } from "./model/member.js";
 import {
   AnyFilterFragmentBuilderRegistry,
   GetFilterFragmentBuilderRegistryPayload,
@@ -260,7 +260,7 @@ export class Repository<
     return this.join("manyToMany", model1, model2, joinSqlDefFn);
   }
 
-  getDimension(dimensionName: string): Dimension {
+  getDimension(dimensionName: string): BasicDimension {
     invariant(
       this.dimensionsIndex[dimensionName],
       `Dimension ${dimensionName} not found`,
@@ -274,7 +274,7 @@ export class Repository<
     return model.getDimension(dimension);
   }
 
-  getMetric(metricName: string): Metric {
+  getMetric(metricName: string): BasicMetric {
     invariant(this.metricsIndex[metricName], `Metric ${metricName} not found`);
     const { model: modelName, metric } = this.metricsIndex[metricName]!;
     const model = this.models[modelName];
@@ -284,7 +284,7 @@ export class Repository<
     return model.getMetric(metric);
   }
 
-  getMember(memberName: string): Metric | Dimension {
+  getMember(memberName: string): BasicMetric | BasicDimension {
     if (this.dimensionsIndex[memberName]) {
       return this.getDimension(memberName);
     }
@@ -294,11 +294,11 @@ export class Repository<
     throw new Error(`Member ${memberName} not found`);
   }
 
-  getDimensions(): Dimension[] {
+  getDimensions(): BasicDimension[] {
     return Object.values(this.models).flatMap((m) => m.getDimensions());
   }
 
-  getMetrics(): Metric[] {
+  getMetrics(): BasicMetric[] {
     return Object.values(this.models).flatMap((m) => m.getMetrics());
   }
 

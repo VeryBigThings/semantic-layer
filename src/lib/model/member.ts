@@ -1,4 +1,3 @@
-import { Get, Simplify } from "type-fest";
 import {
   AliasRef,
   ColumnRef,
@@ -14,11 +13,13 @@ import {
   TemporalGranularity,
   TemporalGranularityByDimensionType,
 } from "../types.js";
+import { Get, Simplify } from "type-fest";
 
 import { AnyBaseDialect } from "../dialect/base.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
+import { pathToAlias } from "../helpers.js";
 
 export interface MemberSqlFnArgs<C, DN extends string = string> {
   identifier: (name: string) => IdentifierRef;
@@ -38,6 +39,8 @@ export type MetricSqlFn<C, DN extends string = string> = (
   args: MemberSqlFnArgs<C, DN>,
 ) => SqlFn;
 
+export type AnyMemberSqlFn = MemberSqlFn<any, string>;
+
 export type WithTemporalGranularityDimensions<
   N extends string,
   T extends string,
@@ -46,7 +49,7 @@ export type WithTemporalGranularityDimensions<
   : { [k in N]: T };
 
 // TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
-export type DimensionProps<C, DN extends string = string> = Simplify<
+export type BasicDimensionProps<C, DN extends string = string> = Simplify<
   {
     sql?: MemberSqlFn<C, DN>;
     primaryKey?: boolean;
@@ -65,19 +68,17 @@ export type DimensionProps<C, DN extends string = string> = Simplify<
   )
 >;
 
-export type AnyDimensionProps = DimensionProps<any, string>;
+export type AnyBasicDimensionProps = BasicDimensionProps<any, string>;
 
-export type DimensionHasTemporalGranularity<DP extends AnyDimensionProps> = Get<
-  DP,
-  "type"
-> extends "datetime" | "date" | "time"
-  ? Get<DP, "omitGranularity"> extends true
-    ? false
-    : true
-  : false;
+export type DimensionHasTemporalGranularity<DP extends AnyBasicDimensionProps> =
+  Get<DP, "type"> extends "datetime" | "date" | "time"
+    ? Get<DP, "omitGranularity"> extends true
+      ? false
+      : true
+    : false;
 
 // TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
-export type MetricProps<C, DN extends string = string> = Simplify<
+export type BasicMetricProps<C, DN extends string = string> = Simplify<
   {
     sql?: MemberSqlFn<C, DN>;
     description?: string;
@@ -90,77 +91,108 @@ export type MetricProps<C, DN extends string = string> = Simplify<
     | { type: "boolean"; format?: MemberFormat<"boolean"> }
   )
 >;
-export type AnyMetricProps = MetricProps<any, string>;
+export type AnyBasicMetricProps = BasicMetricProps<any, string>;
+
+function callSqlFn(
+  model: AnyModel,
+  sqlFn: AnyMemberSqlFn | undefined,
+  context: unknown,
+  nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+) {
+  if (sqlFn) {
+    return sqlFn({
+      identifier: (name: string) => new IdentifierRef(name),
+      model: {
+        column: (name: string) => {
+          const columnRef = new ColumnRef(model, name, context);
+          if (nextColumnRefOrDimensionRefAlias) {
+            return new AliasRef(nextColumnRefOrDimensionRefAlias(), columnRef);
+          }
+          return columnRef;
+        },
+        dimension: (name: string) => {
+          const dimensionRef = new DimensionRef(
+            model.getDimension(name),
+            context,
+          );
+          if (nextColumnRefOrDimensionRefAlias) {
+            return new AliasRef(
+              nextColumnRefOrDimensionRefAlias(),
+              dimensionRef,
+            );
+          }
+          return dimensionRef;
+        },
+      },
+      sql: (strings, ...values) => new SqlFn([...strings], values),
+      getContext: () => context,
+    });
+  }
+}
+
+function callAndRenderSqlFn(
+  repository: AnyRepository,
+  dialect: AnyBaseDialect,
+  model: AnyModel,
+  sqlFn: AnyMemberSqlFn | undefined,
+  context: unknown,
+  nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
+) {
+  if (sqlFn) {
+    const result = callSqlFn(
+      model,
+      sqlFn,
+      context,
+      nextColumnRefOrDimensionRefAlias,
+    );
+    if (result) {
+      return result.render(repository, dialect);
+    }
+  }
+}
 
 export abstract class Member {
   public abstract readonly name: string;
   public abstract readonly model: AnyModel;
-  public abstract props: AnyDimensionProps | AnyMetricProps;
+  public abstract props: AnyBasicDimensionProps | AnyBasicMetricProps;
 
   abstract getSql(
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,
   ): SqlFragment;
-  abstract isMetric(): this is Metric;
-  abstract isDimension(): this is Dimension;
+  abstract isMetric(): this is BasicMetric;
+  abstract isDimension(): this is BasicDimension;
 
-  getQuotedAlias(dialect: AnyBaseDialect) {
-    return dialect.asIdentifier(this.getAlias());
-  }
-  getAlias() {
-    return `${this.model.name}___${this.name.replaceAll(".", "___")}`;
-  }
-  getPath() {
-    return `${this.model.name}.${this.name}`;
-  }
-  callSqlFn(
-    context: unknown,
-    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
-  ) {
-    if (this.props.sql) {
-      return this.props.sql({
-        identifier: (name: string) => new IdentifierRef(name),
-        model: {
-          column: (name: string) => {
-            const columnRef = new ColumnRef(this.model, name, context);
-            if (nextColumnRefOrDimensionRefAlias) {
-              return new AliasRef(
-                nextColumnRefOrDimensionRefAlias(),
-                columnRef,
-              );
-            }
-            return columnRef;
-          },
-          dimension: (name: string) => {
-            const dimensionRef = new DimensionRef(
-              this.model.getDimension(name),
-              context,
-            );
-            if (nextColumnRefOrDimensionRefAlias) {
-              return new AliasRef(
-                nextColumnRefOrDimensionRefAlias(),
-                dimensionRef,
-              );
-            }
-            return dimensionRef;
-          },
-        },
-        sql: (strings, ...values) => new SqlFn([...strings], values),
-        getContext: () => context,
-      });
-    }
-  }
-  renderSql(
+  abstract getModelQueryProjection(
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,
-    nextColumnRefOrDimensionRefAlias?: NextColumnRefOrDimensionRefAlias,
-  ): SqlFragment | undefined {
-    const result = this.callSqlFn(context, nextColumnRefOrDimensionRefAlias);
-    if (result) {
-      return result.render(repository, dialect);
-    }
+  ): SqlFragment[];
+  abstract getSegmentQueryProjection(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+    modelQueryAlias: string,
+  ): SqlFragment[];
+  abstract getSegmentQueryGroupBy(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+    modelQueryAlias: string,
+  ): SqlFragment[];
+  abstract getRootQueryProjection(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+    segmentQueryAlias: string,
+  ): SqlFragment[];
+
+  getAlias() {
+    return `${this.model.name}___${pathToAlias(this.name)}`;
+  }
+  getPath() {
+    return `${this.model.name}.${this.name}`;
   }
   getDescription() {
     return this.props.description;
@@ -187,17 +219,22 @@ export abstract class Member {
   abstract clone(model: AnyModel): Member;
 }
 
-export class Dimension extends Member {
+export class BasicDimension extends Member {
   constructor(
     public readonly model: AnyModel,
     public readonly name: string,
-    public readonly props: AnyDimensionProps,
+    public readonly props: AnyBasicDimensionProps,
     public readonly granularity?: TemporalGranularity,
   ) {
     super();
   }
   clone(model: AnyModel) {
-    return new Dimension(model, this.name, { ...this.props }, this.granularity);
+    return new BasicDimension(
+      model,
+      this.name,
+      { ...this.props },
+      this.granularity,
+    );
   }
   getSql(repository: AnyRepository, dialect: AnyBaseDialect, context: unknown) {
     const result = this.getSqlWithoutGranularity(repository, dialect, context);
@@ -215,7 +252,13 @@ export class Dimension extends Member {
     dialect: AnyBaseDialect,
     context: unknown,
   ) {
-    const result = this.renderSql(repository, dialect, context);
+    const result = callAndRenderSqlFn(
+      repository,
+      dialect,
+      this.model,
+      this.props.sql,
+      context,
+    );
 
     if (result) {
       return result;
@@ -239,24 +282,75 @@ export class Dimension extends Member {
   isPrimaryKey() {
     return !!this.props.primaryKey;
   }
-  isDimension(): this is Dimension {
+  isDimension(): this is BasicDimension {
     return true;
   }
-  isMetric(): this is Metric {
+  isMetric(): this is BasicMetric {
     return false;
+  }
+  getModelQueryProjection(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+  ) {
+    const { sql, bindings } = this.getSql(repository, dialect, context);
+    const fragment = dialect.fragment(
+      `${sql} as ${dialect.asIdentifier(this.getAlias())}`,
+      bindings,
+    );
+    return [fragment];
+  }
+  getSegmentQueryProjection(
+    _repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    _context: unknown,
+    modelQueryAlias: string,
+  ) {
+    const fragment = dialect.fragment(
+      `${dialect.asIdentifier(modelQueryAlias)}.${dialect.asIdentifier(
+        this.getAlias(),
+      )} as ${dialect.asIdentifier(this.getAlias())}`,
+    );
+    return [fragment];
+  }
+  getSegmentQueryGroupBy(
+    _repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    _context: unknown,
+    modelQueryAlias: string,
+  ): SqlFragment[] {
+    const fragment = dialect.fragment(
+      `${dialect.asIdentifier(modelQueryAlias)}.${dialect.asIdentifier(
+        this.getAlias(),
+      )}`,
+    );
+    return [fragment];
+  }
+  getRootQueryProjection(
+    _repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    _context: unknown,
+    segmentQueryAlias: string,
+  ) {
+    const fragment = dialect.fragment(
+      `${dialect.asIdentifier(segmentQueryAlias)}.${dialect.asIdentifier(
+        this.getAlias(),
+      )} as ${dialect.asIdentifier(this.getAlias())}`,
+    );
+    return [fragment];
   }
 }
 
-export class Metric extends Member {
+export class BasicMetric extends Member {
   constructor(
     public readonly model: AnyModel,
     public readonly name: string,
-    public readonly props: AnyMetricProps,
+    public readonly props: AnyBasicMetricProps,
   ) {
     super();
   }
   clone(model: AnyModel) {
-    return new Metric(model, this.name, { ...this.props });
+    return new BasicMetric(model, this.name, { ...this.props });
   }
   getNextColumnRefOrDimensionRefAlias() {
     let columnRefOrDimensionRefAliasCounter = 0;
@@ -265,9 +359,11 @@ export class Metric extends Member {
   }
 
   getSql(repository: AnyRepository, dialect: AnyBaseDialect, context: unknown) {
-    const result = this.renderSql(
+    const result = callAndRenderSqlFn(
       repository,
       dialect,
+      this.model,
+      this.props.sql,
       context,
       this.getNextColumnRefOrDimensionRefAlias(),
     );
@@ -289,12 +385,12 @@ export class Metric extends Member {
     });
   }
 
-  getRefsSqls(
+  getModelQueryProjection(
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,
   ) {
-    const sqlFnResult = this.callSqlFn(context);
+    const sqlFnResult = callSqlFn(this.model, this.props.sql, context);
 
     if (sqlFnResult instanceof SqlFn) {
       const nextColumnRefOrDimensionRefAlias =
@@ -321,12 +417,48 @@ export class Metric extends Member {
       }
       return columnOrDimensionRefs;
     }
+    return [];
+  }
+  getSegmentQueryProjection(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+    _modelQueryAlias: string,
+  ): SqlFragment[] {
+    const { sql, bindings } = this.getSql(repository, dialect, context);
+    const fragment = dialect.fragment(
+      `${sql} as ${dialect.asIdentifier(this.getAlias())}`,
+      bindings,
+    );
+    return [fragment];
+  }
+  getSegmentQueryGroupBy(
+    _repository: AnyRepository,
+    _dialect: AnyBaseDialect,
+    _context: unknown,
+    _modelQueryAlias: string,
+  ): SqlFragment[] {
+    return [];
   }
 
-  isDimension(): this is Dimension {
+  getRootQueryProjection(
+    _repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    _context: unknown,
+    segmentQueryAlias: string,
+  ) {
+    const fragment = dialect.fragment(
+      `${dialect.asIdentifier(segmentQueryAlias)}.${dialect.asIdentifier(
+        this.getAlias(),
+      )} as ${dialect.asIdentifier(this.getAlias())}`,
+    );
+    return [fragment];
+  }
+
+  isDimension(): this is BasicDimension {
     return false;
   }
-  isMetric(): this is Metric {
+  isMetric(): this is BasicMetric {
     return true;
   }
 }
