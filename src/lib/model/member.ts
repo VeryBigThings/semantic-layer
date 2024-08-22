@@ -1,3 +1,4 @@
+import { Get, Simplify } from "type-fest";
 import {
   AliasRef,
   ColumnRef,
@@ -13,13 +14,12 @@ import {
   TemporalGranularity,
   TemporalGranularityByDimensionType,
 } from "../types.js";
-import { Get, Simplify } from "type-fest";
 
 import { AnyBaseDialect } from "../dialect/base.js";
+import { pathToAlias } from "../helpers.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
-import { pathToAlias } from "../helpers.js";
 
 export interface MemberSqlFnArgs<C, DN extends string = string> {
   identifier: (name: string) => IdentifierRef;
