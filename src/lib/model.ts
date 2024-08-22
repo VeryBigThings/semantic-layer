@@ -14,11 +14,11 @@ import {
 import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
 import {
-  Dimension,
+  BasicDimension,
   DimensionHasTemporalGranularity,
-  DimensionProps,
-  Metric,
-  MetricProps,
+  BasicDimensionProps,
+  BasicMetric,
+  BasicMetricProps,
   WithTemporalGranularityDimensions,
 } from "./model/member.js";
 import { AnyRepository } from "./repository.js";
@@ -55,8 +55,8 @@ export class Model<
   M extends MemberNameToType = MemberNameToType,
   G extends string = never,
 > {
-  public readonly dimensions: Record<string, Dimension> = {};
-  public readonly metrics: Record<string, Metric> = {};
+  public readonly dimensions: Record<string, BasicDimension> = {};
+  public readonly metrics: Record<string, BasicMetric> = {};
   public readonly categoricalHierarchies: {
     name: string;
     elements: AnyHierarchyElement[];
@@ -73,7 +73,7 @@ export class Model<
   ) {}
   withDimension<
     DN1 extends string,
-    DP extends DimensionProps<C, string & keyof D>,
+    DP extends BasicDimensionProps<C, string & keyof D>,
     DG extends boolean = DimensionHasTemporalGranularity<DP>,
   >(
     name: Exclude<DN1, keyof D | keyof M>,
@@ -92,7 +92,7 @@ export class Model<
       `Member "${name}" already exists`,
     );
 
-    this.dimensions[name] = new Dimension(this, name, dimension);
+    this.dimensions[name] = new BasicDimension(this, name, dimension);
     if (
       // TODO: figure out why typeHasGranularity is not working anymore
       dimension.type === "datetime" ||
@@ -103,7 +103,7 @@ export class Model<
         TemporalGranularityByDimensionType[dimension.type];
       for (const g of granularityDimensions) {
         const { format: _format, ...dimensionWithoutFormat } = dimension;
-        this.dimensions[`${name}.${g}`] = new Dimension(
+        this.dimensions[`${name}.${g}`] = new BasicDimension(
           this,
           `${name}.${g}`,
           {
@@ -123,7 +123,10 @@ export class Model<
     }
     return this;
   }
-  withMetric<MN1 extends string, MP extends MetricProps<C, string & keyof D>>(
+  withMetric<
+    MN1 extends string,
+    MP extends BasicMetricProps<C, string & keyof D>,
+  >(
     name: Exclude<MN1, keyof M | keyof D>,
     metric: MP,
   ): Model<C, N, D, M & { [k in MN1]: MP["type"] }, G> {
@@ -132,7 +135,7 @@ export class Model<
       `Member "${name}" already exists`,
     );
 
-    this.metrics[name] = new Metric(this, name, metric);
+    this.metrics[name] = new BasicMetric(this, name, metric);
     return this;
   }
   unsafeWithHierarchy(
@@ -220,16 +223,6 @@ export class Model<
 
     return result.render(repository, dialect);
   }
-  getAs(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
-    if (this.config.type === "sqlQuery") {
-      return SqlFragment.make({
-        sql: dialect.asIdentifier(this.config.alias),
-        bindings: [],
-      });
-    }
-
-    return this.getTableName(repository, dialect, context);
-  }
   getSql(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
     invariant(this.config.type === "sqlQuery", "Model is not an SQL query");
 
@@ -241,6 +234,34 @@ export class Model<
     });
     return result.render(repository, dialect);
   }
+  getTableNameOrSql(
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: C,
+  ) {
+    if (this.config.type === "table") {
+      const { sql, bindings } = this.getTableName(repository, dialect, context);
+      return dialect.fragment(sql, bindings);
+    }
+
+    const modelSql = this.getSql(repository, dialect, context);
+    return dialect.fragment(
+      `(${modelSql.sql}) as ${dialect.asIdentifier(this.config.alias)}`,
+      modelSql.bindings,
+    );
+  }
+
+  getAs(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
+    if (this.config.type === "sqlQuery") {
+      return SqlFragment.make({
+        sql: dialect.asIdentifier(this.config.alias),
+        bindings: [],
+      });
+    }
+
+    return this.getTableName(repository, dialect, context);
+  }
+
   clone<N extends string>(name: N) {
     const newModel = new Model<C, N, D, M, G>(name, this.config);
     for (const [key, value] of Object.entries(this.dimensions)) {

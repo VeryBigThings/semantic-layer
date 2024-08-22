@@ -1,7 +1,7 @@
 import { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
-import { Dimension } from "./model/member.js";
 import { AnyRepository } from "./repository.js";
+import { BasicDimension } from "./model/member.js";
 import { SqlFragment } from "./sql-builder.js";
 
 export abstract class Ref {
@@ -13,7 +13,7 @@ export abstract class Ref {
 
 export class DimensionRef extends Ref {
   constructor(
-    private readonly dimension: Dimension,
+    private readonly dimension: BasicDimension,
     private readonly context: unknown,
   ) {
     super();
