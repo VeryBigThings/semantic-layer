@@ -59,29 +59,6 @@ export type Query = {
   offset?: number;
 };
 
-export interface ModelQuery {
-  dimensions: Set<string>;
-  metrics: Set<string>;
-}
-
-export interface QuerySegmentQuery {
-  dimensions: string[];
-  metrics: string[];
-  filters: AnyQueryFilter[];
-}
-
-export interface QuerySegment {
-  query: QuerySegmentQuery;
-  projectedQuery: QuerySegmentQuery;
-  referencedModels: {
-    all: string[];
-    dimensions: string[];
-    metrics: string[];
-  };
-  modelQueries: Record<string, ModelQuery>;
-  metricModel: string | null;
-}
-
 export const TemporalGranularityIndex = {
   time: {
     description: "Time of underlying field. Example output: 00:00:00",

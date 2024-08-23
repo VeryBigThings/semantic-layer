@@ -1,9 +1,4 @@
-import {
-  AndConnective,
-  AnyQueryFilter,
-  FilterType,
-  OrConnective,
-} from "../types.js";
+import { AndConnective, AnyQueryFilter, OrConnective } from "../types.js";
 import {
   afterDate as filterAfterDate,
   beforeDate as filterBeforeDate,
@@ -48,39 +43,26 @@ import { AnyQueryBuilder } from "../query-builder.js";
 import { SqlFragment } from "../sql-builder.js";
 
 export class FilterBuilder {
-  private readonly referencedModels: Set<string>;
-
   constructor(
     private readonly filterFragmentBuilders: Record<
       string,
       AnyFilterFragmentBuilder
     >,
     public readonly queryBuilder: AnyQueryBuilder,
-    private readonly filterType: FilterType,
-    referencedModels: string[],
-    private readonly metricPrefixes?: Record<string, string>,
-  ) {
-    this.referencedModels = new Set(referencedModels);
-  }
+  ) {}
   getMemberSql(memberName: string, context: unknown): SqlFragment | undefined {
     const member = this.queryBuilder.repository.getMember(memberName);
-    if (this.referencedModels.has(member.model.name)) {
-      if (this.filterType === "dimension" && member.isDimension()) {
-        return member.getSql(
-          this.queryBuilder.repository,
-          this.queryBuilder.dialect,
-          context,
-        );
-      }
-      if (this.filterType === "metric" && member.isMetric()) {
-        const prefix = this.metricPrefixes?.[member.model.name];
-        const sql = this.queryBuilder.dialect.asIdentifier(member.getAlias());
-        return SqlFragment.fromSql(
-          prefix
-            ? `${this.queryBuilder.dialect.asIdentifier(prefix)}.${sql}`
-            : sql,
-        );
-      }
+
+    if (member.isDimension()) {
+      return member.getSql(
+        this.queryBuilder.repository,
+        this.queryBuilder.dialect,
+        context,
+      );
+    }
+    if (member.isMetric()) {
+      const sql = this.queryBuilder.dialect.asIdentifier(member.getAlias());
+      return SqlFragment.fromSql(sql);
     }
   }
 
@@ -159,19 +141,8 @@ export class FilterFragmentBuilderRegistry<T = never> {
   getFilterFragmentBuilders() {
     return Object.values(this.filterFragmentBuilders);
   }
-  getFilterBuilder(
-    queryBuilder: AnyQueryBuilder,
-    filterType: FilterType,
-    referencedModels: string[],
-    metricPrefixes?: Record<string, string>,
-  ): FilterBuilder {
-    return new FilterBuilder(
-      this.filterFragmentBuilders,
-      queryBuilder,
-      filterType,
-      referencedModels,
-      metricPrefixes,
-    );
+  getFilterBuilder(queryBuilder: AnyQueryBuilder): FilterBuilder {
+    return new FilterBuilder(this.filterFragmentBuilders, queryBuilder);
   }
 }
 

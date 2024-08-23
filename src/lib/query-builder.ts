@@ -1,12 +1,10 @@
 import {
   AnyInputQuery,
   AnyMemberFormat,
-  FilterType,
   HierarchyConfig,
   InputQuery,
   IntrospectionResult,
   MemberNameToType,
-  Query,
   QueryMemberName,
   QueryReturnType,
   SqlQueryResult,
@@ -18,8 +16,7 @@ import { AnyBaseDialect } from "./dialect/base.js";
 import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
-import { findOptimalJoinGraph } from "./query-builder/optimal-join-graph.js";
-import { processQueryAndExpandToSegments } from "./query-builder/process-query-and-expand-to-segments.js";
+import { getQueryPlan } from "./query-builder/query-plan.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { SqlQuery } from "./sql-builder/to-sql.js";
@@ -30,33 +27,6 @@ function isValidGranularityConfigElements(
   return elements.length > 0;
 }
 
-function transformInputQueryToQuery(
-  queryBuilder: AnyQueryBuilder,
-  parsedQuery: AnyInputQuery,
-) {
-  const { members, ...restQuery } = parsedQuery;
-  const dimensionsAndMetrics = members.reduce<{
-    dimensions: string[];
-    metrics: string[];
-  }>(
-    (acc, memberName) => {
-      const member = queryBuilder.repository.getMember(memberName);
-      if (member.isDimension()) {
-        acc.dimensions.push(memberName);
-      } else {
-        acc.metrics.push(memberName);
-      }
-
-      return acc;
-    },
-    { dimensions: [], metrics: [] },
-  );
-
-  return {
-    ...dimensionsAndMetrics,
-    ...restQuery,
-  } as Query;
-}
 export class QueryBuilder<
   C,
   D extends MemberNameToType,
@@ -159,23 +129,8 @@ export class QueryBuilder<
     parsedQuery: AnyInputQuery,
     context: unknown,
   ): SqlQuery {
-    const transformedQuery = transformInputQueryToQuery(this, parsedQuery);
-    const { query, referencedModels, segments } =
-      processQueryAndExpandToSegments(this.repository, transformedQuery);
-
-    const joinGraph = findOptimalJoinGraph(
-      this.repository.graph,
-      referencedModels.all,
-    );
-
-    const sqlQuery = buildQuery(
-      this,
-      context,
-      query,
-      referencedModels,
-      joinGraph,
-      segments,
-    );
+    const queryPlan = getQueryPlan(this.repository, parsedQuery);
+    const sqlQuery = buildQuery(this, context, queryPlan);
 
     return sqlQuery.toSQL();
   }
@@ -220,14 +175,10 @@ export class QueryBuilder<
     return result;
   }
 
-  getFilterBuilder(
-    filterType: FilterType,
-    referencedModels: string[],
-    metricPrefixes?: Record<string, string>,
-  ): FilterBuilder {
+  getFilterBuilder(): FilterBuilder {
     return this.repository
       .getFilterFragmentBuilderRegistry()
-      .getFilterBuilder(this, filterType, referencedModels, metricPrefixes);
+      .getFilterBuilder(this);
   }
 
   introspect(query: AnyInputQuery): IntrospectionResult {
