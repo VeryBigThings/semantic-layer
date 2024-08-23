@@ -436,67 +436,67 @@ describe("semantic layer", async () => {
           "customers.full_name",
           "invoice_lines.invoice_id",
         ],
-        limit: 10,
+        filters: [
+          {
+            operator: "equals",
+            member: "customers.customer_id",
+            value: [1],
+          },
+        ],
         order: [{ member: "invoices.invoice_date", direction: "asc" }],
       });
+
+      assert.equal(
+        query.sql,
+        `select "q0"."customers___customer_id" as "customers___customer_id", "q0"."customers___full_name" as "customers___full_name", "q0"."invoice_lines___invoice_id" as "invoice_lines___invoice_id" from (select "InvoiceLine"."InvoiceId" as "invoice_lines___invoice_id", "Customer"."CustomerId" as "customers___customer_id", "Customer"."FirstName" || ' ' || "Customer"."LastName" as "customers___full_name" from "InvoiceLine" right join "Invoice" on "Invoice"."InvoiceId" = "InvoiceLine"."InvoiceId"  right join "Customer" on "Customer"."CustomerId" = "Invoice"."CustomerId" where "Customer"."CustomerId" = $1) as "q0" group by "q0"."customers___customer_id", "q0"."customers___full_name", "q0"."invoice_lines___invoice_id" order by "customers___customer_id" asc limit $2 offset $3`,
+      );
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
         query.sql,
         query.bindings,
       );
 
-      assert.deepEqual(result.rows, [
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 121,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 316,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 143,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 195,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 327,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 98,
-        },
-        {
-          customers___customer_id: 1,
-          customers___full_name: "Lu�s Gon�alves",
-          invoice_lines___invoice_id: 382,
-        },
-        {
-          customers___customer_id: 2,
-          customers___full_name: "Leonie K�hler",
-          invoice_lines___invoice_id: 1,
-        },
-        {
-          customers___customer_id: 2,
-          customers___full_name: "Leonie K�hler",
-          invoice_lines___invoice_id: 219,
-        },
-        {
-          customers___customer_id: 2,
-          customers___full_name: "Leonie K�hler",
-          invoice_lines___invoice_id: 67,
-        },
-      ]);
+      // Sort the rows on the client, because they will be sorted by customer id which is shared by all rows
+      assert.deepEqual(
+        result.rows.sort(),
+        [
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 98,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 121,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 143,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 195,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 316,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 327,
+          },
+          {
+            customers___customer_id: 1,
+            customers___full_name: "Lu�s Gon�alves",
+            invoice_lines___invoice_id: 382,
+          },
+        ].sort(),
+      );
     });
 
     it("can query one dimension and metric and filter by a different metric", async () => {
@@ -2210,7 +2210,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "q0" order by "customers___customer_id" asc limit $6 offset $7',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc limit $6 offset $7',
       );
 
       // First 5 bindings are for the customerId, last one is for the limit
@@ -2244,7 +2244,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select distinct "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "q0" order by "customers___customer_id" asc limit $11 offset $12)) as "q0" order by "customers___customer_id" asc limit $13 offset $14',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "Invoice"."InvoiceId" as "invoices___invoice_id", "customers"."CustomerId" || cast($1 as text) as "customers___customer_id" from "Invoice" right join (select * from "Customer" where "CustomerId" = $2) as "customers" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "q0" group by "q0"."customers___customer_id" order by "customers___customer_id" asc limit $11 offset $12)) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc limit $13 offset $14',
       );
 
       assert.deepEqual(
@@ -2342,7 +2342,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."Customer"."CustomerId" as "customers___customer_id" from "public"."InvoiceLine" right join (select * from "public"."Invoice") as "invoices" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId" right join "public"."Customer" on "public"."Customer"."CustomerId" = "invoices"."CustomerId") as "q0" order by "customers___customer_id" asc limit $1 offset $2',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."Customer"."CustomerId" as "customers___customer_id" from "public"."InvoiceLine" right join (select * from "public"."Invoice") as "invoices" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId" right join "public"."Customer" on "public"."Customer"."CustomerId" = "invoices"."CustomerId") as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" order by "customers___customer_id" asc limit $1 offset $2',
       );
 
       assert.deepEqual(query.bindings, [5000, 0]);
@@ -2359,7 +2359,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" order by "invoices___invoice_id" asc limit $1 offset $2',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc limit $1 offset $2',
       );
 
       assert.deepEqual(query.bindings, [5000, 0]);
@@ -2376,7 +2376,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" order by "invoices___invoice_id" asc limit ? offset ?',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc limit ? offset ?',
       );
 
       assert.deepEqual(query.bindings, [5000, 0]);
@@ -2393,7 +2393,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select distinct `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `q0` order by `invoices___invoice_id` asc limit ? offset ?",
+        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `q0` group by `q0`.`invoices___invoice_id` order by `invoices___invoice_id` asc limit ? offset ?",
       );
 
       assert.deepEqual(query.bindings, [5000, 0]);

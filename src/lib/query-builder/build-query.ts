@@ -165,12 +165,6 @@ function buildSegmentQuery(
     source,
   );
 
-  // If there are no metrics, we need to use DISTINCT to avoid multiplying rows
-  // otherwise GROUP BY will take care of it
-  if ((segment.query.metrics?.length ?? 0) === 0) {
-    initialSqlQuery.distinct();
-  }
-
   if (segment.query.filters) {
     const filter = queryBuilder
       .getFilterBuilder("dimension", segment.referencedModels.all)
@@ -183,10 +177,12 @@ function buildSegmentQuery(
     }
   }
 
+  /* Handle the case where there are no metrics - we shouldn't wrap the query in a sub query, but we need to figure out the aliases
+	const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;*/
+
   const sqlQuery = queryBuilder.dialect.from(
     initialSqlQuery.as(modelQueryAlias),
   );
-  const hasMetrics = segment.query.metrics && segment.query.metrics.length > 0;
 
   for (const dimensionName of segment.query.dimensions || []) {
     const dimension = queryBuilder.repository.getDimension(dimensionName);
@@ -201,17 +197,16 @@ function buildSegmentQuery(
       sqlQuery.select(fragment);
     }
 
-    if (hasMetrics) {
-      const segmentQueryGroupBy = dimension.getSegmentQueryGroupBy(
-        queryBuilder.repository,
-        queryBuilder.dialect,
-        context,
-        modelQueryAlias,
-      );
+    // Always GROUP BY by the dimensions, if there are no metrics, it will behave as DISTINCT
+    const segmentQueryGroupBy = dimension.getSegmentQueryGroupBy(
+      queryBuilder.repository,
+      queryBuilder.dialect,
+      context,
+      modelQueryAlias,
+    );
 
-      for (const fragment of segmentQueryGroupBy) {
-        sqlQuery.groupBy(fragment);
-      }
+    for (const fragment of segmentQueryGroupBy) {
+      sqlQuery.groupBy(fragment);
     }
   }
 
