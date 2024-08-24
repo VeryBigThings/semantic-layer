@@ -23,7 +23,7 @@
     "type:dts": "tsc --emitDeclarationOnly --project tsconfig.build.json",
     "type:extract": "api-extractor run && rimraf --glob \"./build/*\" && mv trimmed.d.ts build/index.d.ts",
     "type:check": "tsc --noEmit",
-    "lint": "biome check . --apply-unsafe",
+    "lint": "biome check . --write --unsafe",
     "lint:check": "biome ci .",
     "test": "vitest --run",
     "test:watch": "vitest --watch",
@@ -43,7 +43,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.5.3",
+    "@biomejs/biome": "^1.8.3",
     "@microsoft/api-extractor": "^7.42.3",
     "@nitrogql/esbuild-register": "^1.6.0-beta.0",
     "@semantic-release/changelog": "^6.0.3",

@@ -54,7 +54,8 @@
     "Sucesso",
     "testcontainers",
     "tsdoc",
-    "verybigthings"
+    "verybigthings",
+    "SUBQUERY"
   ],
   "flagWords": [],
   "ignorePaths": [

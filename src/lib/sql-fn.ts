@@ -1,8 +1,10 @@
+import { BasicDimension, BasicMetric, Member } from "./model/member.js";
+
 import { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
-import { BasicDimension } from "./model/member.js";
 import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
+import { METRIC_REF_SUBQUERY_ALIAS } from "./util.js";
 
 export abstract class Ref {
   public abstract render(
@@ -20,6 +22,23 @@ export class DimensionRef extends Ref {
   }
   render(repository: AnyRepository, dialect: AnyBaseDialect) {
     return this.dimension.getSql(repository, dialect, this.context);
+  }
+}
+
+export class MetricRef extends Ref {
+  constructor(
+    readonly owner: Member,
+    readonly metric: BasicMetric,
+    private readonly context: unknown,
+  ) {
+    super();
+  }
+  render(_repository: AnyRepository, dialect: AnyBaseDialect) {
+    return SqlFragment.fromSql(
+      `${dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${dialect.asIdentifier(
+        this.metric.getAlias(),
+      )}`,
+    );
   }
 }
 
@@ -47,7 +66,7 @@ export class ColumnRef extends Ref {
 export class AliasRef extends Ref {
   constructor(
     private readonly alias: string,
-    readonly aliasOf: DimensionRef | ColumnRef,
+    readonly aliasOf: DimensionRef | ColumnRef | MetricRef,
   ) {
     super();
   }
