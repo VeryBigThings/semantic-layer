@@ -28,5 +28,6 @@
   },
   "[jsonl]": {
     "editor.defaultFormatter": "biomejs.biome"
-  }
+  },
+  "cSpell.words": ["subquery"]
 }

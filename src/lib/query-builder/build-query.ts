@@ -1,10 +1,12 @@
+import { SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
+import { AnyInputQuery, Order } from "../types.js";
+import { QueryPlan, getQueryPlan } from "./query-plan.js";
+
 import invariant from "tiny-invariant";
 import type { AnyJoin } from "../join.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
-import { SqlQueryBuilder } from "../sql-builder.js";
-import { Order } from "../types.js";
-import { QueryPlan } from "./query-plan.js";
+import { METRIC_REF_SUBQUERY_ALIAS } from "../util.js";
 
 function getDefaultOrderBy(
   repository: AnyRepository,
@@ -56,8 +58,8 @@ function buildModelQuery(
   );
 
   for (const memberName of segment.modelQuery.members) {
-    const metric = queryBuilder.repository.getMember(memberName);
-    const modelQueryProjection = metric.getModelQueryProjection(
+    const member = queryBuilder.repository.getMember(memberName);
+    const modelQueryProjection = member.getModelQueryProjection(
       queryBuilder.repository,
       queryBuilder.dialect,
       context,
@@ -68,6 +70,7 @@ function buildModelQuery(
     }
   }
 
+  // Do the joins first, because we might have additional joins if there are metric refs, and they need to be able to reference the dimensions of the joins
   const modelsToProcess: { modelName: string; join?: AnyJoin }[] = [
     { modelName: segment.initialModel },
   ];
@@ -112,6 +115,72 @@ function buildModelQuery(
         join: queryBuilder.repository.getJoin(modelName, unvisitedModelName),
       })),
     );
+
+    const metricRefs = Array.from(
+      new Set(
+        segment.modelQuery.metrics.flatMap((metricName) => {
+          const metric = queryBuilder.repository.getMetric(metricName);
+          return metric
+            .getMetricRefs(context)
+            .map((metricRef) => metricRef.metric.getPath());
+        }),
+      ),
+    );
+
+    /*if (modelQueryMetricRefsSubQuery) {
+    const alias = `${pathToAlias(memberName)}___metric_refs_subquery`;
+    const { sql, bindings } = modelQueryMetricRefsSubQuery.toSQL();
+    console.log(sql);
+    console.log("---------------------------------");
+    sqlQuery.leftJoin(
+      new SqlFragment(`(${sql}) as ${alias}`, bindings),
+      filteredDimensions
+        .map((dimensionPath) => {
+          const dimension = queryBuilder.repository.getDimension(dimensionPath);
+
+          return `${dimension.getSql(queryBuilder.repository, queryBuilder.dialect, context).sql} = ${alias}.${dimension.getAlias()}`;
+        })
+        .join(" and "),
+    );
+  }*/
+
+    if (metricRefs.length > 0) {
+      const query: AnyInputQuery = {
+        members: [...segment.modelQuery.dimensions, ...metricRefs],
+        filters: segment.filters,
+      };
+      const queryPlan = getQueryPlan(queryBuilder.repository, query);
+      const { sql, bindings } = buildQuery(
+        queryBuilder,
+        context,
+        queryPlan,
+      ).toSQL();
+
+      const joinOn = segment.modelQuery.dimensions.reduce<{
+        sqls: string[];
+        bindings: unknown[];
+      }>(
+        (acc, dimensionPath) => {
+          const dimension = queryBuilder.repository.getDimension(dimensionPath);
+          const { sql, bindings } = dimension.getSql(
+            queryBuilder.repository,
+            queryBuilder.dialect,
+            context,
+          );
+          acc.sqls.push(
+            `${sql} = ${queryBuilder.dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${queryBuilder.dialect.asIdentifier(dimension.getAlias())}`,
+          );
+          acc.bindings.push(...bindings);
+          return acc;
+        },
+        { sqls: [], bindings: [] },
+      );
+
+      sqlQuery.leftJoin(
+        new SqlFragment(`(${sql}) as ${METRIC_REF_SUBQUERY_ALIAS}`, bindings),
+        new SqlFragment(joinOn.sqls.join(" and "), joinOn.bindings),
+      );
+    }
   }
 
   return sqlQuery;
@@ -309,8 +378,12 @@ export function buildQuery(
     rootQuery.orderBy(orderBy.join(", "));
   }
 
-  rootQuery.limit(queryPlan.limit ?? 5000);
-  rootQuery.offset(queryPlan.offset ?? 0);
+  if (queryPlan.limit) {
+    rootQuery.limit(queryPlan.limit);
+  }
+  if (queryPlan.offset) {
+    rootQuery.offset(queryPlan.offset);
+  }
 
   return rootQuery;
 }

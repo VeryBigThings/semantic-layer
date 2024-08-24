@@ -332,7 +332,7 @@ const playlistTrackModel = semanticLayer
     sql: ({ model }) => model.column("TrackId"),
   });
 
-export const repository = semanticLayer
+const repository = semanticLayer
   .repository()
   .withModel(customersModel)
   .withModel(invoicesModel)
@@ -431,7 +431,7 @@ export const repository = semanticLayer
       )} = ${models.tracks.dimension("track_id")}`,
   );
 
-export const queryBuilder = repository.build("postgresql");
+const queryBuilder = repository.build("postgresql");
 
 it("can analyze a query", () => {
   const query: semanticLayer.QueryBuilderQuery<typeof queryBuilder> = {

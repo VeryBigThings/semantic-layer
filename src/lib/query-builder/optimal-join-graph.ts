@@ -27,7 +27,10 @@ function buildCompleteGraph(
       invariant(end, `End model: ${end} not found`);
 
       // Ensure there is a path between start and end
-      if (paths[start]?.[end] && paths[start]?.[end]?.distance !== Infinity) {
+      if (
+        paths[start]?.[end] &&
+        paths[start]?.[end]?.distance !== Number.POSITIVE_INFINITY
+      ) {
         const weight = paths[start]?.[end]?.distance;
         completeGraph.setEdge(start, end, weight);
       }
@@ -55,7 +58,10 @@ export function findOptimalJoinGraph(
   const edges = mst.edges();
 
   for (const { v, w } of edges) {
-    if (!paths[v]?.[w] || paths[v]?.[w]?.distance === Infinity) {
+    if (
+      !paths[v]?.[w] ||
+      paths[v]?.[w]?.distance === Number.POSITIVE_INFINITY
+    ) {
       throw new Error(
         `No path exists between ${v} and ${w} in the original graph.`,
       );

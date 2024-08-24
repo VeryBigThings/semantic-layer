@@ -25,8 +25,8 @@ import {
   notIn as filterNotIn,
 } from "./filter-builder/not-equals.js";
 import {
-  notSet as filterSet,
   set as filterNotSet,
+  notSet as filterSet,
 } from "./filter-builder/null-check-filter-builder.js";
 import {
   gt as filterGt,

@@ -5,7 +5,9 @@ import { BaseDialect } from "./base.js";
 
 export class MSSQLDialect extends BaseDialect<"object"> {
   asIdentifier(value: string) {
-    if (value === "*") return value;
+    if (value === "*") {
+      return value;
+    }
     return `[${value}]`;
   }
   sqlToNative(sql: string) {

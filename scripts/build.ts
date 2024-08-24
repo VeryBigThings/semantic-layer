@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
-import path from "node:path";
-import url from "node:url";
 import { build as esbuild } from "esbuild";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import url from "node:url";
 
 const srcPath = path.join(process.cwd(), "src");
 const buildPath = path.join(process.cwd(), "build");

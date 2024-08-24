@@ -42,7 +42,9 @@ export class AnsiDialect extends BaseDialect<"array"> {
   }
 
   asIdentifier(value: string) {
-    if (value === "*") return value;
+    if (value === "*") {
+      return value;
+    }
     return `"${value}"`;
   }
 

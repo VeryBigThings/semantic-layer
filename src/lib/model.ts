@@ -125,7 +125,7 @@ export class Model<
   }
   withMetric<
     MN1 extends string,
-    MP extends BasicMetricProps<C, string & keyof D>,
+    MP extends BasicMetricProps<C, string & keyof D, string & keyof M>,
   >(
     name: Exclude<MN1, keyof M | keyof D>,
     metric: MP,

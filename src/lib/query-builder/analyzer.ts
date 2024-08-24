@@ -2,7 +2,7 @@ import {
   AnyInputQuery,
   HierarchyConfig,
   HierarchyType,
-  Order as _Order,
+  Order,
 } from "../types.js";
 
 import { compareBy } from "compare-by";
@@ -192,37 +192,40 @@ export function analyzeQueryHierarchy(
       queriesForHierarchy.queriesInfo[
         queriesForHierarchy.queriesInfo.length - 1
       ]!,
-    ].map((queryInfo, idx) => ({
-      element: queryInfo.element,
-      keyDimensions: [
-        ...queryInfo.prevLevelsKeyDimensions,
-        ...queryInfo.keyDimensions,
-      ],
-      query: {
-        ...analysis.query,
-        members: [
-          ...new Set([
-            ...queryInfo.prevLevelsKeyDimensions,
-            ...queryInfo.keyDimensions,
-            ...queryInfo.formatDimensions,
-            ...queryInfo.prevLevelsExtraDimensions,
-            ...queryInfo.extraDimensions,
-            // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
-            ...(idx === queriesForHierarchy.queriesInfo.length
-              ? queriesForHierarchy.restDimensions
-              : []),
-            ...analysis.metrics,
-          ]),
+    ].map((queryInfo, idx) => {
+      const order: Order[] = [
+        ...queryInfo.formatDimensions.map((dimension) => ({
+          member: dimension,
+          direction: "asc" as const,
+        })),
+        ...(analysis.query.order ?? []),
+      ];
+      return {
+        element: queryInfo.element,
+        keyDimensions: [
+          ...queryInfo.prevLevelsKeyDimensions,
+          ...queryInfo.keyDimensions,
         ],
-        order: [
-          ...queryInfo.formatDimensions.map((dimension) => ({
-            member: dimension,
-            direction: "asc" as const,
-          })),
-          ...(analysis.query.order ?? []),
-        ],
-      },
-    })),
+        query: {
+          ...analysis.query,
+          members: [
+            ...new Set([
+              ...queryInfo.prevLevelsKeyDimensions,
+              ...queryInfo.keyDimensions,
+              ...queryInfo.formatDimensions,
+              ...queryInfo.prevLevelsExtraDimensions,
+              ...queryInfo.extraDimensions,
+              // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
+              ...(idx === queriesForHierarchy.queriesInfo.length
+                ? queriesForHierarchy.restDimensions
+                : []),
+              ...analysis.metrics,
+            ]),
+          ],
+          order,
+        },
+      };
+    }),
   };
 }
 

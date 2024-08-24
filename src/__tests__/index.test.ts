@@ -448,7 +448,7 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        `select "q0"."customers___customer_id" as "customers___customer_id", "q0"."customers___full_name" as "customers___full_name", "q0"."invoice_lines___invoice_id" as "invoice_lines___invoice_id" from (select distinct "Customer"."CustomerId" as "customers___customer_id", "Customer"."FirstName" || ' ' || "Customer"."LastName" as "customers___full_name", "InvoiceLine"."InvoiceId" as "invoice_lines___invoice_id" from "Customer" left join "Invoice" on "Customer"."CustomerId" = "Invoice"."CustomerId" left join "InvoiceLine" on "Invoice"."InvoiceId" = "InvoiceLine"."InvoiceId"  where "Customer"."CustomerId" = $1) as "q0" group by "q0"."customers___customer_id", "q0"."customers___full_name", "q0"."invoice_lines___invoice_id" order by "customers___customer_id" asc limit $2 offset $3`,
+        `select "q0"."customers___customer_id" as "customers___customer_id", "q0"."customers___full_name" as "customers___full_name", "q0"."invoice_lines___invoice_id" as "invoice_lines___invoice_id" from (select distinct "Customer"."CustomerId" as "customers___customer_id", "Customer"."FirstName" || ' ' || "Customer"."LastName" as "customers___full_name", "InvoiceLine"."InvoiceId" as "invoice_lines___invoice_id" from "Customer" left join "Invoice" on "Customer"."CustomerId" = "Invoice"."CustomerId" left join "InvoiceLine" on "Invoice"."InvoiceId" = "InvoiceLine"."InvoiceId"  where "Customer"."CustomerId" = $1) as "q0" group by "q0"."customers___customer_id", "q0"."customers___full_name", "q0"."invoice_lines___invoice_id" order by "customers___customer_id" asc`,
       );
 
       const result = await client.query<InferSqlQueryResultType<typeof query>>(
@@ -1690,10 +1690,10 @@ describe("semantic layer", async () => {
     });
   });
 
-  describe("full repository", async () => {
+  describe("full repository", () => {
     const { queryBuilder } = fullRepository;
 
-    it("should validate filters so or/and connectives include filters with members of the same type", async () => {
+    it("should validate filters so or/and connectives include filters with members of the same type", () => {
       const result1 = queryBuilder.querySchema.safeParse({
         members: ["invoice_lines.unit_price"],
         filters: [
@@ -1927,7 +1927,7 @@ describe("semantic layer", async () => {
       ]);
     });
 
-    it("parsed query should equal original query", async () => {
+    it("parsed query should equal original query", () => {
       const query = {
         members: ["artists.name", "tracks.unit_price"],
         filters: [
@@ -2199,7 +2199,7 @@ describe("semantic layer", async () => {
           } = ${getContext().customerId}`,
       );
 
-    it("propagates context to all sql functions", async () => {
+    it("propagates context to all sql functions", () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2210,14 +2210,14 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "customers"."CustomerId" || cast($1 as text) as "customers___customer_id", "Invoice"."InvoiceId" as "invoices___invoice_id" from (select * from "Customer" where "CustomerId" = $2) as "customers" left join "Invoice" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc limit $6 offset $7',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "customers"."CustomerId" || cast($1 as text) as "customers___customer_id", "Invoice"."InvoiceId" as "invoices___invoice_id" from (select * from "Customer" where "CustomerId" = $2) as "customers" left join "Invoice" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc',
       );
 
       // First 5 bindings are for the customerId, last one is for the limit
-      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 5000, 0]);
+      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1]);
     });
 
-    it("propagates context to query filters", async () => {
+    it("propagates context to query filters", () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2244,13 +2244,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "customers"."CustomerId" || cast($1 as text) as "customers___customer_id", "Invoice"."InvoiceId" as "invoices___invoice_id" from (select * from "Customer" where "CustomerId" = $2) as "customers" left join "Invoice" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "q0" group by "q0"."customers___customer_id" order by "customers___customer_id" asc limit $11 offset $12)) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc limit $13 offset $14',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select distinct "customers"."CustomerId" || cast($1 as text) as "customers___customer_id", "Invoice"."InvoiceId" as "invoices___invoice_id" from (select * from "Customer" where "CustomerId" = $2) as "customers" left join "Invoice" on "customers"."CustomerId" || cast($3 as text) = "Invoice"."CustomerId" and $4 = $5 where "customers"."CustomerId" || cast($6 as text) in (select "q0"."customers___customer_id" as "customers___customer_id" from (select "customers"."CustomerId" || cast($7 as text) as "customers___customer_id" from (select * from "Customer" where "CustomerId" = $8) as "customers" where "customers"."CustomerId" || cast($9 as text) = $10) as "q0" group by "q0"."customers___customer_id" order by "customers___customer_id" asc)) as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id" order by "customers___customer_id" asc',
       );
 
-      assert.deepEqual(
-        query.bindings,
-        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5000, 0, 5000, 0],
-      );
+      assert.deepEqual(query.bindings, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
     });
   });
 
@@ -2327,7 +2324,7 @@ describe("semantic layer", async () => {
           )} = ${models.invoice_lines.dimension("invoice_id")}`,
       );
 
-    it("can build SQL with namespaced tables (1)", async () => {
+    it("can build SQL with namespaced tables (1)", () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2342,13 +2339,13 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."Customer"."CustomerId" as "customers___customer_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id" from "public"."Customer" left join (select * from "public"."Invoice") as "invoices" on "public"."Customer"."CustomerId" = "invoices"."CustomerId" left join "public"."InvoiceLine" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId") as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" order by "customers___customer_id" asc limit $1 offset $2',
+        'select "q0"."customers___customer_id" as "customers___customer_id", "q0"."invoices___invoice_id" as "invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" as "invoice_lines___invoice_line_id" from (select distinct "public"."Customer"."CustomerId" as "customers___customer_id", "invoices"."InvoiceId" as "invoices___invoice_id", "public"."InvoiceLine"."InvoiceLineId" as "invoice_lines___invoice_line_id" from "public"."Customer" left join (select * from "public"."Invoice") as "invoices" on "public"."Customer"."CustomerId" = "invoices"."CustomerId" left join "public"."InvoiceLine" on "invoices"."InvoiceId" = "public"."InvoiceLine"."InvoiceId") as "q0" group by "q0"."customers___customer_id", "q0"."invoices___invoice_id", "q0"."invoice_lines___invoice_line_id" order by "customers___customer_id" asc',
       );
 
-      assert.deepEqual(query.bindings, [5000, 0]);
+      assert.deepEqual(query.bindings, []);
     });
 
-    it("can build SQL with namespaced tables (2)", async () => {
+    it("can build SQL with namespaced tables (2)", () => {
       const queryBuilder = repository.build("postgresql");
       const query = queryBuilder.buildQuery(
         {
@@ -2359,10 +2356,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc limit $1 offset $2',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc',
       );
 
-      assert.deepEqual(query.bindings, [5000, 0]);
+      assert.deepEqual(query.bindings, []);
     });
 
     it("can build SQL for ANSI", () => {
@@ -2376,10 +2373,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc limit ? offset ?',
+        'select "q0"."invoices___invoice_id" as "invoices___invoice_id" from (select "invoices"."InvoiceId" as "invoices___invoice_id" from (select * from "public"."Invoice") as "invoices") as "q0" group by "q0"."invoices___invoice_id" order by "invoices___invoice_id" asc',
       );
 
-      assert.deepEqual(query.bindings, [5000, 0]);
+      assert.deepEqual(query.bindings, []);
     });
 
     it("can build SQL for Databricks", () => {
@@ -2393,10 +2390,10 @@ describe("semantic layer", async () => {
 
       assert.equal(
         query.sql,
-        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `q0` group by `q0`.`invoices___invoice_id` order by `invoices___invoice_id` asc limit ? offset ?",
+        "select `q0`.`invoices___invoice_id` as `invoices___invoice_id` from (select `invoices`.`InvoiceId` as `invoices___invoice_id` from (select * from `public`.`Invoice`) as `invoices`) as `q0` group by `q0`.`invoices___invoice_id` order by `invoices___invoice_id` asc",
       );
 
-      assert.deepEqual(query.bindings, [5000, 0]);
+      assert.deepEqual(query.bindings, []);
     });
   });
 
@@ -2478,6 +2475,117 @@ describe("semantic layer", async () => {
           Customer___CustomerId: 1,
           Invoice___Total: "3.98",
           Invoice___InvoiceId: 98,
+        },
+      ]);
+    });
+  });
+  describe("metric refs", () => {
+    const storeSalesModel = semanticLayer
+      .model()
+      .withName("store_sales")
+      .fromSqlQuery(
+        ({ sql }) =>
+          sql`SELECT 1 AS id, 1 AS store_id, 1 AS product_id, 10 AS sales UNION ALL
+      SELECT 2 AS id, 1 AS store_id, 1 AS product_id, 20 AS sales UNION ALL
+      SELECT 3 AS id, 1 AS store_id, 2 AS product_id, 30 AS sales UNION ALL
+      SELECT 4 AS id, 1 AS store_id, 2 AS product_id, 40 AS sales UNION ALL
+      SELECT 5 AS id, 2 AS store_id, 1 AS product_id, 50 AS sales UNION ALL
+      SELECT 6 AS id, 2 AS store_id, 1 AS product_id, 60 AS sales UNION ALL
+      SELECT 7 AS id, 2 AS store_id, 2 AS product_id, 70 AS sales UNION ALL
+      SELECT 8 AS id, 2 AS store_id, 2 AS product_id, 80 AS sales`,
+      )
+      .withDimension("id", {
+        type: "number",
+        sql: ({ model, sql }) => sql`${model.column("id")}`,
+      })
+      .withDimension("store_id", {
+        type: "number",
+        sql: ({ model, sql }) => sql`${model.column("store_id")}`,
+        primaryKey: true,
+      })
+      .withDimension("product_id", {
+        type: "number",
+        sql: ({ model, sql }) => sql`${model.column("product_id")}`,
+        primaryKey: true,
+      })
+      .withMetric("sales", {
+        type: "number",
+        sql: ({ model, sql }) => sql`SUM(${model.column("sales")})`,
+      })
+      .withMetric("median_sales", {
+        type: "number",
+        sql: ({ model, sql }) =>
+          sql`PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${model.metric("sales")})`,
+      });
+
+    const repository = semanticLayer.repository().withModel(storeSalesModel);
+
+    const queryBuilder = repository.build("postgresql");
+
+    it("can reference a metric from a metric", async () => {
+      const query1 = queryBuilder.buildQuery({
+        members: [
+          "store_sales.store_id",
+          "store_sales.median_sales",
+          "store_sales.sales",
+        ],
+      });
+
+      const result1 = await client.query<
+        InferSqlQueryResultType<typeof query1>
+      >(query1.sql, query1.bindings);
+
+      assert.deepEqual(result1.rows, [
+        {
+          store_sales___store_id: 2,
+          store_sales___median_sales: 130,
+          store_sales___sales: "260",
+        },
+        {
+          store_sales___store_id: 1,
+          store_sales___median_sales: 50,
+          store_sales___sales: "100",
+        },
+      ]);
+
+      const query = queryBuilder.buildQuery({
+        members: [
+          "store_sales.store_id",
+          "store_sales.product_id",
+          "store_sales.median_sales",
+          "store_sales.sales",
+        ],
+      });
+
+      const result2 = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result2.rows, [
+        {
+          store_sales___store_id: 2,
+          store_sales___product_id: 2,
+          store_sales___median_sales: 150,
+          store_sales___sales: "150",
+        },
+        {
+          store_sales___store_id: 2,
+          store_sales___product_id: 1,
+          store_sales___median_sales: 110,
+          store_sales___sales: "110",
+        },
+        {
+          store_sales___store_id: 1,
+          store_sales___product_id: 2,
+          store_sales___median_sales: 70,
+          store_sales___sales: "70",
+        },
+        {
+          store_sales___store_id: 1,
+          store_sales___product_id: 1,
+          store_sales___median_sales: 30,
+          store_sales___sales: "30",
         },
       ]);
     });
