@@ -17,6 +17,7 @@ import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { getQueryPlan } from "./query-builder/query-plan.js";
+import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { SqlQuery } from "./sql-builder/to-sql.js";
@@ -129,7 +130,7 @@ export class QueryBuilder<
     parsedQuery: AnyInputQuery,
     context: unknown,
   ): SqlQuery {
-    const queryPlan = getQueryPlan(this.repository, parsedQuery);
+    const queryPlan = getQueryPlan(this, context, parsedQuery);
     const sqlQuery = buildQuery(this, context, queryPlan);
 
     return sqlQuery.toSQL();
@@ -175,10 +176,10 @@ export class QueryBuilder<
     return result;
   }
 
-  getFilterBuilder(): FilterBuilder {
+  getFilterBuilder(queryMembers: QueryMemberCache): FilterBuilder {
     return this.repository
       .getFilterFragmentBuilderRegistry()
-      .getFilterBuilder(this);
+      .getFilterBuilder(this, queryMembers);
   }
 
   introspect(query: AnyInputQuery): IntrospectionResult {

@@ -22,14 +22,17 @@ const userModel = semanticLayer
   })
   .withMetric("count", {
     type: "string",
+    sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
     format: (value) => `Count: ${value}`,
   })
   .withMetric("percentage", {
     type: "string",
+    sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
     format: "percentage",
   })
   .withMetric("currency", {
     type: "string",
+    sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
     format: "currency",
   });
 

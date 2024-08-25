@@ -1,6 +1,5 @@
 import { ColumnRef, DimensionRef, IdentifierRef, SqlFn } from "./sql-fn.js";
 
-import invariant from "tiny-invariant";
 import { AnyModel } from "./model.js";
 import { ModelMemberWithoutModelPrefix } from "./types.js";
 
@@ -42,10 +41,6 @@ export function makeModelJoinPayload(model: AnyModel, context: unknown) {
   return {
     dimension: (dimensionName: string) => {
       const dimension = model.getDimension(dimensionName);
-      invariant(
-        dimension,
-        `Dimension ${dimensionName} not found in model ${model.name}`,
-      );
       return new DimensionRef(dimension, context);
     },
     column: (columnName: string) => new ColumnRef(model, columnName, context),
