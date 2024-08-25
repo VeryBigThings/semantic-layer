@@ -1,14 +1,12 @@
-import {
-  AnyModel,
-  BasicDimension,
-  BasicMetric,
-  Member,
-} from "../semantic-layer.js";
+import { Dimension, Member, Metric } from "../member.js";
+import { AnyModel, AnyQueryBuilder } from "../semantic-layer.js";
 import { AnyInputQuery, Order } from "../types.js";
 
 import invariant from "tiny-invariant";
+import { BasicMetricQueryMember } from "../model/basic-metric.js";
 import { AnyRepository } from "../repository.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
+import { QueryMemberCache } from "./query-plan/query-member.js";
 
 export type QueryFilterConnective = {
   operator: "and" | "or";
@@ -78,8 +76,8 @@ function getMembersDimensionsAndMetrics(
   members: string[],
 ) {
   return members.reduce<{
-    dimensions: BasicDimension[];
-    metrics: BasicMetric[];
+    dimensions: Dimension[];
+    metrics: Metric[];
   }>(
     (acc, memberName) => {
       const member = repository.getMember(memberName);
@@ -102,20 +100,20 @@ function getSegmentQueryModelsAndMembers({
   dimensions,
   metrics,
 }: {
-  dimensions: { projected: BasicDimension[]; filter: BasicDimension[] };
+  dimensions: { projected: Dimension[]; filter: Dimension[] };
   metrics?: {
-    projected: BasicMetric[];
-    filter: BasicMetric[];
+    projected: Metric[];
+    filter: Metric[];
     model: string;
   };
 }) {
   const models = new Set<AnyModel>();
-  const modelQueryDimensions = new Set<BasicDimension>();
-  const modelQueryMetrics = new Set<BasicMetric>();
-  const segmentQueryDimensions = new Set<BasicDimension>();
-  const segmentQueryMetrics = new Set<BasicMetric>();
-  const rootQueryDimensions = new Set<BasicDimension>();
-  const rootQueryMetrics = new Set<BasicMetric>();
+  const modelQueryDimensions = new Set<Dimension>();
+  const modelQueryMetrics = new Set<Metric>();
+  const segmentQueryDimensions = new Set<Dimension>();
+  const segmentQueryMetrics = new Set<Metric>();
+  const rootQueryDimensions = new Set<Dimension>();
+  const rootQueryMetrics = new Set<Metric>();
 
   for (const dimension of dimensions.projected) {
     modelQueryDimensions.add(dimension);
@@ -193,22 +191,59 @@ function getSegmentQueryModelsAndMembers({
   };
 }
 
+function getSegmentQueryMetricsRefsSubQueryPlan(
+  queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
+  context: unknown,
+  dimensions: string[],
+  metrics: string[],
+  filters: QueryFilter[],
+): { joinOnDimensions: string[]; queryPlan: QueryPlan } | undefined {
+  const metricRefs = Array.from(
+    new Set(
+      metrics.flatMap((metricPath) => {
+        const metricQueryMember = queryMembers.getByPath(metricPath);
+        if (metricQueryMember instanceof BasicMetricQueryMember) {
+          return metricQueryMember
+            .getMetricRefs()
+            .map((metricRef) => metricRef.metric.getPath());
+        }
+        return [];
+      }),
+    ),
+  );
+  if (metricRefs.length > 0) {
+    const query: AnyInputQuery = {
+      members: [...dimensions, ...metricRefs],
+      filters,
+    };
+    const queryPlan = getQueryPlan(queryBuilder, context, query);
+    const joinOnDimensions = [...dimensions];
+    return {
+      queryPlan,
+      joinOnDimensions,
+    };
+  }
+}
+
 function getSegmentQuery(
-  repository: AnyRepository,
+  queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
+  context: unknown,
+  alias: string,
   {
     dimensions,
     metrics,
     filters,
   }: {
-    dimensions: { projected: BasicDimension[]; filter: BasicDimension[] };
+    dimensions: { projected: Dimension[]; filter: Dimension[] };
     metrics?: {
-      projected: BasicMetric[];
-      filter: BasicMetric[];
+      projected: Metric[];
+      filter: Metric[];
       model: string;
     };
     filters: QueryFilter[];
   },
-  alias: string,
 ) {
   const initialModel =
     metrics?.model ??
@@ -223,12 +258,21 @@ function getSegmentQuery(
   });
 
   const joinGraph = findOptimalJoinGraph(
-    repository.graph,
+    queryBuilder.repository.graph,
     segmentModelsAndMembers.models,
   );
 
   return {
     ...segmentModelsAndMembers,
+    metricsRefsSubQueryPlan: getSegmentQueryMetricsRefsSubQueryPlan(
+      queryBuilder,
+      queryMembers,
+      context,
+      segmentModelsAndMembers.modelQuery.dimensions,
+      segmentModelsAndMembers.modelQuery.metrics,
+      filters,
+    ),
+    queryMembers: queryMembers,
     alias,
     joinGraph,
     initialModel,
@@ -252,12 +296,12 @@ function orderWithOnlyProjectedMembers(
 }
 
 function getMetricsByModel(
-  projectedMetrics: BasicMetric[],
-  filtersMetrics: BasicMetric[],
+  projectedMetrics: Metric[],
+  filtersMetrics: Metric[],
 ) {
   const metricsByModel: Record<
     string,
-    { projected: BasicMetric[]; filter: BasicMetric[] }
+    { projected: Metric[]; filter: Metric[] }
   > = {};
 
   for (const m of projectedMetrics) {
@@ -273,7 +317,17 @@ function getMetricsByModel(
   return Object.entries(metricsByModel);
 }
 
-export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
+export function getQueryPlan(
+  queryBuilder: AnyQueryBuilder,
+  context: unknown,
+  query: AnyInputQuery,
+) {
+  const repository = queryBuilder.repository;
+  const queryMembers = new QueryMemberCache(
+    repository,
+    queryBuilder.dialect,
+    context,
+  );
   const { dimensions: projectedDimensions, metrics: projectedMetrics } =
     getMembersDimensionsAndMetrics(repository, query.members);
   const { dimensionFilters, metricFilters } = getDimensionAndMetricFilters(
@@ -281,10 +335,10 @@ export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
     query.filters,
   );
   const filtersDimensions = (
-    getFiltersMembers(repository, dimensionFilters) as BasicDimension[]
+    getFiltersMembers(repository, dimensionFilters) as Dimension[]
   ).filter((dimension) => !projectedDimensions.includes(dimension));
   const filtersMetrics = (
-    getFiltersMembers(repository, metricFilters) as BasicMetric[]
+    getFiltersMembers(repository, metricFilters) as Metric[]
   ).filter((metric) => !projectedMetrics.includes(metric));
 
   const metricsByModel = getMetricsByModel(projectedMetrics, filtersMetrics);
@@ -293,7 +347,10 @@ export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
     metricsByModel.length > 0
       ? metricsByModel.map(([modelName, metrics], index) =>
           getSegmentQuery(
-            repository,
+            queryBuilder,
+            queryMembers,
+            context,
+            getSegmentAlias(index),
             {
               dimensions: {
                 projected: projectedDimensions,
@@ -306,12 +363,14 @@ export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
               },
               filters: dimensionFilters,
             },
-            getSegmentAlias(index),
           ),
         )
       : [
           getSegmentQuery(
-            repository,
+            queryBuilder,
+            queryMembers,
+            context,
+            getSegmentAlias(0),
             {
               dimensions: {
                 projected: projectedDimensions,
@@ -319,7 +378,6 @@ export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
               },
               filters: dimensionFilters,
             },
-            getSegmentAlias(0),
           ),
         ];
 
@@ -328,6 +386,7 @@ export function getQueryPlan(repository: AnyRepository, query: AnyInputQuery) {
 
   return {
     segments,
+    queryMembers,
     filters: metricFilters,
     projectedDimensions: projectedDimensionPaths,
     projectedMetrics: projectedMetricPaths,

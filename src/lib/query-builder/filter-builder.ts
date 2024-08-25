@@ -41,6 +41,7 @@ import {
 
 import { AnyQueryBuilder } from "../query-builder.js";
 import { SqlFragment } from "../sql-builder.js";
+import { QueryMemberCache } from "./query-plan/query-member.js";
 
 export class FilterBuilder {
   constructor(
@@ -48,22 +49,12 @@ export class FilterBuilder {
       string,
       AnyFilterFragmentBuilder
     >,
-    public readonly queryBuilder: AnyQueryBuilder,
+    readonly queryBuilder: AnyQueryBuilder,
+    private readonly queryMembers: QueryMemberCache,
   ) {}
-  getMemberSql(memberName: string, context: unknown): SqlFragment | undefined {
-    const member = this.queryBuilder.repository.getMember(memberName);
-
-    if (member.isDimension()) {
-      return member.getSql(
-        this.queryBuilder.repository,
-        this.queryBuilder.dialect,
-        context,
-      );
-    }
-    if (member.isMetric()) {
-      const sql = this.queryBuilder.dialect.asIdentifier(member.getAlias());
-      return SqlFragment.fromSql(sql);
-    }
+  getMemberSql(memberPath: string): SqlFragment | undefined {
+    const queryMember = this.queryMembers.getByPath(memberPath);
+    return queryMember.getFilterSql();
   }
 
   buildOr(filter: OrConnective, context: unknown): SqlFragment | undefined {
@@ -82,7 +73,7 @@ export class FilterBuilder {
     if (filter.operator === "or") {
       return this.buildOr(filter, context);
     }
-    const memberSql = this.getMemberSql(filter.member, context);
+    const memberSql = this.getMemberSql(filter.member);
     if (memberSql) {
       const builder = this.filterFragmentBuilders[filter.operator];
       if (builder) {
@@ -141,8 +132,15 @@ export class FilterFragmentBuilderRegistry<T = never> {
   getFilterFragmentBuilders() {
     return Object.values(this.filterFragmentBuilders);
   }
-  getFilterBuilder(queryBuilder: AnyQueryBuilder): FilterBuilder {
-    return new FilterBuilder(this.filterFragmentBuilders, queryBuilder);
+  getFilterBuilder(
+    queryBuilder: AnyQueryBuilder,
+    queryMembers: QueryMemberCache,
+  ): FilterBuilder {
+    return new FilterBuilder(
+      this.filterFragmentBuilders,
+      queryBuilder,
+      queryMembers,
+    );
   }
 }
 

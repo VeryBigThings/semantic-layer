@@ -1,12 +1,12 @@
 import { SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
-import { AnyInputQuery, Order } from "../types.js";
-import { QueryPlan, getQueryPlan } from "./query-plan.js";
 
 import invariant from "tiny-invariant";
 import type { AnyJoin } from "../join.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
+import { Order } from "../types.js";
 import { METRIC_REF_SUBQUERY_ALIAS } from "../util.js";
+import { QueryPlan } from "./query-plan.js";
 
 function getDefaultOrderBy(
   repository: AnyRepository,
@@ -17,7 +17,7 @@ function getDefaultOrderBy(
 
   for (const dimensionName of query.projectedDimensions ?? []) {
     const dimension = repository.getDimension(dimensionName);
-    if (dimension.getGranularity()) {
+    if (dimension.isGranularity()) {
       return [{ member: dimensionName, direction: "asc" }];
     }
   }
@@ -52,18 +52,15 @@ function buildModelQuery(
   const sqlQuery = queryBuilder.dialect.from(
     model.getTableNameOrSql(
       queryBuilder.repository,
+      segment.queryMembers,
       queryBuilder.dialect,
       context,
     ),
   );
 
-  for (const memberName of segment.modelQuery.members) {
-    const member = queryBuilder.repository.getMember(memberName);
-    const modelQueryProjection = member.getModelQueryProjection(
-      queryBuilder.repository,
-      queryBuilder.dialect,
-      context,
-    );
+  for (const memberPath of segment.modelQuery.members) {
+    const queryMember = segment.queryMembers.getByPath(memberPath);
+    const modelQueryProjection = queryMember.getModelQueryProjection();
 
     for (const fragment of modelQueryProjection) {
       sqlQuery.select(fragment);
@@ -90,10 +87,15 @@ function buildModelQuery(
       const joinType = join.reversed ? "rightJoin" : "leftJoin";
       const joinOn = join
         .joinOnDef(context)
-        .render(queryBuilder.repository, queryBuilder.dialect);
+        .render(
+          queryBuilder.repository,
+          segment.queryMembers,
+          queryBuilder.dialect,
+        );
       const rightModel = queryBuilder.repository.getModel(join.right);
       const joinSubject = rightModel.getTableNameOrSql(
         queryBuilder.repository,
+        segment.queryMembers,
         queryBuilder.dialect,
         context,
       );
@@ -115,72 +117,37 @@ function buildModelQuery(
         join: queryBuilder.repository.getJoin(modelName, unvisitedModelName),
       })),
     );
+  }
 
-    const metricRefs = Array.from(
-      new Set(
-        segment.modelQuery.metrics.flatMap((metricName) => {
-          const metric = queryBuilder.repository.getMetric(metricName);
-          return metric
-            .getMetricRefs(context)
-            .map((metricRef) => metricRef.metric.getPath());
-        }),
-      ),
+  if (segment.metricsRefsSubQueryPlan) {
+    const { sql, bindings } = buildQuery(
+      queryBuilder,
+      context,
+      segment.metricsRefsSubQueryPlan.queryPlan,
+    ).toSQL();
+
+    const joinOn = segment.metricsRefsSubQueryPlan.joinOnDimensions.reduce<{
+      sqls: string[];
+      bindings: unknown[];
+    }>(
+      (acc, dimensionPath) => {
+        const dimensionQueryMember =
+          segment.queryMembers.getByPath(dimensionPath);
+
+        const { sql, bindings } = dimensionQueryMember.getSql();
+        acc.sqls.push(
+          `${sql} = ${queryBuilder.dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${queryBuilder.dialect.asIdentifier(dimensionQueryMember.getAlias())}`,
+        );
+        acc.bindings.push(...bindings);
+        return acc;
+      },
+      { sqls: [], bindings: [] },
     );
 
-    /*if (modelQueryMetricRefsSubQuery) {
-    const alias = `${pathToAlias(memberName)}___metric_refs_subquery`;
-    const { sql, bindings } = modelQueryMetricRefsSubQuery.toSQL();
-    console.log(sql);
-    console.log("---------------------------------");
     sqlQuery.leftJoin(
-      new SqlFragment(`(${sql}) as ${alias}`, bindings),
-      filteredDimensions
-        .map((dimensionPath) => {
-          const dimension = queryBuilder.repository.getDimension(dimensionPath);
-
-          return `${dimension.getSql(queryBuilder.repository, queryBuilder.dialect, context).sql} = ${alias}.${dimension.getAlias()}`;
-        })
-        .join(" and "),
+      new SqlFragment(`(${sql}) as ${METRIC_REF_SUBQUERY_ALIAS}`, bindings),
+      new SqlFragment(joinOn.sqls.join(" and "), joinOn.bindings),
     );
-  }*/
-
-    if (metricRefs.length > 0) {
-      const query: AnyInputQuery = {
-        members: [...segment.modelQuery.dimensions, ...metricRefs],
-        filters: segment.filters,
-      };
-      const queryPlan = getQueryPlan(queryBuilder.repository, query);
-      const { sql, bindings } = buildQuery(
-        queryBuilder,
-        context,
-        queryPlan,
-      ).toSQL();
-
-      const joinOn = segment.modelQuery.dimensions.reduce<{
-        sqls: string[];
-        bindings: unknown[];
-      }>(
-        (acc, dimensionPath) => {
-          const dimension = queryBuilder.repository.getDimension(dimensionPath);
-          const { sql, bindings } = dimension.getSql(
-            queryBuilder.repository,
-            queryBuilder.dialect,
-            context,
-          );
-          acc.sqls.push(
-            `${sql} = ${queryBuilder.dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${queryBuilder.dialect.asIdentifier(dimension.getAlias())}`,
-          );
-          acc.bindings.push(...bindings);
-          return acc;
-        },
-        { sqls: [], bindings: [] },
-      );
-
-      sqlQuery.leftJoin(
-        new SqlFragment(`(${sql}) as ${METRIC_REF_SUBQUERY_ALIAS}`, bindings),
-        new SqlFragment(joinOn.sqls.join(" and "), joinOn.bindings),
-      );
-    }
   }
 
   return sqlQuery;
@@ -198,7 +165,7 @@ function buildSegmentQuery(
 
   if (segment.filters) {
     const filter = queryBuilder
-      .getFilterBuilder()
+      .getFilterBuilder(segment.queryMembers)
       .buildFilters(segment.filters, "and", context);
 
     if (filter) {
@@ -215,14 +182,10 @@ function buildSegmentQuery(
     initialSqlQuery.as(modelQueryAlias),
   );
 
-  for (const memberName of segment.segmentQuery.members) {
-    const member = queryBuilder.repository.getMember(memberName);
-    const segmentQueryProjection = member.getSegmentQueryProjection(
-      queryBuilder.repository,
-      queryBuilder.dialect,
-      context,
-      modelQueryAlias,
-    );
+  for (const memberPath of segment.segmentQuery.members) {
+    const queryMember = segment.queryMembers.getByPath(memberPath);
+    const segmentQueryProjection =
+      queryMember.getSegmentQueryProjection(modelQueryAlias);
 
     for (const fragment of segmentQueryProjection) {
       sqlQuery.select(fragment);
@@ -230,12 +193,8 @@ function buildSegmentQuery(
 
     // We always GROUP BY the dimensions, if there are no metrics, it will behave as DISTINCT
     // For metrics, this is currently NOOP because Metric returns an empty array
-    const segmentQueryGroupBy = member.getSegmentQueryGroupBy(
-      queryBuilder.repository,
-      queryBuilder.dialect,
-      context,
-      modelQueryAlias,
-    );
+    const segmentQueryGroupBy =
+      queryMember.getSegmentQueryGroupBy(modelQueryAlias);
 
     for (const fragment of segmentQueryGroupBy) {
       sqlQuery.groupBy(fragment);
@@ -289,15 +248,11 @@ function buildRootQuery(
     initialSegmentWithSqlQuery.sqlQuery.as(rootQueryAlias),
   );
 
-  for (const memberName of initialSegmentWithSqlQuery.segment.rootQuery
+  for (const memberPath of initialSegmentWithSqlQuery.segment.rootQuery
     .members) {
-    const member = queryBuilder.repository.getMember(memberName);
-    const rootQueryProjection = member.getRootQueryProjection(
-      queryBuilder.repository,
-      queryBuilder.dialect,
-      context,
-      rootQueryAlias,
-    );
+    const queryMember = queryPlan.queryMembers.getByPath(memberPath);
+    const rootQueryProjection =
+      queryMember.getRootQueryProjection(rootQueryAlias);
 
     for (const fragment of rootQueryProjection) {
       rootSqlQuery.select(fragment);
@@ -329,14 +284,10 @@ function buildRootQuery(
       queryBuilder.dialect.fragment(joinOn),
     );
 
-    for (const metricName of segmentWithSqlQuery.segment.rootQuery.metrics) {
-      const metric = queryBuilder.repository.getMetric(metricName);
-      const rootQueryProjection = metric.getRootQueryProjection(
-        queryBuilder.repository,
-        queryBuilder.dialect,
-        context,
-        segmentQueryAlias,
-      );
+    for (const metricPath of segmentWithSqlQuery.segment.rootQuery.metrics) {
+      const queryMember = queryPlan.queryMembers.getByPath(metricPath);
+      const rootQueryProjection =
+        queryMember.getRootQueryProjection(segmentQueryAlias);
 
       for (const fragment of rootQueryProjection) {
         rootSqlQuery.select(fragment);
@@ -355,7 +306,7 @@ export function buildQuery(
 
   if (queryPlan.filters) {
     const filter = queryBuilder
-      .getFilterBuilder()
+      .getFilterBuilder(queryPlan.queryMembers)
       .buildFilters(queryPlan.filters, "and", context);
 
     if (filter) {

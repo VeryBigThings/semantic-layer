@@ -7,7 +7,7 @@ import { getQueryPlan } from "../../lib/query-builder/query-plan.js";
 it("can crate a query plan", () => {
   const { queryBuilder } = fullRepository;
 
-  const queryPlan = getQueryPlan(queryBuilder.repository, {
+  const queryPlan = getQueryPlan(queryBuilder, undefined, {
     members: [
       "artists.name",
       "tracks.name",

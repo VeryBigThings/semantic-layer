@@ -1,7 +1,8 @@
-import { BasicDimension, BasicMetric, Member } from "./model/member.js";
+import { Dimension, Member, Metric } from "./member.js";
 
 import { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
+import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
 import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
 import { METRIC_REF_SUBQUERY_ALIAS } from "./util.js";
@@ -9,31 +10,43 @@ import { METRIC_REF_SUBQUERY_ALIAS } from "./util.js";
 export abstract class Ref {
   public abstract render(
     repository: AnyRepository,
+    queryMembers: QueryMemberCache,
     dialect: AnyBaseDialect,
   ): SqlFragment;
 }
 
 export class DimensionRef extends Ref {
   constructor(
-    private readonly dimension: BasicDimension,
+    private readonly dimension: Dimension,
     private readonly context: unknown,
   ) {
     super();
   }
-  render(repository: AnyRepository, dialect: AnyBaseDialect) {
-    return this.dimension.getSql(repository, dialect, this.context);
+  render(
+    _repository: AnyRepository,
+    queryMembers: QueryMemberCache,
+    _dialect: AnyBaseDialect,
+  ) {
+    const dimensionQueryMember = queryMembers.getByPath(
+      this.dimension.getPath(),
+    );
+    return dimensionQueryMember.getSql();
   }
 }
 
 export class MetricRef extends Ref {
   constructor(
     readonly owner: Member,
-    readonly metric: BasicMetric,
+    readonly metric: Metric,
     private readonly context: unknown,
   ) {
     super();
   }
-  render(_repository: AnyRepository, dialect: AnyBaseDialect) {
+  render(
+    _repository: AnyRepository,
+    _queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+  ) {
     return SqlFragment.fromSql(
       `${dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${dialect.asIdentifier(
         this.metric.getAlias(),
@@ -50,9 +63,14 @@ export class ColumnRef extends Ref {
   ) {
     super();
   }
-  render(repository: AnyRepository, dialect: AnyBaseDialect) {
+  render(
+    repository: AnyRepository,
+    queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+  ) {
     const { sql: asSql, bindings } = this.model.getAs(
       repository,
+      queryMembers,
       dialect,
       this.context,
     );
@@ -63,14 +81,20 @@ export class ColumnRef extends Ref {
   }
 }
 
-export class AliasRef extends Ref {
+export class AliasRef<
+  T extends DimensionRef | ColumnRef | MetricRef,
+> extends Ref {
   constructor(
-    private readonly alias: string,
-    readonly aliasOf: DimensionRef | ColumnRef | MetricRef,
+    readonly alias: string,
+    readonly aliasOf: T,
   ) {
     super();
   }
-  render(_repository: AnyRepository, dialect: AnyBaseDialect) {
+  render(
+    _repository: AnyRepository,
+    _queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+  ) {
     return SqlFragment.fromSql(dialect.asIdentifier(this.alias));
   }
 }
@@ -79,7 +103,11 @@ export class IdentifierRef extends Ref {
   constructor(private readonly identifier: string) {
     super();
   }
-  render(_repository: AnyRepository, dialect: AnyBaseDialect) {
+  render(
+    _repository: AnyRepository,
+    _queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+  ) {
     return SqlFragment.make({
       sql: dialect.asIdentifier(this.identifier),
       bindings: [],
@@ -95,7 +123,12 @@ export class SqlFn extends Ref {
     super();
   }
 
-  render(repository: AnyRepository, dialect: AnyBaseDialect) {
+  render(
+    repository: AnyRepository,
+
+    queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+  ) {
     const sql: string[] = [];
     const bindings: unknown[] = [];
     for (let i = 0; i < this.strings.length; i++) {
@@ -103,7 +136,7 @@ export class SqlFn extends Ref {
       if (this.values[i]) {
         const value = this.values[i];
         if (value instanceof Ref) {
-          const result = value.render(repository, dialect);
+          const result = value.render(repository, queryMembers, dialect);
           sql.push(result.sql);
           bindings.push(...result.bindings);
         } else {

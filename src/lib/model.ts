@@ -13,14 +13,16 @@ import {
 
 import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "./dialect/base.js";
+
 import {
   BasicDimension,
   BasicDimensionProps,
-  BasicMetric,
-  BasicMetricProps,
   DimensionHasTemporalGranularity,
   WithTemporalGranularityDimensions,
-} from "./model/member.js";
+} from "./model/basic-dimension.js";
+import { BasicMetric, BasicMetricProps } from "./model/basic-metric.js";
+import { GranularityDimension } from "./model/granularity-dimension.js";
+import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
 import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
 import { IdentifierRef, SqlFn } from "./sql-fn.js";
@@ -77,7 +79,7 @@ export class Model<
     DG extends boolean = DimensionHasTemporalGranularity<DP>,
   >(
     name: Exclude<DN1, keyof D | keyof M>,
-    dimension: DP,
+    dimensionProps: DP,
   ): Model<
     C,
     N,
@@ -91,20 +93,23 @@ export class Model<
       !(this.dimensions[name] || this.metrics[name]),
       `Member "${name}" already exists`,
     );
+    const dimension = new BasicDimension(this, name, dimensionProps);
 
-    this.dimensions[name] = new BasicDimension(this, name, dimension);
+    this.dimensions[name] = dimension;
     if (
       // TODO: figure out why typeHasGranularity is not working anymore
-      dimension.type === "datetime" ||
-      dimension.type === "date" ||
-      (dimension.type === "time" && dimension.omitGranularity !== true)
+      dimensionProps.type === "datetime" ||
+      dimensionProps.type === "date" ||
+      (dimensionProps.type === "time" &&
+        dimensionProps.omitGranularity !== true)
     ) {
       const granularityDimensions =
-        TemporalGranularityByDimensionType[dimension.type];
+        TemporalGranularityByDimensionType[dimensionProps.type];
       for (const g of granularityDimensions) {
-        const { format: _format, ...dimensionWithoutFormat } = dimension;
-        this.dimensions[`${name}.${g}`] = new BasicDimension(
+        const { format: _format, ...dimensionWithoutFormat } = dimensionProps;
+        this.dimensions[`${name}.${g}`] = new GranularityDimension(
           this,
+          dimension,
           `${name}.${g}`,
           {
             ...dimensionWithoutFormat,
@@ -117,7 +122,7 @@ export class Model<
       }
       this.unsafeWithHierarchy(
         name,
-        makeTemporalHierarchyElementsForDimension(name, dimension.type),
+        makeTemporalHierarchyElementsForDimension(name, dimensionProps.type),
         "temporal",
       );
     }
@@ -201,7 +206,12 @@ export class Model<
   getMetrics() {
     return Object.values(this.metrics);
   }
-  getTableName(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
+  getTableName(
+    repository: AnyRepository,
+    queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+    context: C,
+  ) {
     invariant(this.config.type === "table", "Model is not a table");
 
     if (typeof this.config.name === "string") {
@@ -221,9 +231,14 @@ export class Model<
       getContext: () => context,
     });
 
-    return result.render(repository, dialect);
+    return result.render(repository, queryMembers, dialect);
   }
-  getSql(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
+  getSql(
+    repository: AnyRepository,
+    queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+    context: C,
+  ) {
     invariant(this.config.type === "sqlQuery", "Model is not an SQL query");
 
     const result = this.config.sql({
@@ -232,26 +247,37 @@ export class Model<
         new SqlFn([...strings], values),
       getContext: () => context,
     });
-    return result.render(repository, dialect);
+    return result.render(repository, queryMembers, dialect);
   }
   getTableNameOrSql(
     repository: AnyRepository,
+    queryMembers: QueryMemberCache,
     dialect: AnyBaseDialect,
     context: C,
   ) {
     if (this.config.type === "table") {
-      const { sql, bindings } = this.getTableName(repository, dialect, context);
+      const { sql, bindings } = this.getTableName(
+        repository,
+        queryMembers,
+        dialect,
+        context,
+      );
       return dialect.fragment(sql, bindings);
     }
 
-    const modelSql = this.getSql(repository, dialect, context);
+    const modelSql = this.getSql(repository, queryMembers, dialect, context);
     return dialect.fragment(
       `(${modelSql.sql}) as ${dialect.asIdentifier(this.config.alias)}`,
       modelSql.bindings,
     );
   }
 
-  getAs(repository: AnyRepository, dialect: AnyBaseDialect, context: C) {
+  getAs(
+    repository: AnyRepository,
+    queryMembers: QueryMemberCache,
+    dialect: AnyBaseDialect,
+    context: C,
+  ) {
     if (this.config.type === "sqlQuery") {
       return SqlFragment.make({
         sql: dialect.asIdentifier(this.config.alias),
@@ -259,7 +285,7 @@ export class Model<
       });
     }
 
-    return this.getTableName(repository, dialect, context);
+    return this.getTableName(repository, queryMembers, dialect, context);
   }
 
   clone<N extends string>(name: N) {
