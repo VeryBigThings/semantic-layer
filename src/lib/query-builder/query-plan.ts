@@ -3,6 +3,7 @@ import { AnyModel, AnyQueryBuilder } from "../semantic-layer.js";
 import { AnyInputQuery, Order } from "../types.js";
 
 import invariant from "tiny-invariant";
+import { AnyJoin } from "../join.js";
 import { BasicMetricQueryMember } from "../model/basic-metric.js";
 import { AnyRepository } from "../repository.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
@@ -217,13 +218,79 @@ function getSegmentQueryMetricsRefsSubQueryPlan(
       members: [...dimensions, ...metricRefs],
       filters,
     };
-    const queryPlan = getQueryPlan(queryBuilder, context, query);
+    const queryPlan = getQueryPlan(queryBuilder, queryMembers, context, query);
     const joinOnDimensions = [...dimensions];
     return {
       queryPlan,
       joinOnDimensions,
     };
   }
+}
+
+function getSegmentQueryJoins(
+  queryBuilder: AnyQueryBuilder,
+  models: string[],
+  initialModel: string,
+) {
+  const joinGraph = findOptimalJoinGraph(queryBuilder.repository.graph, models);
+  const visitedModels = new Set<string>();
+  const modelsToProcess: {
+    modelName: string;
+    join?: { join: AnyJoin; left: string; right: string };
+  }[] = [{ modelName: initialModel }];
+
+  const joins: {
+    leftModel: string;
+    rightModel: string;
+    joinType: "leftJoin" | "rightJoin";
+  }[] = [];
+  let hasRowMultiplication = false;
+
+  while (modelsToProcess.length > 0) {
+    const { modelName, join } = modelsToProcess.pop()!;
+
+    if (visitedModels.has(modelName)) {
+      continue;
+    }
+    visitedModels.add(modelName);
+
+    const unvisitedNeighbors = (joinGraph.neighbors(modelName) ?? []).filter(
+      (modelName) => !visitedModels.has(modelName),
+    );
+
+    if (join) {
+      if (join.join.type === "manyToMany" || join.join.type === "oneToMany") {
+        hasRowMultiplication = true;
+      }
+      const joinType = join.join.reversed ? "rightJoin" : "leftJoin";
+
+      joins.push({
+        leftModel: join.left,
+        rightModel: join.right,
+        joinType,
+      });
+    }
+
+    modelsToProcess.push(
+      ...unvisitedNeighbors.map((unvisitedModelName) => {
+        const join = queryBuilder.repository.getJoin(
+          modelName,
+          unvisitedModelName,
+        );
+        return {
+          modelName: unvisitedModelName,
+          join: join
+            ? { left: modelName, right: unvisitedModelName, join }
+            : undefined,
+        };
+      }),
+    );
+  }
+  return {
+    hasRowMultiplication,
+    initialModel,
+    joins,
+  };
 }
 
 function getSegmentQuery(
@@ -257,9 +324,10 @@ function getSegmentQuery(
     metrics,
   });
 
-  const joinGraph = findOptimalJoinGraph(
-    queryBuilder.repository.graph,
+  const joinPlan = getSegmentQueryJoins(
+    queryBuilder,
     segmentModelsAndMembers.models,
+    initialModel,
   );
 
   return {
@@ -272,10 +340,8 @@ function getSegmentQuery(
       segmentModelsAndMembers.modelQuery.metrics,
       filters,
     ),
-    queryMembers: queryMembers,
     alias,
-    joinGraph,
-    initialModel,
+    joinPlan,
     filters,
   };
 }
@@ -319,15 +385,11 @@ function getMetricsByModel(
 
 export function getQueryPlan(
   queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
   context: unknown,
   query: AnyInputQuery,
 ) {
   const repository = queryBuilder.repository;
-  const queryMembers = new QueryMemberCache(
-    repository,
-    queryBuilder.dialect,
-    context,
-  );
   const { dimensions: projectedDimensions, metrics: projectedMetrics } =
     getMembersDimensionsAndMetrics(repository, query.members);
   const { dimensionFilters, metricFilters } = getDimensionAndMetricFilters(
@@ -386,7 +448,6 @@ export function getQueryPlan(
 
   return {
     segments,
-    queryMembers,
     filters: metricFilters,
     projectedDimensions: projectedDimensionPaths,
     projectedMetrics: projectedMetricPaths,

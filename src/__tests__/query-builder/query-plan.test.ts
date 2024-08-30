@@ -1,13 +1,18 @@
 import * as fullRepository from "../full-repository.js";
 
-import { expect, it } from "vitest";
+import { assert, it } from "vitest";
 
 import { getQueryPlan } from "../../lib/query-builder/query-plan.js";
+import { QueryMemberCache } from "../../lib/query-builder/query-plan/query-member.js";
 
 it("can crate a query plan", () => {
   const { queryBuilder } = fullRepository;
-
-  const queryPlan = getQueryPlan(queryBuilder, undefined, {
+  const queryMembers = new QueryMemberCache(
+    queryBuilder.repository,
+    queryBuilder.dialect,
+    undefined,
+  );
+  const queryPlan = getQueryPlan(queryBuilder, queryMembers, undefined, {
     members: [
       "artists.name",
       "tracks.name",
@@ -29,9 +34,10 @@ it("can crate a query plan", () => {
     order: [{ member: "artists.name", direction: "asc" }],
   });
 
-  expect(queryPlan).toMatchObject({
+  assert.deepEqual(queryPlan, {
     segments: [
       {
+        metricsRefsSubQueryPlan: undefined,
         models: ["artists", "tracks", "albums", "genres"],
         modelQuery: {
           dimensions: [
@@ -72,17 +78,30 @@ it("can crate a query plan", () => {
           ],
         },
         alias: "s0",
-        initialModel: "tracks",
+        joinPlan: {
+          hasRowMultiplication: false,
+          initialModel: "tracks",
+          joins: [
+            {
+              leftModel: "tracks",
+              rightModel: "albums",
+              joinType: "rightJoin",
+            },
+            {
+              leftModel: "albums",
+              rightModel: "artists",
+              joinType: "leftJoin",
+            },
+            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+          ],
+        },
         filters: [
-          {
-            operator: "equals",
-            member: "genres.name",
-            value: ["Rock"],
-          },
+          { operator: "equals", member: "genres.name", value: ["Rock"] },
         ],
       },
       {
         models: ["artists", "tracks", "albums", "genres", "invoice_lines"],
+        metricsRefsSubQueryPlan: undefined,
         modelQuery: {
           dimensions: [
             "artists.name",
@@ -124,17 +143,35 @@ it("can crate a query plan", () => {
           ],
         },
         alias: "s1",
-        initialModel: "invoice_lines",
+        joinPlan: {
+          hasRowMultiplication: false,
+          initialModel: "invoice_lines",
+          joins: [
+            {
+              leftModel: "invoice_lines",
+              rightModel: "tracks",
+              joinType: "leftJoin",
+            },
+            {
+              leftModel: "tracks",
+              rightModel: "albums",
+              joinType: "rightJoin",
+            },
+            {
+              leftModel: "albums",
+              rightModel: "artists",
+              joinType: "leftJoin",
+            },
+            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+          ],
+        },
         filters: [
-          {
-            operator: "equals",
-            member: "genres.name",
-            value: ["Rock"],
-          },
+          { operator: "equals", member: "genres.name", value: ["Rock"] },
         ],
       },
       {
         models: ["artists", "tracks", "albums", "genres", "invoices"],
+        metricsRefsSubQueryPlan: undefined,
         modelQuery: {
           dimensions: [
             "artists.name",
@@ -169,45 +206,48 @@ it("can crate a query plan", () => {
           members: ["artists.name", "tracks.name", "albums.title"],
         },
         alias: "s2",
-        initialModel: "invoices",
+        joinPlan: {
+          hasRowMultiplication: true,
+          initialModel: "invoices",
+          joins: [
+            {
+              leftModel: "invoices",
+              rightModel: "invoice_lines",
+              joinType: "leftJoin",
+            },
+            {
+              leftModel: "invoice_lines",
+              rightModel: "tracks",
+              joinType: "leftJoin",
+            },
+            {
+              leftModel: "tracks",
+              rightModel: "albums",
+              joinType: "rightJoin",
+            },
+            {
+              leftModel: "albums",
+              rightModel: "artists",
+              joinType: "leftJoin",
+            },
+            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+          ],
+        },
         filters: [
-          {
-            operator: "equals",
-            member: "genres.name",
-            value: ["Rock"],
-          },
+          { operator: "equals", member: "genres.name", value: ["Rock"] },
         ],
       },
     ],
     filters: [
-      {
-        operator: "gt",
-        member: "invoice_lines.unit_price",
-        value: [0],
-      },
-      {
-        operator: "gt",
-        member: "invoice_lines.quantity",
-        value: [0],
-      },
-      {
-        operator: "gt",
-        member: "tracks.unit_price",
-        value: [0],
-      },
-      {
-        operator: "gt",
-        member: "invoices.total",
-        value: [100],
-      },
+      { operator: "gt", member: "invoice_lines.unit_price", value: [0] },
+      { operator: "gt", member: "invoice_lines.quantity", value: [0] },
+      { operator: "gt", member: "tracks.unit_price", value: [0] },
+      { operator: "gt", member: "invoices.total", value: [100] },
     ],
     projectedDimensions: ["artists.name", "tracks.name", "albums.title"],
     projectedMetrics: ["tracks.unit_price", "invoice_lines.quantity"],
-    order: [
-      {
-        member: "artists.name",
-        direction: "asc",
-      },
-    ],
+    order: [{ member: "artists.name", direction: "asc" }],
+    limit: undefined,
+    offset: undefined,
   });
 });

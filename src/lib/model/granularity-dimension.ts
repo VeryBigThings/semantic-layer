@@ -51,7 +51,7 @@ export class GranularityDimensionQueryMember extends BasicDimensionQueryMember {
     super(queryMembers, repository, dialect, context, member);
   }
   getSql() {
-    const parent = this.queryMembers.getByPath(this.member.parent.getPath());
+    const parent = this.queryMembers.get(this.member.parent);
     const result = parent.getSql();
     return SqlFragment.make({
       sql: this.dialect.withGranularity(this.member.granularity, result.sql),
