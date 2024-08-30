@@ -156,24 +156,7 @@ export class BasicMetricQueryMember extends QueryMember {
     return this.member.getAlias();
   }
   getSql() {
-    const result = this.sqlFnRenderResult;
-
-    if (result) {
-      return result;
-    }
-
-    const { sql: asSql, bindings } = this.member.model.getAs(
-      this.repository,
-      this.queryMembers,
-      this.dialect,
-      this.context,
-    );
-    const sql = `${asSql}.${this.dialect.asIdentifier(this.member.name)}`;
-
-    return SqlFragment.make({
-      sql,
-      bindings,
-    });
+    return this.sqlFnRenderResult;
   }
   getFilterSql() {
     return SqlFragment.fromSql(this.dialect.asIdentifier(this.getAlias()));

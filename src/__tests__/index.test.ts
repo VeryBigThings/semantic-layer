@@ -2548,7 +2548,7 @@ describe("semantic layer", async () => {
         },
       ]);
 
-      const query = queryBuilder.buildQuery({
+      const query2 = queryBuilder.buildQuery({
         members: [
           "store_sales.store_id",
           "store_sales.product_id",
@@ -2557,10 +2557,9 @@ describe("semantic layer", async () => {
         ],
       });
 
-      const result2 = await client.query<InferSqlQueryResultType<typeof query>>(
-        query.sql,
-        query.bindings,
-      );
+      const result2 = await client.query<
+        InferSqlQueryResultType<typeof query2>
+      >(query2.sql, query2.bindings);
 
       assert.deepEqual(result2.rows, [
         {

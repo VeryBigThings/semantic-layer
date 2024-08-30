@@ -269,9 +269,7 @@ export class Repository<
     const { model: modelName, dimension } =
       this.dimensionsIndex[dimensionName]!;
     const model = this.models[modelName];
-    if (!model) {
-      throw new Error(`Model ${modelName} not found`);
-    }
+    invariant(model, `Model ${modelName} not found`);
     return model.getDimension(dimension);
   }
 
@@ -279,9 +277,7 @@ export class Repository<
     invariant(this.metricsIndex[metricName], `Metric ${metricName} not found`);
     const { model: modelName, metric } = this.metricsIndex[metricName]!;
     const model = this.models[modelName];
-    if (!model) {
-      throw new Error(`Model ${modelName} not found`);
-    }
+    invariant(model, `Model ${modelName} not found`);
     return model.getMetric(metric);
   }
 

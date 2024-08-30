@@ -1,12 +1,12 @@
 import { SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
 
 import invariant from "tiny-invariant";
-import type { AnyJoin } from "../join.js";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
 import { Order } from "../types.js";
 import { METRIC_REF_SUBQUERY_ALIAS } from "../util.js";
 import { QueryPlan } from "./query-plan.js";
+import { QueryMemberCache } from "./query-plan/query-member.js";
 
 function getDefaultOrderBy(
   repository: AnyRepository,
@@ -41,33 +41,47 @@ function arrayHasAtLeastOneElement<T>(value: T[]): value is [T, ...T[]] {
   return value.length > 0;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <explanation>
-function buildModelQuery(
+function joinModelQueryModels(
   queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
   context: unknown,
   segment: QueryPlan["segments"][number],
+  sqlQuery: SqlQueryBuilder,
 ) {
-  const visitedModels = new Set<string>();
-  const model = queryBuilder.repository.getModel(segment.initialModel);
-  const sqlQuery = queryBuilder.dialect.from(
-    model.getTableNameOrSql(
+  if (segment.joinPlan.hasRowMultiplication) {
+    sqlQuery.distinct();
+  }
+  for (const {
+    leftModel: leftModelName,
+    rightModel: rightModelName,
+    joinType,
+  } of segment.joinPlan.joins) {
+    const join = queryBuilder.repository.getJoin(leftModelName, rightModelName);
+
+    invariant(
+      join,
+      `Join not found between ${leftModelName} and ${rightModelName}`,
+    );
+
+    const joinOn = join
+      .joinOnDef(context)
+      .render(queryBuilder.repository, queryMembers, queryBuilder.dialect);
+
+    const rightModel = queryBuilder.repository.getModel(rightModelName);
+    const joinSubject = rightModel.getTableNameOrSql(
       queryBuilder.repository,
-      segment.queryMembers,
+      queryMembers,
       queryBuilder.dialect,
       context,
-    ),
-  );
+    );
 
-  for (const memberPath of segment.modelQuery.members) {
-    const queryMember = segment.queryMembers.getByPath(memberPath);
-    const modelQueryProjection = queryMember.getModelQueryProjection();
-
-    for (const fragment of modelQueryProjection) {
-      sqlQuery.select(fragment);
-    }
+    sqlQuery[joinType](
+      joinSubject,
+      queryBuilder.dialect.fragment(joinOn.sql, joinOn.bindings),
+    );
   }
-
-  // Do the joins first, because we might have additional joins if there are metric refs, and they need to be able to reference the dimensions of the joins
+}
+/*const visitedModels = new Set<string>();
   const modelsToProcess: { modelName: string; join?: AnyJoin }[] = [
     { modelName: segment.initialModel },
   ];
@@ -89,13 +103,13 @@ function buildModelQuery(
         .joinOnDef(context)
         .render(
           queryBuilder.repository,
-          segment.queryMembers,
+          queryMembers,
           queryBuilder.dialect,
         );
       const rightModel = queryBuilder.repository.getModel(join.right);
       const joinSubject = rightModel.getTableNameOrSql(
         queryBuilder.repository,
-        segment.queryMembers,
+        queryMembers,
         queryBuilder.dialect,
         context,
       );
@@ -117,11 +131,19 @@ function buildModelQuery(
         join: queryBuilder.repository.getJoin(modelName, unvisitedModelName),
       })),
     );
-  }
+  }*/
 
+function joinModelQueryMetricRefsSubQuery(
+  queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
+  context: unknown,
+  segment: QueryPlan["segments"][number],
+  sqlQuery: SqlQueryBuilder,
+) {
   if (segment.metricsRefsSubQueryPlan) {
     const { sql, bindings } = buildQuery(
       queryBuilder,
+      queryMembers,
       context,
       segment.metricsRefsSubQueryPlan.queryPlan,
     ).toSQL();
@@ -131,8 +153,7 @@ function buildModelQuery(
       bindings: unknown[];
     }>(
       (acc, dimensionPath) => {
-        const dimensionQueryMember =
-          segment.queryMembers.getByPath(dimensionPath);
+        const dimensionQueryMember = queryMembers.getByPath(dimensionPath);
 
         const { sql, bindings } = dimensionQueryMember.getSql();
         acc.sqls.push(
@@ -149,23 +170,64 @@ function buildModelQuery(
       new SqlFragment(joinOn.sqls.join(" and "), joinOn.bindings),
     );
   }
+}
+
+function buildModelQuery(
+  queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
+  context: unknown,
+  segment: QueryPlan["segments"][number],
+) {
+  const model = queryBuilder.repository.getModel(segment.joinPlan.initialModel);
+  const sqlQuery = queryBuilder.dialect.from(
+    model.getTableNameOrSql(
+      queryBuilder.repository,
+      queryMembers,
+      queryBuilder.dialect,
+      context,
+    ),
+  );
+
+  for (const memberPath of segment.modelQuery.members) {
+    const queryMember = queryMembers.getByPath(memberPath);
+    const modelQueryProjection = queryMember.getModelQueryProjection();
+
+    for (const fragment of modelQueryProjection) {
+      sqlQuery.select(fragment);
+    }
+  }
+
+  joinModelQueryModels(queryBuilder, queryMembers, context, segment, sqlQuery);
+  joinModelQueryMetricRefsSubQuery(
+    queryBuilder,
+    queryMembers,
+    context,
+    segment,
+    sqlQuery,
+  );
 
   return sqlQuery;
 }
 
 function buildSegmentQuery(
   queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
   context: unknown,
   segment: QueryPlan["segments"][number],
   alias?: string,
 ): SqlQueryBuilder {
   const modelQueryAlias = alias ?? segment.alias;
 
-  const initialSqlQuery = buildModelQuery(queryBuilder, context, segment);
+  const initialSqlQuery = buildModelQuery(
+    queryBuilder,
+    queryMembers,
+    context,
+    segment,
+  );
 
   if (segment.filters) {
     const filter = queryBuilder
-      .getFilterBuilder(segment.queryMembers)
+      .getFilterBuilder(queryMembers)
       .buildFilters(segment.filters, "and", context);
 
     if (filter) {
@@ -183,7 +245,7 @@ function buildSegmentQuery(
   );
 
   for (const memberPath of segment.segmentQuery.members) {
-    const queryMember = segment.queryMembers.getByPath(memberPath);
+    const queryMember = queryMembers.getByPath(memberPath);
     const segmentQueryProjection =
       queryMember.getSegmentQueryProjection(modelQueryAlias);
 
@@ -206,6 +268,7 @@ function buildSegmentQuery(
 
 function buildRootQuery(
   queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
   context: unknown,
   queryPlan: QueryPlan,
 ): SqlQueryBuilder {
@@ -216,6 +279,7 @@ function buildRootQuery(
   if (segments.length === 1) {
     const sqlQuery = buildSegmentQuery(
       queryBuilder,
+      queryMembers,
       context,
       segments[0]!,
       getAlias(0),
@@ -226,7 +290,7 @@ function buildRootQuery(
 
   const segmentsWithSqlQuery = segments.map((segment) => ({
     segment,
-    sqlQuery: buildSegmentQuery(queryBuilder, context, segment),
+    sqlQuery: buildSegmentQuery(queryBuilder, queryMembers, context, segment),
   }));
 
   invariant(
@@ -250,7 +314,7 @@ function buildRootQuery(
 
   for (const memberPath of initialSegmentWithSqlQuery.segment.rootQuery
     .members) {
-    const queryMember = queryPlan.queryMembers.getByPath(memberPath);
+    const queryMember = queryMembers.getByPath(memberPath);
     const rootQueryProjection =
       queryMember.getRootQueryProjection(rootQueryAlias);
 
@@ -285,7 +349,7 @@ function buildRootQuery(
     );
 
     for (const metricPath of segmentWithSqlQuery.segment.rootQuery.metrics) {
-      const queryMember = queryPlan.queryMembers.getByPath(metricPath);
+      const queryMember = queryMembers.getByPath(metricPath);
       const rootQueryProjection =
         queryMember.getRootQueryProjection(segmentQueryAlias);
 
@@ -299,14 +363,20 @@ function buildRootQuery(
 
 export function buildQuery(
   queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
   context: unknown,
   queryPlan: QueryPlan,
 ) {
-  const rootQuery = buildRootQuery(queryBuilder, context, queryPlan);
+  const rootQuery = buildRootQuery(
+    queryBuilder,
+    queryMembers,
+    context,
+    queryPlan,
+  );
 
   if (queryPlan.filters) {
     const filter = queryBuilder
-      .getFilterBuilder(queryPlan.queryMembers)
+      .getFilterBuilder(queryMembers)
       .buildFilters(queryPlan.filters, "and", context);
 
     if (filter) {

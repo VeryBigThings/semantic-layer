@@ -130,8 +130,13 @@ export class QueryBuilder<
     parsedQuery: AnyInputQuery,
     context: unknown,
   ): SqlQuery {
-    const queryPlan = getQueryPlan(this, context, parsedQuery);
-    const sqlQuery = buildQuery(this, context, queryPlan);
+    const queryMembers = new QueryMemberCache(
+      this.repository,
+      this.dialect,
+      context,
+    );
+    const queryPlan = getQueryPlan(this, queryMembers, context, parsedQuery);
+    const sqlQuery = buildQuery(this, queryMembers, context, queryPlan);
 
     return sqlQuery.toSQL();
   }

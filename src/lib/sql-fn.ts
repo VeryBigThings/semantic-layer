@@ -27,9 +27,7 @@ export class DimensionRef extends Ref {
     queryMembers: QueryMemberCache,
     _dialect: AnyBaseDialect,
   ) {
-    const dimensionQueryMember = queryMembers.getByPath(
-      this.dimension.getPath(),
-    );
+    const dimensionQueryMember = queryMembers.get(this.dimension);
     return dimensionQueryMember.getSql();
   }
 }

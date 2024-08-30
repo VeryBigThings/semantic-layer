@@ -4,22 +4,29 @@ import { AnyRepository } from "../../repository.js";
 import { SqlFragment } from "../../sql-builder.js";
 
 export class QueryMemberCache {
-  private cache: Record<string, QueryMember> = {};
+  private cache = new Map<Member, QueryMember>();
   constructor(
     private readonly repository: AnyRepository,
     private readonly dialect: AnyBaseDialect,
     private readonly context: unknown,
   ) {}
   getByPath(memberPath: string) {
-    const cached = this.cache[memberPath];
+    const member = this.repository.getMember(memberPath);
+    return this.get(member);
+  }
+  get(member: Member) {
+    const cached = this.cache.get(member);
     if (cached) {
       return cached;
     }
-    const member = this.repository
-      .getMember(memberPath)
-      .getQueryMember(this, this.repository, this.dialect, this.context);
-    this.cache[memberPath] = member;
-    return member;
+    const queryMember = member.getQueryMember(
+      this,
+      this.repository,
+      this.dialect,
+      this.context,
+    );
+    this.cache.set(member, queryMember);
+    return queryMember;
   }
 }
 
