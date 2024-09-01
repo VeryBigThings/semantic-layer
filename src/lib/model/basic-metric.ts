@@ -4,20 +4,22 @@ import {
   QueryMemberCache,
 } from "../query-builder/query-plan/query-member.js";
 import {
-  AliasRef,
   ColumnRef,
   DimensionRef,
   IdentifierRef,
+  MetricAliasRef,
   MetricRef,
   SqlFn,
 } from "../sql-fn.js";
 
+import invariant from "tiny-invariant";
 import { Simplify } from "type-fest";
 import { AnyBaseDialect } from "../dialect/base.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
 import { MemberFormat } from "../types.js";
+import { isNonEmptyArray } from "../util.js";
 
 export interface MetricSqlFnArgs<
   C,
@@ -26,9 +28,9 @@ export interface MetricSqlFnArgs<
 > {
   identifier: (name: string) => IdentifierRef;
   model: {
-    column: (name: string) => AliasRef<ColumnRef>;
-    dimension: (name: DN) => AliasRef<DimensionRef>;
-    metric: (name: MN) => AliasRef<MetricRef>;
+    column: (name: string) => MetricAliasRef<ColumnRef>;
+    dimension: (name: DN) => MetricAliasRef<DimensionRef>;
+    metric: (name: MN) => MetricAliasRef<MetricRef>;
   };
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlFn;
   getContext: () => C;
@@ -129,14 +131,14 @@ export class BasicMetricQueryMember extends QueryMember {
             name,
             this.context,
           );
-          return new AliasRef(getNextRefAlias(), columnRef);
+          return new MetricAliasRef(getNextRefAlias(), columnRef);
         },
         dimension: (name: string) => {
           const dimensionRef = new DimensionRef(
             this.member.model.getDimension(name),
             this.context,
           );
-          return new AliasRef(getNextRefAlias(), dimensionRef);
+          return new MetricAliasRef(getNextRefAlias(), dimensionRef);
         },
         metric: (name: string) => {
           const metricRef = new MetricRef(
@@ -144,7 +146,7 @@ export class BasicMetricQueryMember extends QueryMember {
             this.member.model.getMetric(name),
             this.context,
           );
-          return new AliasRef(getNextRefAlias(), metricRef);
+          return new MetricAliasRef(getNextRefAlias(), metricRef);
         },
       },
       sql: (strings, ...values) => new SqlFn([...strings], values),
@@ -163,31 +165,19 @@ export class BasicMetricQueryMember extends QueryMember {
   }
   getModelQueryProjection() {
     const sqlFnResult = this.sqlFnResult;
-
-    const refs: SqlFragment[] = [];
-    const valuesQueue = [...sqlFnResult.values];
-
-    while (valuesQueue.length > 0) {
-      const value = valuesQueue.shift()!;
-      if (value instanceof AliasRef) {
-        const alias = value.alias;
-        const { sql, bindings } = value.aliasOf.render(
-          this.repository,
-          this.queryMembers,
-          this.dialect,
-        );
-
-        refs.push(
-          SqlFragment.make({
-            sql: `${sql} as ${this.dialect.asIdentifier(alias)}`,
-            bindings,
-          }),
-        );
-      } else if (value instanceof SqlFn) {
-        valuesQueue.push(...value.values);
-      }
-    }
-    return refs;
+    const filterFn = (ref: unknown): ref is MetricAliasRef<any> =>
+      ref instanceof MetricAliasRef;
+    return sqlFnResult.filterRefs(filterFn).map(({ alias, aliasOf }) => {
+      const { sql, bindings } = aliasOf.render(
+        this.repository,
+        this.queryMembers,
+        this.dialect,
+      );
+      return SqlFragment.make({
+        sql: `${sql} as ${this.dialect.asIdentifier(alias)}`,
+        bindings,
+      });
+    });
   }
   getSegmentQueryProjection(_modelQueryAlias: string) {
     const { sql, bindings } = this.getSql();
@@ -209,22 +199,17 @@ export class BasicMetricQueryMember extends QueryMember {
     return [fragment];
   }
   getMetricRefs() {
-    const sqlFnResult = this.sqlFnResult;
-    if (sqlFnResult) {
-      const valuesToProcess: unknown[] = [sqlFnResult];
-      const refs: MetricRef[] = [];
+    const filterFn = (ref: unknown): ref is MetricAliasRef<MetricRef> =>
+      ref instanceof MetricAliasRef && ref.aliasOf instanceof MetricRef;
+    return this.sqlFnResult.filterRefs(filterFn).map((v) => v.aliasOf);
+  }
 
-      while (valuesToProcess.length > 0) {
-        const ref = valuesToProcess.pop()!;
-        if (ref instanceof AliasRef && ref.aliasOf instanceof MetricRef) {
-          refs.push(ref.aliasOf);
-        }
-        if (ref instanceof SqlFn) {
-          valuesToProcess.push(...ref.values);
-        }
-      }
-      return refs;
-    }
-    return [];
+  getReferencedModels() {
+    const referencedModels = [this.member.model.name];
+    invariant(
+      isNonEmptyArray(referencedModels),
+      `Referenced models not found for ${this.member.getPath()}`,
+    );
+    return referencedModels;
   }
 }

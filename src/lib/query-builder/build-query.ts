@@ -1,12 +1,16 @@
 import { SqlFragment, SqlQueryBuilder } from "../sql-builder.js";
+import { METRIC_REF_SUBQUERY_ALIAS, isNonEmptyArray } from "../util.js";
 
 import invariant from "tiny-invariant";
 import { AnyQueryBuilder } from "../query-builder.js";
 import type { AnyRepository } from "../repository.js";
 import { Order } from "../types.js";
-import { METRIC_REF_SUBQUERY_ALIAS } from "../util.js";
 import { QueryPlan } from "./query-plan.js";
 import { QueryMemberCache } from "./query-plan/query-member.js";
+
+function getAlias(index: number) {
+  return `q${index}`;
+}
 
 function getDefaultOrderBy(
   repository: AnyRepository,
@@ -33,14 +37,6 @@ function getDefaultOrderBy(
   return [];
 }
 
-function getAlias(index: number) {
-  return `q${index}`;
-}
-
-function arrayHasAtLeastOneElement<T>(value: T[]): value is [T, ...T[]] {
-  return value.length > 0;
-}
-
 function joinModelQueryModels(
   queryBuilder: AnyQueryBuilder,
   queryMembers: QueryMemberCache,
@@ -48,6 +44,7 @@ function joinModelQueryModels(
   segment: QueryPlan["segments"][number],
   sqlQuery: SqlQueryBuilder,
 ) {
+  invariant(segment.joinPlan, "Join plan not found");
   if (segment.joinPlan.hasRowMultiplication) {
     sqlQuery.distinct();
   }
@@ -81,57 +78,6 @@ function joinModelQueryModels(
     );
   }
 }
-/*const visitedModels = new Set<string>();
-  const modelsToProcess: { modelName: string; join?: AnyJoin }[] = [
-    { modelName: segment.initialModel },
-  ];
-
-  while (modelsToProcess.length > 0) {
-    const { modelName, join } = modelsToProcess.pop()!;
-    if (visitedModels.has(modelName)) {
-      continue;
-    }
-    visitedModels.add(modelName);
-
-    const unvisitedNeighbors = (
-      segment.joinGraph.neighbors(modelName) ?? []
-    ).filter((modelName) => !visitedModels.has(modelName));
-
-    if (join) {
-      const joinType = join.reversed ? "rightJoin" : "leftJoin";
-      const joinOn = join
-        .joinOnDef(context)
-        .render(
-          queryBuilder.repository,
-          queryMembers,
-          queryBuilder.dialect,
-        );
-      const rightModel = queryBuilder.repository.getModel(join.right);
-      const joinSubject = rightModel.getTableNameOrSql(
-        queryBuilder.repository,
-        queryMembers,
-        queryBuilder.dialect,
-        context,
-      );
-
-      sqlQuery[joinType](
-        joinSubject,
-        queryBuilder.dialect.fragment(joinOn.sql, joinOn.bindings),
-      );
-
-      // We have a join that is multiplying the rows, so we need to use DISTINCT
-      if (join.type === "manyToMany" || join.type === "oneToMany") {
-        sqlQuery.distinct();
-      }
-    }
-
-    modelsToProcess.push(
-      ...unvisitedNeighbors.map((unvisitedModelName) => ({
-        modelName: unvisitedModelName,
-        join: queryBuilder.repository.getJoin(modelName, unvisitedModelName),
-      })),
-    );
-  }*/
 
 function joinModelQueryMetricRefsSubQuery(
   queryBuilder: AnyQueryBuilder,
@@ -274,7 +220,7 @@ function buildRootQuery(
 ): SqlQueryBuilder {
   const segments = queryPlan.segments;
 
-  invariant(arrayHasAtLeastOneElement(segments), "No query segments found");
+  invariant(isNonEmptyArray(segments), "No query segments found");
 
   if (segments.length === 1) {
     const sqlQuery = buildSegmentQuery(
@@ -294,8 +240,8 @@ function buildRootQuery(
   }));
 
   invariant(
-    arrayHasAtLeastOneElement(segmentsWithSqlQuery),
-    "No segments with sql query found",
+    isNonEmptyArray(segmentsWithSqlQuery),
+    "No segments query segments found",
   );
 
   const [initialSegmentWithSqlQuery, ...restSegmentsWithSqlQuery] =

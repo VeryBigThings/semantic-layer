@@ -262,20 +262,18 @@ export class Repository<
   }
 
   getDimension(dimensionName: string): Dimension {
-    invariant(
-      this.dimensionsIndex[dimensionName],
-      `Dimension ${dimensionName} not found`,
-    );
-    const { model: modelName, dimension } =
-      this.dimensionsIndex[dimensionName]!;
+    const dimensionIndexEntry = this.dimensionsIndex[dimensionName];
+    invariant(dimensionIndexEntry, `Dimension ${dimensionName} not found`);
+    const { model: modelName, dimension } = dimensionIndexEntry;
     const model = this.models[modelName];
     invariant(model, `Model ${modelName} not found`);
     return model.getDimension(dimension);
   }
 
   getMetric(metricName: string): Metric {
-    invariant(this.metricsIndex[metricName], `Metric ${metricName} not found`);
-    const { model: modelName, metric } = this.metricsIndex[metricName]!;
+    const metricIndexEntry = this.metricsIndex[metricName];
+    invariant(metricIndexEntry, `Metric ${metricName} not found`);
+    const { model: modelName, metric } = metricIndexEntry;
     const model = this.models[modelName];
     invariant(model, `Model ${modelName} not found`);
     return model.getMetric(metric);
