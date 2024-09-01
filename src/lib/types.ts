@@ -249,7 +249,9 @@ export type MemberTypeToType<MT extends MemberType> = MT extends "number"
 export type MemberFormat<MT extends MemberType = MemberType> =
   | "percentage"
   | "currency"
-  | ((value: MemberTypeToType<MT> | null | undefined) => string);
+  | {
+      [K in MT]: (value: MemberTypeToType<K> | null | undefined) => string;
+    }[MT];
 
 export type AnyMemberFormat = MemberFormat<any>;
 

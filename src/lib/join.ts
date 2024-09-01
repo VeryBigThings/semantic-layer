@@ -20,12 +20,12 @@ export type JoinFn<
   N2 extends string,
 > = (args: {
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => SqlFn;
-  models: JoinDimensions<DN, N1 | N2>;
+  models: JoinFnModels<DN, N1 | N2>;
   identifier: (name: string) => IdentifierRef;
   getContext: () => C;
 }) => SqlFn;
 
-export type JoinDimensions<
+export type JoinFnModels<
   TDimensionName extends string,
   TModelName extends string,
 > = {

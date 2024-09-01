@@ -14,6 +14,7 @@ import {
 
 import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "../dialect/base.js";
+import { pathToAlias } from "../helpers.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
@@ -60,6 +61,21 @@ export class BasicMetric extends Metric {
     public readonly props: AnyBasicMetricProps,
   ) {
     super();
+  }
+  getAlias() {
+    return `${this.model.name}___${pathToAlias(this.name)}`;
+  }
+  getPath() {
+    return `${this.model.name}.${this.name}`;
+  }
+  getDescription() {
+    return this.props.description;
+  }
+  getType() {
+    return this.props.type;
+  }
+  getFormat() {
+    return this.props.format;
   }
   clone(model: AnyModel) {
     return new BasicMetric(model, this.name, { ...this.props });

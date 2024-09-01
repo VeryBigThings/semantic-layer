@@ -44,7 +44,7 @@ export class QueryBuilder<
     public readonly dialect: AnyBaseDialect,
   ) {
     this.querySchema = buildQuerySchema(this);
-    this.hierarchies = this.getGranularityConfigs(repository);
+    this.hierarchies = this.getHierarchyConfigs(repository);
     this.hierarchiesByName = this.hierarchies.reduce<
       Record<string, HierarchyConfig>
     >((acc, hierarchy) => {
@@ -53,7 +53,7 @@ export class QueryBuilder<
     }, {});
   }
 
-  private getGranularityConfigs(repository: AnyRepository) {
+  private getHierarchyConfigs(repository: AnyRepository) {
     const hierarchies: HierarchyConfig[] = [];
     for (const hierarchy of repository.categoricalHierarchies) {
       const elements = hierarchy.elements.map((element) =>

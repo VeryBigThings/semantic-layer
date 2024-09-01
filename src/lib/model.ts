@@ -326,3 +326,41 @@ export function model<C = undefined>() {
     },
   };
 }
+
+export type GetModelContext<T> = T extends Model<infer C, any, any, any, any>
+  ? C
+  : never;
+
+export type GetModelName<T> = T extends Model<any, infer N, any, any, any>
+  ? N
+  : never;
+
+export type GetModelDimensions<T> = T extends Model<
+  any,
+  infer N,
+  infer D,
+  any,
+  any
+>
+  ? { [K in string & keyof D as `${N}.${K}`]: D[K] }
+  : never;
+
+export type GetModelMetrics<T> = T extends Model<
+  any,
+  infer N,
+  any,
+  infer M,
+  any
+>
+  ? { [K in string & keyof M as `${N}.${K}`]: M[K] }
+  : never;
+
+export type GetModelHierarchies<T> = T extends Model<
+  any,
+  any,
+  any,
+  any,
+  infer G
+>
+  ? G
+  : never;

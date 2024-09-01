@@ -53,7 +53,7 @@ export class HierarchyElement<D extends MemberNameToType, DN extends keyof D> {
           const formattedValue =
             originalValue === null || originalValue === undefined
               ? null
-              : dimension.props.format
+              : dimension.getFormat()
                 ? dimension.unsafeFormatValue(originalValue)
                 : null;
           return formattedValue ?? originalValue;
@@ -71,7 +71,7 @@ export class HierarchyElement<D extends MemberNameToType, DN extends keyof D> {
             const formattedValue =
               originalValue === null || originalValue === undefined
                 ? null
-                : dimension.props.format
+                : dimension.getFormat()
                   ? dimension.unsafeFormatValue(originalValue)
                   : null;
             return {
