@@ -2588,5 +2588,21 @@ describe("semantic layer", async () => {
         },
       ]);
     });
+    it("can query only a metric that only references a metric", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["store_sales.median_sales"],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          store_sales___median_sales: 90,
+        },
+      ]);
+    });
   });
 });

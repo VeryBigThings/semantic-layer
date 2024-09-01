@@ -44,4 +44,5 @@ export abstract class QueryMember {
   abstract getSegmentQueryProjection(modelQueryAlias: string): SqlFragment[];
   abstract getSegmentQueryGroupBy(modelQueryAlias: string): SqlFragment[];
   abstract getRootQueryProjection(segmentQueryAlias: string): SqlFragment[];
+  abstract getReferencedModels(): [string, ...string[]];
 }

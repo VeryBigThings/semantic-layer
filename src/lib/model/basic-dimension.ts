@@ -17,10 +17,12 @@ import {
   TemporalGranularityByDimensionType,
 } from "../types.js";
 
+import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "../dialect/base.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
+import { isNonEmptyArray } from "../util.js";
 
 export interface DimensionSqlFnArgs<C, DN extends string = string> {
   identifier: (name: string) => IdentifierRef;
@@ -206,5 +208,13 @@ export class BasicDimensionQueryMember extends QueryMember {
       )} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
     );
     return [fragment];
+  }
+  getReferencedModels() {
+    const referencedModels = [this.member.model.name];
+    invariant(
+      isNonEmptyArray(referencedModels),
+      `Referenced models not found for ${this.member.getPath()}`,
+    );
+    return referencedModels;
   }
 }

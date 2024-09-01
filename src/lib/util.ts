@@ -6,3 +6,7 @@ export function exhaustiveCheck(
 }
 
 export const METRIC_REF_SUBQUERY_ALIAS = "__mrs__";
+
+export function isNonEmptyArray<T>(value: T[]): value is [T, ...T[]] {
+  return value.length > 0;
+}

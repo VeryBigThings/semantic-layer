@@ -17,7 +17,7 @@ export abstract class Ref {
 
 export class DimensionRef extends Ref {
   constructor(
-    private readonly dimension: Dimension,
+    readonly dimension: Dimension,
     private readonly context: unknown,
   ) {
     super();
@@ -55,7 +55,7 @@ export class MetricRef extends Ref {
 
 export class ColumnRef extends Ref {
   constructor(
-    private readonly model: AnyModel,
+    readonly model: AnyModel,
     private readonly columnName: string,
     private readonly context: unknown,
   ) {
@@ -79,7 +79,7 @@ export class ColumnRef extends Ref {
   }
 }
 
-export class AliasRef<
+export class MetricAliasRef<
   T extends DimensionRef | ColumnRef | MetricRef,
 > extends Ref {
   constructor(
@@ -154,6 +154,22 @@ export class SqlFn extends Ref {
       [...this.strings],
       valueProcessorFn ? this.values.map(valueProcessorFn) : [...this.values],
     );
+  }
+  filterRefs<T extends Ref>(predicate: (value: unknown) => value is T) {
+    const refs: T[] = [];
+    const valuesToProcess: unknown[] = [this];
+
+    while (valuesToProcess.length > 0) {
+      const value = valuesToProcess.pop()!;
+      if (predicate(value)) {
+        refs.push(value);
+      }
+      if (value instanceof SqlFn) {
+        valuesToProcess.push(...value.values);
+      }
+    }
+
+    return refs;
   }
 }
 

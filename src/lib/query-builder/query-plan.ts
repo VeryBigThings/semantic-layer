@@ -6,6 +6,7 @@ import invariant from "tiny-invariant";
 import { AnyJoin } from "../join.js";
 import { BasicMetricQueryMember } from "../model/basic-metric.js";
 import { AnyRepository } from "../repository.js";
+import { isNonEmptyArray } from "../util.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
 import { QueryMemberCache } from "./query-plan/query-member.js";
 
@@ -26,6 +27,82 @@ function filterIsConnective(
   filter: QueryFilter,
 ): filter is QueryFilterConnective {
   return filter.operator === "and" || filter.operator === "or";
+}
+
+function getMetricSegmentKey(referencedModels: [string, ...string[]]) {
+  return referencedModels.join("___");
+}
+
+function getMetricSegments(
+  queryMembers: QueryMemberCache,
+  projectedMetrics: Metric[],
+  filtersMetrics: Metric[],
+) {
+  const metricsByModel: Record<
+    string,
+    { projected: Metric[]; filter: Metric[]; referencedModels: Set<string> }
+  > = {};
+
+  for (const m of projectedMetrics) {
+    const metricQueryMember = queryMembers.get(m);
+    const referencedModels = metricQueryMember.getReferencedModels();
+    const key = getMetricSegmentKey(referencedModels);
+
+    metricsByModel[key] ||= {
+      projected: [],
+      filter: [],
+      referencedModels: new Set(),
+    };
+    metricsByModel[key]!.projected.push(m);
+
+    for (const modelName of referencedModels) {
+      metricsByModel[key]!.referencedModels.add(modelName);
+    }
+  }
+
+  for (const m of filtersMetrics) {
+    const metricQueryMember = queryMembers.get(m);
+    const referencedModels = metricQueryMember.getReferencedModels();
+    const key = getMetricSegmentKey(referencedModels);
+
+    metricsByModel[key] ||= {
+      projected: [],
+      filter: [],
+      referencedModels: new Set(),
+    };
+    metricsByModel[key]!.filter.push(m);
+
+    for (const modelName of referencedModels) {
+      metricsByModel[key]!.referencedModels.add(modelName);
+    }
+  }
+
+  return Object.values(metricsByModel).map((value) => {
+    const referencedModels = Array.from(value.referencedModels);
+    invariant(
+      isNonEmptyArray(referencedModels),
+      `Referenced models not found for ${value.projected.map((m) => m.name).join(", ")}`,
+    );
+    return {
+      ...value,
+      referencedModels,
+    };
+  });
+}
+
+function getOrderWithOnlyProjectedMembers(
+  order: Order[] | undefined,
+  projectedMembers: string[],
+) {
+  if (!order) {
+    return;
+  }
+  const newOrder = order.filter(({ member }) =>
+    projectedMembers.includes(member),
+  );
+  if (newOrder.length > 0) {
+    return newOrder;
+  }
 }
 
 function getFirstMemberFilter(filter: QueryFilter) {
@@ -97,17 +174,14 @@ function getSegmentAlias(index: number) {
   return `s${index}`;
 }
 
-function getSegmentQueryModelsAndMembers({
-  dimensions,
-  metrics,
-}: {
-  dimensions: { projected: Dimension[]; filter: Dimension[] };
-  metrics?: {
-    projected: Metric[];
-    filter: Metric[];
-    model: string;
-  };
-}) {
+const MEMBER_SETS = ["projected", "filter"] as const;
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This needs to be rewritten so we compute dimension data only once and then use it for all metrics
+function getSegmentQueryModelsAndMembers(
+  queryBuilder: AnyQueryBuilder,
+  queryMembers: QueryMemberCache,
+  { dimensions, metrics }: Omit<SegmentInput, "filters">,
+) {
   const models = new Set<AnyModel>();
   const modelQueryDimensions = new Set<Dimension>();
   const modelQueryMetrics = new Set<Metric>();
@@ -116,41 +190,52 @@ function getSegmentQueryModelsAndMembers({
   const rootQueryDimensions = new Set<Dimension>();
   const rootQueryMetrics = new Set<Metric>();
 
-  for (const dimension of dimensions.projected) {
-    modelQueryDimensions.add(dimension);
-    segmentQueryDimensions.add(dimension);
-    rootQueryDimensions.add(dimension);
-    models.add(dimension.model);
-  }
+  for (const memberSet of MEMBER_SETS) {
+    for (const dimension of dimensions[memberSet]) {
+      // If we are dealing with a projected dimension, we need to add it to the all query levels (model, segment, root). If we are dealing with a filter dimension, we only need to add it to the model query level because we don't care about it's value in the segment or root query.
 
-  for (const dimension of dimensions.filter) {
-    modelQueryDimensions.add(dimension);
-    models.add(dimension.model);
-  }
+      if (memberSet === "projected") {
+        modelQueryDimensions.add(dimension);
+        segmentQueryDimensions.add(dimension);
+        rootQueryDimensions.add(dimension);
+      } else if (memberSet === "filter") {
+        modelQueryDimensions.add(dimension);
+      }
 
-  for (const metric of metrics?.projected ?? []) {
-    modelQueryMetrics.add(metric);
-    segmentQueryMetrics.add(metric);
-    rootQueryMetrics.add(metric);
+      const dimensionQueryMember = queryMembers.get(dimension);
+      const referencedModels = dimensionQueryMember.getReferencedModels();
 
-    const metricModel = metric.model;
-    const primaryKeyDimensions = metricModel.getPrimaryKeyDimensions();
-    for (const primaryKeyDimension of primaryKeyDimensions) {
-      modelQueryDimensions.add(primaryKeyDimension);
+      for (const modelName of referencedModels) {
+        models.add(queryBuilder.repository.getModel(modelName));
+      }
     }
-    models.add(metricModel);
   }
 
-  for (const metric of metrics?.filter ?? []) {
-    modelQueryMetrics.add(metric);
-    segmentQueryMetrics.add(metric);
+  if (metrics) {
+    for (const memberSet of MEMBER_SETS) {
+      for (const metric of metrics[memberSet]) {
+        // If we are dealing with a projected metric, we need to add it to the all query levels (model, segment, root). If we are dealing with a filter metric, we need to add it to the model and segment query levels, so we can filter the data in the root query (but without projecting the value)
+        if (memberSet === "projected") {
+          modelQueryMetrics.add(metric);
+          segmentQueryMetrics.add(metric);
+          rootQueryMetrics.add(metric);
+        } else if (memberSet === "filter") {
+          modelQueryMetrics.add(metric);
+          segmentQueryMetrics.add(metric);
+        }
 
-    const metricModel = metric.model;
-    const primaryKeyDimensions = metricModel.getPrimaryKeyDimensions();
-    for (const primaryKeyDimension of primaryKeyDimensions) {
-      modelQueryDimensions.add(primaryKeyDimension);
+        for (const modelName of metrics.referencedModels) {
+          const metricModel = queryBuilder.repository.getModel(modelName);
+          models.add(metricModel);
+
+          const primaryKeyDimensions = metricModel.getPrimaryKeyDimensions();
+          for (const primaryKeyDimension of primaryKeyDimensions) {
+            modelQueryDimensions.add(primaryKeyDimension);
+          }
+          models.add(metricModel);
+        }
+      }
     }
-    models.add(metricModel);
   }
 
   const modelQueryDimensionsArray = Array.from(modelQueryDimensions).map((d) =>
@@ -293,36 +378,34 @@ function getSegmentQueryJoins(
   };
 }
 
+interface SegmentInput {
+  dimensions: { projected: Dimension[]; filter: Dimension[] };
+  metrics?: ReturnType<typeof getMetricSegments>[number];
+  filters: QueryFilter[];
+}
+
 function getSegmentQuery(
   queryBuilder: AnyQueryBuilder,
   queryMembers: QueryMemberCache,
   context: unknown,
   alias: string,
-  {
-    dimensions,
-    metrics,
-    filters,
-  }: {
-    dimensions: { projected: Dimension[]; filter: Dimension[] };
-    metrics?: {
-      projected: Metric[];
-      filter: Metric[];
-      model: string;
-    };
-    filters: QueryFilter[];
-  },
+  { dimensions, metrics, filters }: SegmentInput,
 ) {
   const initialModel =
-    metrics?.model ??
+    metrics?.referencedModels[0] ??
     dimensions.projected[0]?.model.name ??
     dimensions.filter[0]?.model.name;
 
-  invariant(initialModel, "Initial model name not found");
+  invariant(initialModel, "Initial model name not found for segment");
 
-  const segmentModelsAndMembers = getSegmentQueryModelsAndMembers({
-    dimensions,
-    metrics,
-  });
+  const segmentModelsAndMembers = getSegmentQueryModelsAndMembers(
+    queryBuilder,
+    queryMembers,
+    {
+      dimensions,
+      metrics,
+    },
+  );
 
   const joinPlan = getSegmentQueryJoins(
     queryBuilder,
@@ -346,43 +429,6 @@ function getSegmentQuery(
   };
 }
 
-function orderWithOnlyProjectedMembers(
-  order: Order[] | undefined,
-  projectedMembers: string[],
-) {
-  if (!order) {
-    return;
-  }
-  const newOrder = order.filter(({ member }) =>
-    projectedMembers.includes(member),
-  );
-  if (newOrder.length > 0) {
-    return newOrder;
-  }
-}
-
-function getMetricsByModel(
-  projectedMetrics: Metric[],
-  filtersMetrics: Metric[],
-) {
-  const metricsByModel: Record<
-    string,
-    { projected: Metric[]; filter: Metric[] }
-  > = {};
-
-  for (const m of projectedMetrics) {
-    metricsByModel[m.model.name] ||= { projected: [], filter: [] };
-    metricsByModel[m.model.name]!.projected.push(m);
-  }
-
-  for (const m of filtersMetrics) {
-    metricsByModel[m.model.name] ||= { projected: [], filter: [] };
-    metricsByModel[m.model.name]!.filter.push(m);
-  }
-
-  return Object.entries(metricsByModel);
-}
-
 export function getQueryPlan(
   queryBuilder: AnyQueryBuilder,
   queryMembers: QueryMemberCache,
@@ -403,11 +449,15 @@ export function getQueryPlan(
     getFiltersMembers(repository, metricFilters) as Metric[]
   ).filter((metric) => !projectedMetrics.includes(metric));
 
-  const metricsByModel = getMetricsByModel(projectedMetrics, filtersMetrics);
+  const metricSegments = getMetricSegments(
+    queryMembers,
+    projectedMetrics,
+    filtersMetrics,
+  );
 
   const segments =
-    metricsByModel.length > 0
-      ? metricsByModel.map(([modelName, metrics], index) =>
+    metricSegments.length > 0
+      ? metricSegments.map((metricSegment, index) =>
           getSegmentQuery(
             queryBuilder,
             queryMembers,
@@ -418,11 +468,7 @@ export function getQueryPlan(
                 projected: projectedDimensions,
                 filter: filtersDimensions,
               },
-              metrics: {
-                projected: metrics.projected,
-                filter: metrics.filter,
-                model: modelName,
-              },
+              metrics: metricSegment,
               filters: dimensionFilters,
             },
           ),
@@ -453,7 +499,7 @@ export function getQueryPlan(
     projectedMetrics: projectedMetricPaths,
     limit: query.limit,
     offset: query.offset,
-    order: orderWithOnlyProjectedMembers(query.order, [
+    order: getOrderWithOnlyProjectedMembers(query.order, [
       ...projectedDimensionPaths,
       ...projectedMetricPaths,
     ]),
