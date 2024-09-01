@@ -22,7 +22,7 @@ import {
 } from "./model/basic-dimension.js";
 import { BasicMetric, BasicMetricProps } from "./model/basic-metric.js";
 import { GranularityDimension } from "./model/granularity-dimension.js";
-import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
+import { QueryContext } from "./query-builder/query-plan/query-context.js";
 import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
 import { IdentifierRef, SqlFn } from "./sql-fn.js";
@@ -208,7 +208,7 @@ export class Model<
   }
   getTableName(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
     context: C,
   ) {
@@ -231,11 +231,11 @@ export class Model<
       getContext: () => context,
     });
 
-    return result.render(repository, queryMembers, dialect);
+    return result.render(repository, queryContext, dialect);
   }
   getSql(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
     context: C,
   ) {
@@ -247,25 +247,25 @@ export class Model<
         new SqlFn([...strings], values),
       getContext: () => context,
     });
-    return result.render(repository, queryMembers, dialect);
+    return result.render(repository, queryContext, dialect);
   }
   getTableNameOrSql(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
     context: C,
   ) {
     if (this.config.type === "table") {
       const { sql, bindings } = this.getTableName(
         repository,
-        queryMembers,
+        queryContext,
         dialect,
         context,
       );
       return dialect.fragment(sql, bindings);
     }
 
-    const modelSql = this.getSql(repository, queryMembers, dialect, context);
+    const modelSql = this.getSql(repository, queryContext, dialect, context);
     return dialect.fragment(
       `(${modelSql.sql}) as ${dialect.asIdentifier(this.config.alias)}`,
       modelSql.bindings,
@@ -274,7 +274,7 @@ export class Model<
 
   getAs(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
     context: C,
   ) {
@@ -285,7 +285,7 @@ export class Model<
       });
     }
 
-    return this.getTableName(repository, queryMembers, dialect, context);
+    return this.getTableName(repository, queryContext, dialect, context);
   }
 
   clone<N extends string>(name: N) {

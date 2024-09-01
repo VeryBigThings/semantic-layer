@@ -1,11 +1,9 @@
-import {
-  QueryMember,
-  QueryMemberCache,
-} from "./query-builder/query-plan/query-member.js";
 import { MemberFormat, MemberType } from "./types.js";
 
 import { AnyBaseDialect } from "./dialect/base.js";
 import { GranularityDimension } from "./model/granularity-dimension.js";
+import { QueryContext } from "./query-builder/query-plan/query-context.js";
+import { QueryMember } from "./query-builder/query-plan/query-member.js";
 import { AnyRepository } from "./repository.js";
 
 export abstract class Member {
@@ -18,7 +16,7 @@ export abstract class Member {
   abstract getType(): MemberType;
   abstract getFormat(): MemberFormat | undefined;
   abstract getQueryMember(
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,

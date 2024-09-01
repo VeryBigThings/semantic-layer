@@ -41,7 +41,7 @@ import {
 
 import { AnyQueryBuilder } from "../query-builder.js";
 import { SqlFragment } from "../sql-builder.js";
-import { QueryMemberCache } from "./query-plan/query-member.js";
+import { QueryContext } from "./query-plan/query-context.js";
 
 export class FilterBuilder {
   constructor(
@@ -50,10 +50,10 @@ export class FilterBuilder {
       AnyFilterFragmentBuilder
     >,
     readonly queryBuilder: AnyQueryBuilder,
-    private readonly queryMembers: QueryMemberCache,
+    private readonly queryContext: QueryContext,
   ) {}
   getMemberSql(memberPath: string): SqlFragment | undefined {
-    const queryMember = this.queryMembers.getByPath(memberPath);
+    const queryMember = this.queryContext.getQueryMemberByPath(memberPath);
     return queryMember.getFilterSql();
   }
 
@@ -134,12 +134,12 @@ export class FilterFragmentBuilderRegistry<T = never> {
   }
   getFilterBuilder(
     queryBuilder: AnyQueryBuilder,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
   ): FilterBuilder {
     return new FilterBuilder(
       this.filterFragmentBuilders,
       queryBuilder,
-      queryMembers,
+      queryContext,
     );
   }
 }

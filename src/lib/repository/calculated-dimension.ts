@@ -1,7 +1,3 @@
-import {
-  QueryMember,
-  QueryMemberCache,
-} from "../query-builder/query-plan/query-member.js";
 import { ColumnRef, DimensionRef, IdentifierRef, SqlFn } from "../sql-fn.js";
 import { MemberProps, ModelMemberWithoutModelPrefix } from "../types.js";
 
@@ -9,6 +5,8 @@ import invariant from "tiny-invariant";
 import { AnyBaseDialect } from "../dialect/base.js";
 import { pathToAlias } from "../helpers.js";
 import { Dimension } from "../member.js";
+import { QueryContext } from "../query-builder/query-plan/query-context.js";
+import { DimensionQueryMember } from "../query-builder/query-plan/query-member.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
 import { isNonEmptyArray } from "../util.js";
@@ -46,8 +44,8 @@ export type CalculatedDimensionSqlFn<
 
 export type AnyCalculatedDimensionSqlFn = CalculatedDimensionSqlFn<
   any,
-  string,
-  string
+  any,
+  any
 >;
 
 export type CalculatedDimensionProps<
@@ -58,10 +56,16 @@ export type CalculatedDimensionProps<
   sql: CalculatedDimensionSqlFn<TContext, TModelNames, TDimensionNames>;
 }>;
 
+export type AnyCalculatedDimensionProps = CalculatedDimensionProps<
+  any,
+  any,
+  any
+>;
+
 export class CalculatedDimension extends Dimension {
   constructor(
     readonly path: string,
-    readonly props: CalculatedDimensionProps<any, any, any>,
+    readonly props: AnyCalculatedDimensionProps,
   ) {
     super();
   }
@@ -93,13 +97,13 @@ export class CalculatedDimension extends Dimension {
     return false;
   }
   getQueryMember(
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,
   ): CalculatedDimensionQueryMember {
     return new CalculatedDimensionQueryMember(
-      queryMembers,
+      queryContext,
       repository,
       dialect,
       context,
@@ -108,11 +112,11 @@ export class CalculatedDimension extends Dimension {
   }
 }
 
-export class CalculatedDimensionQueryMember extends QueryMember {
+export class CalculatedDimensionQueryMember extends DimensionQueryMember {
   private sqlFnResult: SqlFn;
   private sqlFnRenderResult: SqlFragment;
   constructor(
-    readonly queryMembers: QueryMemberCache,
+    readonly queryContext: QueryContext,
     readonly repository: AnyRepository,
     readonly dialect: AnyBaseDialect,
     readonly context: unknown,
@@ -123,7 +127,7 @@ export class CalculatedDimensionQueryMember extends QueryMember {
 
     this.sqlFnRenderResult = this.sqlFnResult.render(
       this.repository,
-      this.queryMembers,
+      this.queryContext,
       this.dialect,
     );
   }
@@ -147,46 +151,9 @@ export class CalculatedDimensionQueryMember extends QueryMember {
       ),
     });
   }
-  getAlias() {
-    return this.member.getAlias();
-  }
+
   getSql() {
     return this.sqlFnRenderResult;
-  }
-  getFilterSql() {
-    return SqlFragment.fromSql("");
-  }
-  getModelQueryProjection() {
-    const { sql, bindings } = this.getSql();
-    const fragment = this.dialect.fragment(
-      `${sql} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-      bindings,
-    );
-    return [fragment];
-  }
-  getSegmentQueryProjection(modelQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(modelQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-    );
-    return [fragment];
-  }
-  getSegmentQueryGroupBy(modelQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(modelQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )}`,
-    );
-    return [fragment];
-  }
-  getRootQueryProjection(segmentQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(segmentQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-    );
-    return [fragment];
   }
   getReferencedModels() {
     const filterFn = (ref: unknown): ref is DimensionRef | ColumnRef =>
@@ -196,7 +163,9 @@ export class CalculatedDimensionQueryMember extends QueryMember {
       new Set(
         refs.flatMap((ref) => {
           if (ref instanceof DimensionRef) {
-            const dimensionQueryMember = this.queryMembers.get(ref.dimension);
+            const dimensionQueryMember = this.queryContext.getQueryMember(
+              ref.member,
+            );
             return dimensionQueryMember.getReferencedModels();
           }
           return [ref.model.name];

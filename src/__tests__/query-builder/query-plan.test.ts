@@ -3,16 +3,16 @@ import * as fullRepository from "../full-repository.js";
 import { assert, it } from "vitest";
 
 import { getQueryPlan } from "../../lib/query-builder/query-plan.js";
-import { QueryMemberCache } from "../../lib/query-builder/query-plan/query-member.js";
+import { QueryContext } from "../../lib/query-builder/query-plan/query-context.js";
 
 it("can crate a query plan", () => {
   const { queryBuilder } = fullRepository;
-  const queryMembers = new QueryMemberCache(
+  const queryContext = new QueryContext(
     queryBuilder.repository,
     queryBuilder.dialect,
     undefined,
   );
-  const queryPlan = getQueryPlan(queryBuilder, queryMembers, undefined, {
+  const queryPlan = getQueryPlan(queryBuilder, queryContext, undefined, {
     members: [
       "artists.name",
       "tracks.name",

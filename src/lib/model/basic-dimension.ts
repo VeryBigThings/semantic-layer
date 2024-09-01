@@ -1,9 +1,5 @@
 import { Dimension, Metric } from "../member.js";
 import {
-  QueryMember,
-  QueryMemberCache,
-} from "../query-builder/query-plan/query-member.js";
-import {
   ColumnRef,
   DimensionRef,
   IdentifierRef,
@@ -21,6 +17,8 @@ import { Get } from "type-fest";
 import { AnyBaseDialect } from "../dialect/base.js";
 import { pathToAlias } from "../helpers.js";
 import { AnyModel } from "../model.js";
+import { QueryContext } from "../query-builder/query-plan/query-context.js";
+import { DimensionQueryMember } from "../query-builder/query-plan/query-member.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
 import { isNonEmptyArray } from "../util.js";
@@ -39,7 +37,7 @@ export type BasicDimensionSqlFn<C, DN extends string = string> = (
   args: BasicDimensionSqlFnArgs<C, DN>,
 ) => Ref;
 
-export type AnyBasicDimensionSqlFn = BasicDimensionSqlFn<any, string>;
+export type AnyBasicDimensionSqlFn = BasicDimensionSqlFn<any, any>;
 
 export type WithTemporalGranularityDimensions<
   N extends string,
@@ -61,7 +59,7 @@ export type BasicDimensionProps<C, DN extends string = string> = MemberProps<
   }
 >;
 
-export type AnyBasicDimensionProps = BasicDimensionProps<any, string>;
+export type AnyBasicDimensionProps = BasicDimensionProps<any, any>;
 
 export type DimensionHasTemporalGranularity<DP extends AnyBasicDimensionProps> =
   Get<DP, "type"> extends "datetime" | "date" | "time"
@@ -110,13 +108,13 @@ export class BasicDimension extends Dimension {
   }
 
   getQueryMember(
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     repository: AnyRepository,
     dialect: AnyBaseDialect,
     context: unknown,
   ): BasicDimensionQueryMember {
     return new BasicDimensionQueryMember(
-      queryMembers,
+      queryContext,
       repository,
       dialect,
       context,
@@ -125,10 +123,10 @@ export class BasicDimension extends Dimension {
   }
 }
 
-export class BasicDimensionQueryMember extends QueryMember {
+export class BasicDimensionQueryMember extends DimensionQueryMember {
   private sqlFnRenderResult: SqlFragment | undefined;
   constructor(
-    readonly queryMembers: QueryMemberCache,
+    readonly queryContext: QueryContext,
     readonly repository: AnyRepository,
     readonly dialect: AnyBaseDialect,
     readonly context: unknown,
@@ -139,7 +137,7 @@ export class BasicDimensionQueryMember extends QueryMember {
     if (sqlFnResult) {
       this.sqlFnRenderResult = sqlFnResult.render(
         this.repository,
-        this.queryMembers,
+        this.queryContext,
         this.dialect,
       );
     }
@@ -164,9 +162,7 @@ export class BasicDimensionQueryMember extends QueryMember {
       });
     }
   }
-  getAlias() {
-    return this.member.getAlias();
-  }
+
   getSql() {
     if (this.sqlFnRenderResult) {
       return this.sqlFnRenderResult;
@@ -174,7 +170,7 @@ export class BasicDimensionQueryMember extends QueryMember {
 
     const { sql: asSql, bindings } = this.member.model.getAs(
       this.repository,
-      this.queryMembers,
+      this.queryContext,
       this.dialect,
       this.context,
     );
@@ -182,41 +178,7 @@ export class BasicDimensionQueryMember extends QueryMember {
 
     return SqlFragment.make({ sql, bindings });
   }
-  getFilterSql() {
-    return this.getSql();
-  }
-  getModelQueryProjection() {
-    const { sql, bindings } = this.getSql();
-    const fragment = this.dialect.fragment(
-      `${sql} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-      bindings,
-    );
-    return [fragment];
-  }
-  getSegmentQueryProjection(modelQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(modelQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-    );
-    return [fragment];
-  }
-  getSegmentQueryGroupBy(modelQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(modelQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )}`,
-    );
-    return [fragment];
-  }
-  getRootQueryProjection(segmentQueryAlias: string) {
-    const fragment = this.dialect.fragment(
-      `${this.dialect.asIdentifier(segmentQueryAlias)}.${this.dialect.asIdentifier(
-        this.member.getAlias(),
-      )} as ${this.dialect.asIdentifier(this.member.getAlias())}`,
-    );
-    return [fragment];
-  }
+
   getReferencedModels() {
     const referencedModels = [this.member.model.name];
     invariant(

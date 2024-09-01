@@ -17,7 +17,7 @@ import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
 import { getQueryPlan } from "./query-builder/query-plan.js";
-import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
+import { QueryContext } from "./query-builder/query-plan/query-context.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
 import { SqlQuery } from "./sql-builder/to-sql.js";
@@ -130,13 +130,13 @@ export class QueryBuilder<
     parsedQuery: AnyInputQuery,
     context: unknown,
   ): SqlQuery {
-    const queryMembers = new QueryMemberCache(
+    const queryContext = new QueryContext(
       this.repository,
       this.dialect,
       context,
     );
-    const queryPlan = getQueryPlan(this, queryMembers, context, parsedQuery);
-    const sqlQuery = buildQuery(this, queryMembers, context, queryPlan);
+    const queryPlan = getQueryPlan(this, queryContext, context, parsedQuery);
+    const sqlQuery = buildQuery(this, queryContext, context, queryPlan);
 
     return sqlQuery.toSQL();
   }
@@ -181,10 +181,10 @@ export class QueryBuilder<
     return result;
   }
 
-  getFilterBuilder(queryMembers: QueryMemberCache): FilterBuilder {
+  getFilterBuilder(queryContext: QueryContext): FilterBuilder {
     return this.repository
       .getFilterFragmentBuilderRegistry()
-      .getFilterBuilder(this, queryMembers);
+      .getFilterBuilder(this, queryContext);
   }
 
   introspect(query: AnyInputQuery): IntrospectionResult {

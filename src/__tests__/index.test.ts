@@ -2605,7 +2605,154 @@ describe("semantic layer", async () => {
       ]);
     });
   });
-  describe("calculated dimensions", () => {
+  describe("calculated dimensions and metrics", () => {
+    const customersModel = semanticLayer
+      .model()
+      .withName("customers")
+      .fromTable("Customer")
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
+      })
+      .withDimension("first_name", {
+        type: "string",
+        sql: ({ model }) => model.column("FirstName"),
+      })
+      .withDimension("last_name", {
+        type: "string",
+        sql: ({ model }) => model.column("LastName"),
+      })
+      .withDimension("full_name", {
+        type: "string",
+        sql: ({ model, sql }) =>
+          sql`${model.dimension("first_name")} || ' ' || ${model.dimension(
+            "last_name",
+          )}`,
+      })
+      .withDimension("company", {
+        type: "string",
+        sql: ({ model }) => model.column("Company"),
+      })
+      .withDimension("address", {
+        type: "string",
+        sql: ({ model }) => model.column("Address"),
+      })
+      .withDimension("city", {
+        type: "string",
+        sql: ({ model }) => model.column("City"),
+      })
+      .withDimension("state", {
+        type: "string",
+        sql: ({ model }) => model.column("State"),
+      })
+      .withDimension("country", {
+        type: "string",
+        sql: ({ model }) => model.column("Country"),
+      })
+      .withDimension("postal_code", {
+        type: "string",
+        sql: ({ model }) => model.column("PostalCode"),
+      })
+      .withDimension("phone", {
+        type: "string",
+        sql: ({ model }) => model.column("Phone"),
+      })
+      .withDimension("fax", {
+        type: "string",
+        sql: ({ model }) => model.column("Fax"),
+      })
+      .withDimension("email", {
+        type: "string",
+        sql: ({ model }) => model.column("Email"),
+      });
+
+    const invoicesModel = semanticLayer
+      .model()
+      .withName("invoices")
+      .fromTable("Invoice")
+      .withDimension("invoice_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("customer_id", {
+        type: "number",
+        sql: ({ model }) => model.column("CustomerId"),
+      })
+      .withDimension("invoice_date", {
+        type: "date",
+        sql: ({ model }) => model.column("InvoiceDate"),
+      })
+      .withDimension("billing_address", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingAddress"),
+      })
+      .withDimension("billing_city", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingCity"),
+      })
+      .withDimension("billing_state", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingState"),
+      })
+      .withDimension("billing_country", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingCountry"),
+      })
+      .withDimension("billing_postal_code", {
+        type: "string",
+        sql: ({ model }) => model.column("BillingPostalCode"),
+      })
+      .withMetric("total", {
+        type: "number",
+        description: "Invoice total.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Total")}, 0))`,
+      });
+
+    const invoiceLinesModel = semanticLayer
+      .model()
+      .withName("invoice_lines")
+      .fromTable("InvoiceLine")
+      .withDimension("invoice_line_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("InvoiceLineId"),
+      })
+      .withDimension("invoice_id", {
+        type: "number",
+        sql: ({ model }) => model.column("InvoiceId"),
+      })
+      .withDimension("track_id", {
+        type: "number",
+        sql: ({ model }) => model.column("TrackId"),
+      })
+      .withMetric("quantity", {
+        type: "number",
+        description: "Sum of the track quantities across models.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0))`,
+      })
+      .withMetric("unit_price", {
+        type: "number",
+        description: "Sum of the track unit prices across models.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
+      })
+      .withMetric("total", {
+        type: "number",
+        description: "Invoice line total",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0) * COALESCE(${model.column("UnitPrice")}, 0))`,
+      })
+      .withMetric("total_with_quantity", {
+        type: "string",
+        description: "Invoice line total with quantity",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("Quantity")}, 0) * COALESCE(${model.column("UnitPrice")}, 0)) || ' - ' || ${model.column("Quantity").groupBy()}`,
+      });
+
     const tracksModel = semanticLayer
       .model()
       .withName("tracks")
@@ -2684,11 +2831,73 @@ describe("semantic layer", async () => {
         format: (value) => `Artist: ${value}`,
       });
 
+    const mediaTypeModel = semanticLayer
+      .model()
+      .withName("media_types")
+      .fromTable("MediaType")
+      .withDimension("media_type_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("MediaTypeId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      });
+
+    const genreModel = semanticLayer
+      .model()
+      .withName("genres")
+      .fromTable("Genre")
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      })
+      .withDimension("genre_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("GenreId"),
+      });
+
+    const playlistModel = semanticLayer
+      .model()
+      .withName("playlists")
+      .fromTable("Playlist")
+      .withDimension("playlist_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("PlaylistId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      });
+
+    const playlistTrackModel = semanticLayer
+      .model()
+      .withName("playlist_tracks")
+      .fromTable("PlaylistTrack")
+      .withDimension("playlist_id", {
+        type: "number",
+        sql: ({ model }) => model.column("PlaylistId"),
+      })
+      .withDimension("track_id", {
+        type: "number",
+        sql: ({ model }) => model.column("TrackId"),
+      });
+
     const repository = semanticLayer
       .repository()
+      .withModel(customersModel)
+      .withModel(invoicesModel)
+      .withModel(invoiceLinesModel)
       .withModel(tracksModel)
       .withModel(albumsModel)
       .withModel(artistModel)
+      .withModel(mediaTypeModel)
+      .withModel(genreModel)
+      .withModel(playlistModel)
+      .withModel(playlistTrackModel)
       .withCalculatedDimension("albums.artist_name_and_title", {
         type: "string",
         sql: ({ sql, models }) =>
@@ -2699,6 +2908,35 @@ describe("semantic layer", async () => {
         sql: ({ sql, models }) =>
           sql`${models.artists.dimension("name")} || ': ' || ${models.albums.dimension("title")} || ' - ' || ${models.tracks.dimension("name")}`,
       })
+      .withCalculatedMetric("invoice_lines.ratio_of_total", {
+        type: "number",
+        sql: ({ sql, models }) =>
+          sql`${models.invoice_lines.metric("total").aggregated()} / ${models.invoices.metric("total").aggregated()}`,
+      })
+      .joinOneToMany(
+        "customers",
+        "invoices",
+        ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} = ${models.invoices.dimension("customer_id")}`,
+      )
+      .joinOneToMany(
+        "invoices",
+        "invoice_lines",
+        ({ sql, models }) =>
+          sql`${models.invoices.dimension(
+            "invoice_id",
+          )} = ${models.invoice_lines.dimension("invoice_id")}`,
+      )
+      .joinManyToOne(
+        "invoice_lines",
+        "tracks",
+        ({ sql, models }) =>
+          sql`${models.invoice_lines.dimension(
+            "track_id",
+          )} = ${models.tracks.dimension("track_id")}`,
+      )
       .joinOneToMany(
         "albums",
         "tracks",
@@ -2714,6 +2952,38 @@ describe("semantic layer", async () => {
           sql`${models.albums.dimension("artist_id")} = ${models.artists.dimension(
             "artist_id",
           )}`,
+      )
+      .joinOneToOne(
+        "tracks",
+        "media_types",
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension(
+            "media_type_id",
+          )} = ${models.media_types.dimension("media_type_id")}`,
+      )
+      .joinOneToOne(
+        "tracks",
+        "genres",
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension("genre_id")} = ${models.genres.dimension(
+            "genre_id",
+          )}`,
+      )
+      .joinManyToMany(
+        "playlists",
+        "playlist_tracks",
+        ({ sql, models }) =>
+          sql`${models.playlists.dimension(
+            "playlist_id",
+          )} = ${models.playlist_tracks.dimension("playlist_id")}`,
+      )
+      .joinManyToMany(
+        "playlist_tracks",
+        "tracks",
+        ({ sql, models }) =>
+          sql`${models.playlist_tracks.dimension(
+            "track_id",
+          )} = ${models.tracks.dimension("track_id")}`,
       );
 
     const queryBuilder = repository.build("postgresql");
@@ -2769,6 +3039,62 @@ describe("semantic layer", async () => {
           tracks___artist_name_album_title_and_name:
             "AC/DC: For Those About To Rock We Salute You - Inject The Venom",
           tracks___unit_price: "0.99",
+        },
+      ]);
+    });
+
+    it("can query calculated metrics", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["artists.name", "invoice_lines.ratio_of_total"],
+        order: [{ member: "artists.name", direction: "asc" }],
+        filters: [
+          { operator: "equals", member: "artists.name", value: ["AC/DC"] },
+        ],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          artists___name: "AC/DC",
+          invoice_lines___ratio_of_total: "0.37209302325581395349",
+        },
+      ]);
+    });
+
+    it("can query only a calculated metrics where all values are aggregated", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["invoice_lines.ratio_of_total"],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          invoice_lines___ratio_of_total: "1.00000000000000000000",
+        },
+      ]);
+    });
+
+    it("can query calculated metrics with group by", async () => {
+      const query = queryBuilder.buildQuery({
+        members: ["invoice_lines.total_with_quantity"],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          invoice_lines___total_with_quantity: "2328.60 - 1",
         },
       ]);
     });
