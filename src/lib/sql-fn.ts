@@ -2,32 +2,41 @@ import { Dimension, Member, Metric } from "./member.js";
 
 import { AnyBaseDialect } from "./dialect/base.js";
 import { AnyModel } from "./model.js";
-import { QueryMemberCache } from "./query-builder/query-plan/query-member.js";
+import { QueryContext } from "./query-builder/query-plan/query-context.js";
 import { AnyRepository } from "./repository.js";
 import { SqlFragment } from "./sql-builder.js";
 import { METRIC_REF_SUBQUERY_ALIAS } from "./util.js";
 
+export function valueIsMetricAliasRef(
+  value: unknown,
+): value is AnyMetricAliasColumnOrDimensionRef | MetricAliasMetricRef {
+  return (
+    value instanceof MetricAliasColumnOrDimensionRef ||
+    value instanceof MetricAliasMetricRef
+  );
+}
+
 export abstract class Ref {
   public abstract render(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ): SqlFragment;
 }
 
 export class DimensionRef extends Ref {
   constructor(
-    readonly dimension: Dimension,
+    readonly member: Dimension,
     private readonly context: unknown,
   ) {
     super();
   }
   render(
     _repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     _dialect: AnyBaseDialect,
   ) {
-    const dimensionQueryMember = queryMembers.get(this.dimension);
+    const dimensionQueryMember = queryContext.getQueryMember(this.member);
     return dimensionQueryMember.getSql();
   }
 }
@@ -35,19 +44,19 @@ export class DimensionRef extends Ref {
 export class MetricRef extends Ref {
   constructor(
     readonly owner: Member,
-    readonly metric: Metric,
+    readonly member: Metric,
     private readonly context: unknown,
   ) {
     super();
   }
   render(
     _repository: AnyRepository,
-    _queryMembers: QueryMemberCache,
+    _queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ) {
     return SqlFragment.fromSql(
       `${dialect.asIdentifier(METRIC_REF_SUBQUERY_ALIAS)}.${dialect.asIdentifier(
-        this.metric.getAlias(),
+        this.member.getAlias(),
       )}`,
     );
   }
@@ -63,12 +72,12 @@ export class ColumnRef extends Ref {
   }
   render(
     repository: AnyRepository,
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ) {
     const { sql: asSql, bindings } = this.model.getAs(
       repository,
-      queryMembers,
+      queryContext,
       dialect,
       this.context,
     );
@@ -79,18 +88,53 @@ export class ColumnRef extends Ref {
   }
 }
 
-export class MetricAliasRef<
-  T extends DimensionRef | ColumnRef | MetricRef,
+export class MetricAliasColumnOrDimensionRef<
+  T extends DimensionRef | ColumnRef,
 > extends Ref {
+  private isGroupedBy = false;
   constructor(
     readonly alias: string,
     readonly aliasOf: T,
   ) {
     super();
   }
+  groupBy() {
+    this.isGroupedBy = true;
+    return this;
+  }
+  getIsGroupedBy() {
+    return this.isGroupedBy;
+  }
   render(
     _repository: AnyRepository,
-    _queryMembers: QueryMemberCache,
+    _queryContext: QueryContext,
+    dialect: AnyBaseDialect,
+  ) {
+    return SqlFragment.fromSql(dialect.asIdentifier(this.alias));
+  }
+}
+
+export type AnyMetricAliasColumnOrDimensionRef =
+  MetricAliasColumnOrDimensionRef<any>;
+
+export class MetricAliasMetricRef extends Ref {
+  private isAggregated = false;
+  constructor(
+    readonly alias: string,
+    readonly aliasOf: MetricRef,
+  ) {
+    super();
+  }
+  aggregated() {
+    this.isAggregated = true;
+    return this;
+  }
+  getIsAggregated() {
+    return this.isAggregated;
+  }
+  render(
+    _repository: AnyRepository,
+    _queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ) {
     return SqlFragment.fromSql(dialect.asIdentifier(this.alias));
@@ -103,7 +147,7 @@ export class IdentifierRef extends Ref {
   }
   render(
     _repository: AnyRepository,
-    _queryMembers: QueryMemberCache,
+    _queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ) {
     return SqlFragment.make({
@@ -124,7 +168,7 @@ export class SqlFn extends Ref {
   render(
     repository: AnyRepository,
 
-    queryMembers: QueryMemberCache,
+    queryContext: QueryContext,
     dialect: AnyBaseDialect,
   ) {
     const sql: string[] = [];
@@ -134,7 +178,7 @@ export class SqlFn extends Ref {
       if (this.values[i]) {
         const value = this.values[i];
         if (value instanceof Ref) {
-          const result = value.render(repository, queryMembers, dialect);
+          const result = value.render(repository, queryContext, dialect);
           sql.push(result.sql);
           bindings.push(...result.bindings);
         } else {

@@ -39,6 +39,10 @@ import {
   CalculatedDimension,
   CalculatedDimensionProps,
 } from "./repository/calculated-dimension.js";
+import {
+  CalculatedMetric,
+  CalculatedMetricProps,
+} from "./repository/calculated-metric.js";
 import { IdentifierRef, SqlFn } from "./sql-fn.js";
 
 export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
@@ -65,12 +69,13 @@ export class Repository<
   readonly joins: Record<string, Record<string, AnyJoin>> = {};
   readonly graph: graphlib.Graph = new graphlib.Graph();
   readonly calculatedDimensions: Record<string, CalculatedDimension> = {};
+  readonly calculatedMetrics: Record<string, CalculatedMetric> = {};
   readonly dimensionsIndex: Record<
     string,
     { model?: string; dimension: string }
-  > = {} as Record<string, { model: string; dimension: string }>;
-  readonly metricsIndex: Record<string, { model: string; metric: string }> =
-    {} as Record<string, { model: string; metric: string }>;
+  > = {} as Record<string, { model?: string; dimension: string }>;
+  readonly metricsIndex: Record<string, { model?: string; metric: string }> =
+    {} as Record<string, { model?: string; metric: string }>;
   public readonly categoricalHierarchies: {
     name: string;
     elements: AnyHierarchyElement[];
@@ -128,6 +133,34 @@ export class Repository<
         [k in TCalculatedDimensionName]: TCalculatedDimensionProps["type"];
       },
       TMetrics,
+      TFilters,
+      THierarchies
+    >;
+  }
+
+  withCalculatedMetric<
+    TCalculatedMetricName extends string,
+    TCalculatedMetricProps extends CalculatedMetricProps<
+      TContext,
+      TModelNames,
+      keyof TDimensions & string,
+      keyof TMetrics & string
+    >,
+  >(
+    path: Exclude<TCalculatedMetricName, keyof TMetrics | keyof TMetrics>,
+    props: TCalculatedMetricProps,
+  ) {
+    this.calculatedMetrics[path] = new CalculatedMetric(path, props);
+    this.metricsIndex[path] = {
+      metric: path,
+    };
+    return this as unknown as Repository<
+      TContext,
+      TModelNames,
+      TDimensions,
+      TMetrics & {
+        [k in TCalculatedMetricName]: TCalculatedMetricProps["type"];
+      },
       TFilters,
       THierarchies
     >;
@@ -333,9 +366,15 @@ export class Repository<
     const metricIndexEntry = this.metricsIndex[metricName];
     invariant(metricIndexEntry, `Metric ${metricName} not found`);
     const { model: modelName, metric } = metricIndexEntry;
-    const model = this.models[modelName];
-    invariant(model, `Model ${modelName} not found`);
-    return model.getMetric(metric);
+    if (modelName) {
+      const model = this.models[modelName];
+      invariant(model, `Model ${modelName} not found`);
+      return model.getMetric(metric);
+    }
+
+    const calculatedMetric = this.calculatedMetrics[metricIndexEntry.metric];
+    invariant(calculatedMetric, `Calculated dimension ${metricName} not found`);
+    return calculatedMetric;
   }
 
   getMember(memberName: string): Metric | Dimension {
@@ -357,7 +396,11 @@ export class Repository<
   }
 
   getMetrics(): Metric[] {
-    return Object.values(this.models).flatMap((m) => m.getMetrics());
+    const basicMetric = Object.values(this.models).flatMap((m) =>
+      m.getMetrics(),
+    );
+    const calculatedMetric = Object.values(this.calculatedMetrics);
+    return [...basicMetric, ...calculatedMetric];
   }
 
   getModel(modelName: string) {

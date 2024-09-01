@@ -2,13 +2,12 @@ import { Dimension, Member, Metric } from "../member.js";
 import { AnyModel, AnyQueryBuilder } from "../semantic-layer.js";
 import { AnyInputQuery, Order } from "../types.js";
 
-import invariant from "tiny-invariant";
 import { AnyJoin } from "../join.js";
 import { BasicMetricQueryMember } from "../model/basic-metric.js";
 import { AnyRepository } from "../repository.js";
-import { isNonEmptyArray } from "../util.js";
+import { CalculatedMetricQueryMember } from "../repository/calculated-metric.js";
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
-import { QueryMemberCache } from "./query-plan/query-member.js";
+import { QueryContext } from "./query-plan/query-context.js";
 
 export type QueryFilterConnective = {
   operator: "and" | "or";
@@ -29,22 +28,27 @@ function filterIsConnective(
   return filter.operator === "and" || filter.operator === "or";
 }
 
-function getMetricSegmentKey(referencedModels: [string, ...string[]]) {
-  return referencedModels.join("___");
+const METRICS_WITHOUT_REFERENCED_MODELS_KEY =
+  "__METRICS_WITHOUT_REFERENCED_MODELS_KEY__";
+
+function getMetricSegmentKey(referencedModels: string[]) {
+  return referencedModels.length > 0
+    ? referencedModels.join("___")
+    : METRICS_WITHOUT_REFERENCED_MODELS_KEY;
 }
 
 function getMetricSegments(
-  queryMembers: QueryMemberCache,
+  queryContext: QueryContext,
   projectedMetrics: Metric[],
   filtersMetrics: Metric[],
 ) {
   const metricsByModel: Record<
-    string,
+    string | symbol,
     { projected: Metric[]; filter: Metric[]; referencedModels: Set<string> }
   > = {};
 
   for (const m of projectedMetrics) {
-    const metricQueryMember = queryMembers.get(m);
+    const metricQueryMember = queryContext.getQueryMember(m);
     const referencedModels = metricQueryMember.getReferencedModels();
     const key = getMetricSegmentKey(referencedModels);
 
@@ -61,7 +65,7 @@ function getMetricSegments(
   }
 
   for (const m of filtersMetrics) {
-    const metricQueryMember = queryMembers.get(m);
+    const metricQueryMember = queryContext.getQueryMember(m);
     const referencedModels = metricQueryMember.getReferencedModels();
     const key = getMetricSegmentKey(referencedModels);
 
@@ -79,13 +83,11 @@ function getMetricSegments(
 
   return Object.values(metricsByModel).map((value) => {
     const referencedModels = Array.from(value.referencedModels);
-    invariant(
-      isNonEmptyArray(referencedModels),
-      `Referenced models not found for ${value.projected.map((m) => m.getPath()).join(", ")}`,
-    );
+
     return {
       ...value,
-      referencedModels,
+      referencedModels:
+        referencedModels.length > 0 ? referencedModels : undefined,
     };
   });
 }
@@ -179,7 +181,7 @@ const MEMBER_SETS = ["projected", "filter"] as const;
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This needs to be rewritten so we compute dimension data only once and then use it for all metrics
 function getSegmentQueryModelsAndMembers(
   queryBuilder: AnyQueryBuilder,
-  queryMembers: QueryMemberCache,
+  queryContext: QueryContext,
   { dimensions, metrics }: Omit<SegmentInput, "filters">,
 ) {
   const models = new Set<AnyModel>();
@@ -202,7 +204,7 @@ function getSegmentQueryModelsAndMembers(
         modelQueryDimensions.add(dimension);
       }
 
-      const dimensionQueryMember = queryMembers.get(dimension);
+      const dimensionQueryMember = queryContext.getQueryMember(dimension);
       const referencedModels = dimensionQueryMember.getReferencedModels();
 
       for (const modelName of referencedModels) {
@@ -224,7 +226,7 @@ function getSegmentQueryModelsAndMembers(
           segmentQueryMetrics.add(metric);
         }
 
-        for (const modelName of metrics.referencedModels) {
+        for (const modelName of metrics.referencedModels ?? []) {
           const metricModel = queryBuilder.repository.getModel(modelName);
           models.add(metricModel);
 
@@ -279,7 +281,7 @@ function getSegmentQueryModelsAndMembers(
 
 function getSegmentQueryMetricsRefsSubQueryPlan(
   queryBuilder: AnyQueryBuilder,
-  queryMembers: QueryMemberCache,
+  queryContext: QueryContext,
   context: unknown,
   dimensions: string[],
   metrics: string[],
@@ -288,22 +290,26 @@ function getSegmentQueryMetricsRefsSubQueryPlan(
   const metricRefs = Array.from(
     new Set(
       metrics.flatMap((metricPath) => {
-        const metricQueryMember = queryMembers.getByPath(metricPath);
-        if (metricQueryMember instanceof BasicMetricQueryMember) {
+        const metricQueryMember = queryContext.getQueryMemberByPath(metricPath);
+        if (
+          metricQueryMember instanceof BasicMetricQueryMember ||
+          metricQueryMember instanceof CalculatedMetricQueryMember
+        ) {
           return metricQueryMember
             .getMetricRefs()
-            .map((metricRef) => metricRef.metric.getPath());
+            .map((metricRef) => metricRef.member.getPath());
         }
         return [];
       }),
     ),
   );
+
   if (metricRefs.length > 0) {
     const query: AnyInputQuery = {
       members: [...dimensions, ...metricRefs],
       filters,
     };
-    const queryPlan = getQueryPlan(queryBuilder, queryMembers, context, query);
+    const queryPlan = getQueryPlan(queryBuilder, queryContext, context, query);
     const joinOnDimensions = [...dimensions];
     return {
       queryPlan,
@@ -386,14 +392,14 @@ interface SegmentInput {
 
 function getSegmentQuery(
   queryBuilder: AnyQueryBuilder,
-  queryMembers: QueryMemberCache,
+  queryContext: QueryContext,
   context: unknown,
   alias: string,
   { dimensions, metrics, filters }: SegmentInput,
 ) {
   const segmentModelsAndMembers = getSegmentQueryModelsAndMembers(
     queryBuilder,
-    queryMembers,
+    queryContext,
     {
       dimensions,
       metrics,
@@ -401,21 +407,21 @@ function getSegmentQuery(
   );
 
   const initialModel =
-    metrics?.referencedModels[0] ?? segmentModelsAndMembers.models[0];
+    metrics?.referencedModels?.[0] ?? segmentModelsAndMembers.models[0];
 
-  invariant(initialModel, "Initial model name not found for segment");
-
-  const joinPlan = getSegmentQueryJoins(
-    queryBuilder,
-    segmentModelsAndMembers.models,
-    initialModel,
-  );
+  const joinPlan = initialModel
+    ? getSegmentQueryJoins(
+        queryBuilder,
+        segmentModelsAndMembers.models,
+        initialModel,
+      )
+    : undefined;
 
   return {
     ...segmentModelsAndMembers,
     metricsRefsSubQueryPlan: getSegmentQueryMetricsRefsSubQueryPlan(
       queryBuilder,
-      queryMembers,
+      queryContext,
       context,
       segmentModelsAndMembers.modelQuery.dimensions,
       segmentModelsAndMembers.modelQuery.metrics,
@@ -429,7 +435,7 @@ function getSegmentQuery(
 
 export function getQueryPlan(
   queryBuilder: AnyQueryBuilder,
-  queryMembers: QueryMemberCache,
+  queryContext: QueryContext,
   context: unknown,
   query: AnyInputQuery,
 ) {
@@ -448,7 +454,7 @@ export function getQueryPlan(
   ).filter((metric) => !projectedMetrics.includes(metric));
 
   const metricSegments = getMetricSegments(
-    queryMembers,
+    queryContext,
     projectedMetrics,
     filtersMetrics,
   );
@@ -458,7 +464,7 @@ export function getQueryPlan(
       ? metricSegments.map((metricSegment, index) =>
           getSegmentQuery(
             queryBuilder,
-            queryMembers,
+            queryContext,
             context,
             getSegmentAlias(index),
             {
@@ -474,7 +480,7 @@ export function getQueryPlan(
       : [
           getSegmentQuery(
             queryBuilder,
-            queryMembers,
+            queryContext,
             context,
             getSegmentAlias(0),
             {
