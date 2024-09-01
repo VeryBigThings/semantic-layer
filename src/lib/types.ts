@@ -229,10 +229,10 @@ export function makeTemporalHierarchyElementsForDimension(
 export type MemberType =
   | "string"
   | "number"
+  | "boolean"
   | "date"
   | "datetime"
-  | "time"
-  | "boolean";
+  | "time";
 
 export type MemberTypeToType<MT extends MemberType> = MT extends "number"
   ? number
@@ -249,11 +249,25 @@ export type MemberTypeToType<MT extends MemberType> = MT extends "number"
 export type MemberFormat<MT extends MemberType = MemberType> =
   | "percentage"
   | "currency"
-  | ((value: MemberTypeToType<MT>) => string);
+  | ((value: MemberTypeToType<MT> | null | undefined) => string);
 
 export type AnyMemberFormat = MemberFormat<any>;
 
 export type MemberNameToType = { [k in never]: MemberType };
+
+export type MemberProps<
+  TSharedAdditionalProps extends object = object,
+  TAdditionalPropsForMemberType extends Partial<
+    Record<MemberType, object>
+  > = Record<MemberType, object>,
+> = {
+  [K in MemberType]: {
+    type: K;
+    description?: string;
+    format?: MemberFormat<K>;
+  } & TSharedAdditionalProps &
+    TAdditionalPropsForMemberType[K];
+}[MemberType];
 
 export type QueryReturnType<
   M extends MemberNameToType,

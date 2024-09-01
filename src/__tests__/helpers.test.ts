@@ -18,7 +18,7 @@ const userModel = semanticLayer
   })
   .withDimension("datetime", {
     type: "datetime",
-    format: (value) => `DateTime: ${value.getTime() / 1000}`,
+    format: (value) => `DateTime: ${value ? value.getTime() / 1000 : "-"}`,
   })
   .withMetric("count", {
     type: "string",

@@ -13,12 +13,11 @@ import {
 } from "../sql-fn.js";
 
 import invariant from "tiny-invariant";
-import { Simplify } from "type-fest";
 import { AnyBaseDialect } from "../dialect/base.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
-import { MemberFormat } from "../types.js";
+import { MemberProps } from "../types.js";
 import { isNonEmptyArray } from "../util.js";
 
 export interface MetricSqlFnArgs<
@@ -44,24 +43,14 @@ export type MetricSqlFn<
   MN extends string = string,
 > = (args: MetricSqlFnArgs<C, DN, MN>) => SqlFn;
 
-// TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
 export type BasicMetricProps<
   C,
   DN extends string = string,
   MN extends string = string,
-> = Simplify<
-  {
-    sql: MetricSqlFn<C, DN, MN>;
-    description?: string;
-  } & (
-    | { type: "string"; format?: MemberFormat<"string"> }
-    | { type: "number"; format?: MemberFormat<"number"> }
-    | { type: "date"; format?: MemberFormat<"date"> }
-    | { type: "datetime"; format?: MemberFormat<"datetime"> }
-    | { type: "time"; format?: MemberFormat<"time"> }
-    | { type: "boolean"; format?: MemberFormat<"boolean"> }
-  )
->;
+> = MemberProps<{
+  sql: MetricSqlFn<C, DN, MN>;
+}>;
+
 export type AnyBasicMetricProps = BasicMetricProps<any, string>;
 
 export class BasicMetric extends Metric {

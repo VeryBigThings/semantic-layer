@@ -1,4 +1,4 @@
-import { Get, Simplify } from "type-fest";
+import { Get } from "type-fest";
 import { Dimension, Metric } from "../member.js";
 import {
   QueryMember,
@@ -13,7 +13,7 @@ import {
 } from "../sql-fn.js";
 import {
   DimensionWithTemporalGranularity,
-  MemberFormat,
+  MemberProps,
   TemporalGranularityByDimensionType,
 } from "../types.js";
 
@@ -48,23 +48,16 @@ export type WithTemporalGranularityDimensions<
   : { [k in N]: T };
 
 // TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
-export type BasicDimensionProps<C, DN extends string = string> = Simplify<
+export type BasicDimensionProps<C, DN extends string = string> = MemberProps<
   {
     sql?: DimensionSqlFn<C, DN>;
     primaryKey?: boolean;
-    description?: string;
-  } & (
-    | { type: "string"; format?: MemberFormat<"string"> }
-    | { type: "number"; format?: MemberFormat<"number"> }
-    | { type: "date"; format?: MemberFormat<"date">; omitGranularity?: boolean }
-    | {
-        type: "datetime";
-        format?: MemberFormat<"datetime">;
-        omitGranularity?: boolean;
-      }
-    | { type: "time"; format?: MemberFormat<"time">; omitGranularity?: boolean }
-    | { type: "boolean"; format?: MemberFormat<"boolean"> }
-  )
+  },
+  {
+    date: { omitGranularity?: boolean };
+    datetime: { omitGranularity?: boolean };
+    time: { omitGranularity?: boolean };
+  }
 >;
 
 export type AnyBasicDimensionProps = BasicDimensionProps<any, string>;
