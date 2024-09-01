@@ -2,38 +2,28 @@ import {
   QueryMember,
   QueryMemberCache,
 } from "./query-builder/query-plan/query-member.js";
+import { MemberFormat, MemberType } from "./types.js";
 
 import { AnyBaseDialect } from "./dialect/base.js";
-import { pathToAlias } from "./helpers.js";
-import { AnyModel } from "./model.js";
-import { AnyBasicDimensionProps } from "./model/basic-dimension.js";
-import { AnyBasicMetricProps } from "./model/basic-metric.js";
 import { GranularityDimension } from "./model/granularity-dimension.js";
 import { AnyRepository } from "./repository.js";
 
 export abstract class Member {
-  public abstract readonly name: string;
-  public abstract readonly model: AnyModel;
-  public abstract props: AnyBasicDimensionProps | AnyBasicMetricProps;
-
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
-  getAlias() {
-    return `${this.model.name}___${pathToAlias(this.name)}`;
-  }
-  getPath() {
-    return `${this.model.name}.${this.name}`;
-  }
-  getDescription() {
-    return this.props.description;
-  }
-  getType() {
-    return this.props.type;
-  }
-  getFormat() {
-    return this.props.format;
-  }
+  abstract getAlias(): string;
+  abstract getPath(): string;
+  abstract getDescription(): string | undefined;
+  abstract getType(): MemberType;
+  abstract getFormat(): MemberFormat | undefined;
+  abstract getQueryMember(
+    queryMembers: QueryMemberCache,
+    repository: AnyRepository,
+    dialect: AnyBaseDialect,
+    context: unknown,
+  ): QueryMember;
+
   unsafeFormatValue(value: unknown) {
     const format = this.getFormat();
     if (typeof format === "function") {
@@ -47,13 +37,6 @@ export abstract class Member {
     }
     return String(value);
   }
-  abstract clone(model: AnyModel): Member;
-  abstract getQueryMember(
-    queryMembers: QueryMemberCache,
-    repository: AnyRepository,
-    dialect: AnyBaseDialect,
-    context: unknown,
-  ): QueryMember;
 }
 
 export abstract class Dimension extends Member {

@@ -2605,4 +2605,172 @@ describe("semantic layer", async () => {
       ]);
     });
   });
+  describe("calculated dimensions", () => {
+    const tracksModel = semanticLayer
+      .model()
+      .withName("tracks")
+      .fromTable("Track")
+      .withDimension("track_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("TrackId"),
+      })
+      .withDimension("album_id", {
+        type: "number",
+        sql: ({ model }) => model.column("AlbumId"),
+      })
+      .withDimension("media_type_id", {
+        type: "number",
+        sql: ({ model }) => model.column("MediaTypeId"),
+      })
+      .withDimension("genre_id", {
+        type: "number",
+        sql: ({ model }) => model.column("GenreId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+      })
+      .withDimension("composer", {
+        type: "string",
+        sql: ({ model }) => model.column("Composer"),
+      })
+      .withDimension("milliseconds", {
+        type: "number",
+        sql: ({ model }) => model.column("Milliseconds"),
+      })
+      .withDimension("bytes", {
+        type: "number",
+        sql: ({ model }) => model.column("Bytes"),
+      })
+      .withMetric("unit_price", {
+        type: "number",
+        description: "Sum of the track unit prices across models.",
+        sql: ({ model, sql }) =>
+          sql`SUM(COALESCE(${model.column("UnitPrice")}, 0))`,
+        format: (value) => `Price: $${value}`,
+      });
+
+    const albumsModel = semanticLayer
+      .model()
+      .withName("albums")
+      .fromTable("Album")
+      .withDimension("album_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("AlbumId"),
+      })
+      .withDimension("artist_id", {
+        type: "number",
+        sql: ({ model }) => model.column("ArtistId"),
+      })
+      .withDimension("title", {
+        type: "string",
+        sql: ({ model }) => model.column("Title"),
+      });
+
+    const artistModel = semanticLayer
+      .model()
+      .withName("artists")
+      .fromTable("Artist")
+      .withDimension("artist_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model }) => model.column("ArtistId"),
+      })
+      .withDimension("name", {
+        type: "string",
+        sql: ({ model }) => model.column("Name"),
+        format: (value) => `Artist: ${value}`,
+      });
+
+    const repository = semanticLayer
+      .repository()
+      .withModel(tracksModel)
+      .withModel(albumsModel)
+      .withModel(artistModel)
+      .withCalculatedDimension("albums.artist_name_and_title", {
+        type: "string",
+        sql: ({ sql, models }) =>
+          sql`${models.artists.dimension("name")} || ': ' || ${models.albums.dimension("title")}`,
+      })
+      .withCalculatedDimension("tracks.artist_name_album_title_and_name", {
+        type: "string",
+        sql: ({ sql, models }) =>
+          sql`${models.artists.dimension("name")} || ': ' || ${models.albums.dimension("title")} || ' - ' || ${models.tracks.dimension("name")}`,
+      })
+      .joinOneToMany(
+        "albums",
+        "tracks",
+        ({ sql, models }) =>
+          sql`${models.tracks.dimension("album_id")} = ${models.albums.dimension(
+            "album_id",
+          )}`,
+      )
+      .joinManyToOne(
+        "albums",
+        "artists",
+        ({ sql, models }) =>
+          sql`${models.albums.dimension("artist_id")} = ${models.artists.dimension(
+            "artist_id",
+          )}`,
+      );
+
+    const queryBuilder = repository.build("postgresql");
+
+    it("can query calculated dimensions", async () => {
+      const query = queryBuilder.buildQuery({
+        members: [
+          "albums.artist_name_and_title",
+          "tracks.artist_name_album_title_and_name",
+          "tracks.unit_price",
+        ],
+        order: [{ member: "albums.artist_name_and_title", direction: "asc" }],
+        limit: 5,
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          albums___artist_name_and_title:
+            "AC/DC: For Those About To Rock We Salute You",
+          tracks___artist_name_album_title_and_name:
+            "AC/DC: For Those About To Rock We Salute You - Breaking The Rules",
+          tracks___unit_price: "0.99",
+        },
+        {
+          albums___artist_name_and_title:
+            "AC/DC: For Those About To Rock We Salute You",
+          tracks___artist_name_album_title_and_name:
+            "AC/DC: For Those About To Rock We Salute You - C.O.D.",
+          tracks___unit_price: "0.99",
+        },
+        {
+          albums___artist_name_and_title:
+            "AC/DC: For Those About To Rock We Salute You",
+          tracks___artist_name_album_title_and_name:
+            "AC/DC: For Those About To Rock We Salute You - Evil Walks",
+          tracks___unit_price: "0.99",
+        },
+        {
+          albums___artist_name_and_title:
+            "AC/DC: For Those About To Rock We Salute You",
+          tracks___artist_name_album_title_and_name:
+            "AC/DC: For Those About To Rock We Salute You - For Those About To Rock (We Salute You)",
+          tracks___unit_price: "0.99",
+        },
+        {
+          albums___artist_name_and_title:
+            "AC/DC: For Those About To Rock We Salute You",
+          tracks___artist_name_album_title_and_name:
+            "AC/DC: For Those About To Rock We Salute You - Inject The Venom",
+          tracks___unit_price: "0.99",
+        },
+      ]);
+    });
+  });
 });

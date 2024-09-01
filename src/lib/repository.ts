@@ -10,12 +10,19 @@ import {
 import {
   AnyJoin,
   JOIN_WEIGHTS,
-  JoinDimensions,
   JoinFn,
+  JoinFnModels,
   REVERSED_JOIN,
   makeModelJoinPayload,
 } from "./join.js";
-import { AnyModel, Model } from "./model.js";
+import {
+  AnyModel,
+  GetModelContext,
+  GetModelDimensions,
+  GetModelHierarchies,
+  GetModelMetrics,
+  GetModelName,
+} from "./model.js";
 
 import {
   AnyFilterFragmentBuilderRegistry,
@@ -28,30 +35,14 @@ import graphlib from "@dagrejs/graphlib";
 import invariant from "tiny-invariant";
 import { Dimension, Metric } from "./member.js";
 import { QueryBuilder } from "./query-builder.js";
+import {
+  CalculatedDimension,
+  CalculatedDimensionProps,
+} from "./repository/calculated-dimension.js";
 import { IdentifierRef, SqlFn } from "./sql-fn.js";
 
-export type ModelC<T> = T extends Model<infer C, any, any, any, any>
-  ? C
-  : never;
-
-export type ModelN<T> = T extends Model<any, infer N, any, any, any>
-  ? N
-  : never;
-
-export type ModelD<T> = T extends Model<any, infer N, infer D, any, any>
-  ? { [K in string & keyof D as `${N}.${K}`]: D[K] }
-  : never;
-
-export type ModelM<T> = T extends Model<any, infer N, any, infer M, any>
-  ? { [K in string & keyof M as `${N}.${K}`]: M[K] }
-  : never;
-
-export type ModelG<T> = T extends Model<any, any, any, any, infer G>
-  ? G
-  : never;
-
 export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
-  ModelC<T>,
+  GetModelContext<T>,
 ]
   ? T
   : never;
@@ -59,23 +50,24 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 export type AnyRepository = Repository<any, any, any, any, any, any>;
 
 export class Repository<
-  C,
-  N extends string = never,
-  D extends MemberNameToType = MemberNameToType,
-  M extends MemberNameToType = MemberNameToType,
-  F = GetFilterFragmentBuilderRegistryPayload<
+  TContext,
+  TModelNames extends string = never,
+  TDimensions extends MemberNameToType = MemberNameToType,
+  TMetrics extends MemberNameToType = MemberNameToType,
+  TFilters = GetFilterFragmentBuilderRegistryPayload<
     ReturnType<typeof defaultFilterFragmentBuilderRegistry>
   >,
-  G extends string = never,
+  THierarchies extends string = never,
 > {
   private readonly models: Record<string, AnyModel> = {};
   private filterFragmentBuilderRegistry: AnyFilterFragmentBuilderRegistry =
     defaultFilterFragmentBuilderRegistry();
   readonly joins: Record<string, Record<string, AnyJoin>> = {};
   readonly graph: graphlib.Graph = new graphlib.Graph();
+  readonly calculatedDimensions: Record<string, CalculatedDimension> = {};
   readonly dimensionsIndex: Record<
     string,
-    { model: string; dimension: string }
+    { model?: string; dimension: string }
   > = {} as Record<string, { model: string; dimension: string }>;
   readonly metricsIndex: Record<string, { model: string; metric: string }> =
     {} as Record<string, { model: string; metric: string }>;
@@ -89,7 +81,7 @@ export class Repository<
   }[] = [];
   public readonly hierarchyNames: Set<string> = new Set();
 
-  withModel<T extends AnyModel>(model: ModelWithMatchingContext<C, T>) {
+  withModel<T extends AnyModel>(model: ModelWithMatchingContext<TContext, T>) {
     this.models[model.name] = model;
     for (const dimension in model.dimensions) {
       this.dimensionsIndex[`${model.name}.${dimension}`] = {
@@ -105,12 +97,39 @@ export class Repository<
     }
 
     return this as unknown as Repository<
-      C,
-      N | ModelN<T>,
-      D & ModelD<T>,
-      M & ModelM<T>,
-      F,
-      G | `${ModelN<T>}.${ModelG<T>}`
+      TContext,
+      TModelNames | GetModelName<T>,
+      TDimensions & GetModelDimensions<T>,
+      TMetrics & GetModelMetrics<T>,
+      TFilters,
+      THierarchies | `${GetModelName<T>}.${GetModelHierarchies<T>}`
+    >;
+  }
+
+  withCalculatedDimension<
+    TCalculatedDimensionName extends string,
+    TCalculatedDimensionProps extends CalculatedDimensionProps<
+      TContext,
+      TModelNames,
+      keyof TDimensions & string
+    >,
+  >(
+    path: Exclude<TCalculatedDimensionName, keyof TDimensions | keyof TMetrics>,
+    props: TCalculatedDimensionProps,
+  ) {
+    this.calculatedDimensions[path] = new CalculatedDimension(path, props);
+    this.dimensionsIndex[path] = {
+      dimension: path,
+    };
+    return this as unknown as Repository<
+      TContext,
+      TModelNames,
+      TDimensions & {
+        [k in TCalculatedDimensionName]: TCalculatedDimensionProps["type"];
+      },
+      TMetrics,
+      TFilters,
+      THierarchies
     >;
   }
 
@@ -132,22 +151,36 @@ export class Repository<
     return this;
   }
   withCategoricalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, G>,
+    hierarchyName: Exclude<GN, THierarchies>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+      element: ReturnType<typeof makeHierarchyElementInitMaker<TDimensions>>;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
-  ): Repository<C, N, D, M, F, G | GN> {
+  ): Repository<
+    TContext,
+    TModelNames,
+    TDimensions,
+    TMetrics,
+    TFilters,
+    THierarchies | GN
+  > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
     });
     return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
   }
   withTemporalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, G>,
+    hierarchyName: Exclude<GN, THierarchies>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+      element: ReturnType<typeof makeHierarchyElementInitMaker<TDimensions>>;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
-  ): Repository<C, N, D, M, F, G | GN> {
+  ): Repository<
+    TContext,
+    TModelNames,
+    TDimensions,
+    TMetrics,
+    TFilters,
+    THierarchies | GN
+  > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
     });
@@ -159,12 +192,12 @@ export class Repository<
   ) {
     this.filterFragmentBuilderRegistry = filterFragmentBuilderRegistry;
     return this as Repository<
-      C,
-      N,
-      D,
-      M,
+      TContext,
+      TModelNames,
+      TDimensions,
+      TMetrics,
       GetFilterFragmentBuilderRegistryPayload<T>,
-      G
+      THierarchies
     >;
   }
 
@@ -172,11 +205,14 @@ export class Repository<
     return this.filterFragmentBuilderRegistry;
   }
 
-  join<N1 extends N, N2 extends N & Exclude<N, N1>>(
+  join<
+    N1 extends TModelNames,
+    N2 extends TModelNames & Exclude<TModelNames, N1>,
+  >(
     type: AnyJoin["type"],
     modelName1: N1,
     modelName2: N2,
-    joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
+    joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
   ) {
     const model1 = this.models[modelName1];
     const model2 = this.models[modelName2];
@@ -188,13 +224,13 @@ export class Repository<
       `Model ${model1.name} cannot be joined to itself`,
     );
 
-    const joinSqlDef = (context: C) => {
+    const joinSqlDef = (context: TContext) => {
       const models = [model1, model2].reduce(
         (acc, model) => {
           acc[model.name as N1 | N2] = makeModelJoinPayload(model, context);
           return acc;
         },
-        {} as JoinDimensions<string & keyof D, N1 | N2>,
+        {} as JoinFnModels<string & keyof TDimensions, N1 | N2>,
       );
 
       return joinSqlDefFn({
@@ -229,34 +265,46 @@ export class Repository<
     return this;
   }
 
-  joinOneToOne<N1 extends N, N2 extends N & Exclude<N, N1>>(
+  joinOneToOne<
+    N1 extends TModelNames,
+    N2 extends TModelNames & Exclude<TModelNames, N1>,
+  >(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
+    joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
   ) {
     return this.join("oneToOne", model1, model2, joinSqlDefFn);
   }
 
-  joinOneToMany<N1 extends N, N2 extends N & Exclude<N, N1>>(
+  joinOneToMany<
+    N1 extends TModelNames,
+    N2 extends TModelNames & Exclude<TModelNames, N1>,
+  >(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
+    joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
   ) {
     return this.join("oneToMany", model1, model2, joinSqlDefFn);
   }
 
-  joinManyToOne<N1 extends N, N2 extends N & Exclude<N, N1>>(
+  joinManyToOne<
+    N1 extends TModelNames,
+    N2 extends TModelNames & Exclude<TModelNames, N1>,
+  >(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
+    joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
   ) {
     return this.join("manyToOne", model1, model2, joinSqlDefFn);
   }
 
-  joinManyToMany<N1 extends N, N2 extends N & Exclude<N, N1>>(
+  joinManyToMany<
+    N1 extends TModelNames,
+    N2 extends TModelNames & Exclude<TModelNames, N1>,
+  >(
     model1: N1,
     model2: N2,
-    joinSqlDefFn: JoinFn<C, string & keyof D, N1, N2>,
+    joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
   ) {
     return this.join("manyToMany", model1, model2, joinSqlDefFn);
   }
@@ -264,10 +312,21 @@ export class Repository<
   getDimension(dimensionName: string): Dimension {
     const dimensionIndexEntry = this.dimensionsIndex[dimensionName];
     invariant(dimensionIndexEntry, `Dimension ${dimensionName} not found`);
+
     const { model: modelName, dimension } = dimensionIndexEntry;
-    const model = this.models[modelName];
-    invariant(model, `Model ${modelName} not found`);
-    return model.getDimension(dimension);
+    if (modelName) {
+      const model = this.models[modelName];
+      invariant(model, `Model ${modelName} not found`);
+      return model.getDimension(dimension);
+    }
+
+    const calculatedDimension =
+      this.calculatedDimensions[dimensionIndexEntry.dimension];
+    invariant(
+      calculatedDimension,
+      `Calculated dimension ${dimensionName} not found`,
+    );
+    return calculatedDimension;
   }
 
   getMetric(metricName: string): Metric {
@@ -290,7 +349,11 @@ export class Repository<
   }
 
   getDimensions(): Dimension[] {
-    return Object.values(this.models).flatMap((m) => m.getDimensions());
+    const basicDimension = Object.values(this.models).flatMap((m) =>
+      m.getDimensions(),
+    );
+    const calculatedDimension = Object.values(this.calculatedDimensions);
+    return [...basicDimension, ...calculatedDimension];
   }
 
   getMetrics(): Metric[] {
@@ -326,7 +389,14 @@ export class Repository<
     dialectName: N,
   ) {
     const dialect = AvailableDialects[dialectName];
-    return new QueryBuilder<C, D, M, F, P, G>(this, dialect);
+    return new QueryBuilder<
+      TContext,
+      TDimensions,
+      TMetrics,
+      TFilters,
+      P,
+      THierarchies
+    >(this, dialect);
   }
 }
 

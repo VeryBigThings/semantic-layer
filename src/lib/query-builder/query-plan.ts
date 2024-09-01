@@ -81,7 +81,7 @@ function getMetricSegments(
     const referencedModels = Array.from(value.referencedModels);
     invariant(
       isNonEmptyArray(referencedModels),
-      `Referenced models not found for ${value.projected.map((m) => m.name).join(", ")}`,
+      `Referenced models not found for ${value.projected.map((m) => m.getPath()).join(", ")}`,
     );
     return {
       ...value,
@@ -391,13 +391,6 @@ function getSegmentQuery(
   alias: string,
   { dimensions, metrics, filters }: SegmentInput,
 ) {
-  const initialModel =
-    metrics?.referencedModels[0] ??
-    dimensions.projected[0]?.model.name ??
-    dimensions.filter[0]?.model.name;
-
-  invariant(initialModel, "Initial model name not found for segment");
-
   const segmentModelsAndMembers = getSegmentQueryModelsAndMembers(
     queryBuilder,
     queryMembers,
@@ -406,6 +399,11 @@ function getSegmentQuery(
       metrics,
     },
   );
+
+  const initialModel =
+    metrics?.referencedModels[0] ?? segmentModelsAndMembers.models[0];
+
+  invariant(initialModel, "Initial model name not found for segment");
 
   const joinPlan = getSegmentQueryJoins(
     queryBuilder,

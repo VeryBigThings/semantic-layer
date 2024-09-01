@@ -14,6 +14,7 @@ export type * from "./hierarchy.js";
 export type * from "./member.js";
 export type * from "./model/member.js";
 export type * from "./query-builder/query-plan/query-member.js";
+export type * from "./repository/member.js";
 
 import * as helpers from "./helpers.js";
 import { model } from "./model.js";

@@ -1,4 +1,3 @@
-import { Get } from "type-fest";
 import { Dimension, Metric } from "../member.js";
 import {
   QueryMember,
@@ -18,13 +17,15 @@ import {
 } from "../types.js";
 
 import invariant from "tiny-invariant";
+import { Get } from "type-fest";
 import { AnyBaseDialect } from "../dialect/base.js";
+import { pathToAlias } from "../helpers.js";
 import { AnyModel } from "../model.js";
 import { AnyRepository } from "../repository.js";
 import { SqlFragment } from "../sql-builder.js";
 import { isNonEmptyArray } from "../util.js";
 
-export interface DimensionSqlFnArgs<C, DN extends string = string> {
+export interface BasicDimensionSqlFnArgs<C, DN extends string = string> {
   identifier: (name: string) => IdentifierRef;
   model: {
     column: (name: string) => ColumnRef;
@@ -34,11 +35,11 @@ export interface DimensionSqlFnArgs<C, DN extends string = string> {
   getContext: () => C;
 }
 
-export type DimensionSqlFn<C, DN extends string = string> = (
-  args: DimensionSqlFnArgs<C, DN>,
+export type BasicDimensionSqlFn<C, DN extends string = string> = (
+  args: BasicDimensionSqlFnArgs<C, DN>,
 ) => Ref;
 
-export type AnyDimensionSqlFn = DimensionSqlFn<any, string>;
+export type AnyBasicDimensionSqlFn = BasicDimensionSqlFn<any, string>;
 
 export type WithTemporalGranularityDimensions<
   N extends string,
@@ -50,7 +51,7 @@ export type WithTemporalGranularityDimensions<
 // TODO: Figure out how to ensure that DimensionProps and MetricProps have support for all valid member types
 export type BasicDimensionProps<C, DN extends string = string> = MemberProps<
   {
-    sql?: DimensionSqlFn<C, DN>;
+    sql?: BasicDimensionSqlFn<C, DN>;
     primaryKey?: boolean;
   },
   {
@@ -77,10 +78,24 @@ export class BasicDimension extends Dimension {
   ) {
     super();
   }
+  getAlias() {
+    return `${this.model.name}___${pathToAlias(this.name)}`;
+  }
+  getPath() {
+    return `${this.model.name}.${this.name}`;
+  }
+  getDescription() {
+    return this.props.description;
+  }
+  getType() {
+    return this.props.type;
+  }
+  getFormat() {
+    return this.props.format;
+  }
   clone(model: AnyModel) {
     return new BasicDimension(model, this.name, { ...this.props });
   }
-
   isPrimaryKey() {
     return !!this.props.primaryKey;
   }
