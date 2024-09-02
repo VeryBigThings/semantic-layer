@@ -54,6 +54,7 @@ function joinModelQueryModels(
     joinType,
   } of segment.joinPlan.joins) {
     const join = queryBuilder.repository.getJoin(leftModelName, rightModelName);
+    const joinFn: `${typeof joinType}Join` = `${joinType}Join`;
 
     invariant(
       join,
@@ -72,7 +73,7 @@ function joinModelQueryModels(
       context,
     );
 
-    sqlQuery[joinType](
+    sqlQuery[joinFn](
       joinSubject,
       queryBuilder.dialect.fragment(joinOn.sql, joinOn.bindings),
     );
@@ -237,7 +238,7 @@ function buildSegmentQuery(
     }
 
     // We always GROUP BY the dimensions, if there are no metrics, it will behave as DISTINCT
-    // For metrics, this is currently NOOP because Metric returns an empty array
+    // Metrics can also participate in the GROUP BY, if aggregated or groupBy is called on a referenced column/dimension/metric
     const segmentQueryGroupBy =
       queryMember.getSegmentQueryGroupBy(modelQueryAlias);
 

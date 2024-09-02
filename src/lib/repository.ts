@@ -12,6 +12,7 @@ import {
   JOIN_WEIGHTS,
   JoinFn,
   JoinFnModels,
+  JoinOptions,
   REVERSED_JOIN,
   makeModelJoinPayload,
 } from "./join.js";
@@ -246,6 +247,7 @@ export class Repository<
     modelName1: N1,
     modelName2: N2,
     joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
+    opts?: JoinOptions,
   ) {
     const model1 = this.models[modelName1];
     const model2 = this.models[modelName2];
@@ -275,9 +277,14 @@ export class Repository<
     };
 
     const reversedType = REVERSED_JOIN[type];
+    const priority = opts?.priority ?? "normal";
 
-    this.graph.setEdge(model1.name, model2.name, JOIN_WEIGHTS[type]);
-    this.graph.setEdge(model2.name, model1.name, JOIN_WEIGHTS[reversedType]);
+    this.graph.setEdge(model1.name, model2.name, JOIN_WEIGHTS[priority][type]);
+    this.graph.setEdge(
+      model2.name,
+      model1.name,
+      JOIN_WEIGHTS[priority][reversedType],
+    );
 
     this.joins[model1.name] ||= {};
     this.joins[model1.name]![model2.name] = {
@@ -286,6 +293,7 @@ export class Repository<
       joinOnDef: joinSqlDef,
       type: type,
       reversed: false,
+      joinType: opts?.type,
     };
     this.joins[model2.name] ||= {};
     this.joins[model2.name]![model1.name] = {
@@ -294,6 +302,7 @@ export class Repository<
       joinOnDef: joinSqlDef,
       type: reversedType,
       reversed: true,
+      joinType: opts?.type,
     };
     return this;
   }
@@ -305,8 +314,9 @@ export class Repository<
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
+    opts?: JoinOptions,
   ) {
-    return this.join("oneToOne", model1, model2, joinSqlDefFn);
+    return this.join("oneToOne", model1, model2, joinSqlDefFn, opts);
   }
 
   joinOneToMany<
@@ -316,8 +326,9 @@ export class Repository<
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
+    opts?: JoinOptions,
   ) {
-    return this.join("oneToMany", model1, model2, joinSqlDefFn);
+    return this.join("oneToMany", model1, model2, joinSqlDefFn, opts);
   }
 
   joinManyToOne<
@@ -327,8 +338,9 @@ export class Repository<
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
+    opts?: JoinOptions,
   ) {
-    return this.join("manyToOne", model1, model2, joinSqlDefFn);
+    return this.join("manyToOne", model1, model2, joinSqlDefFn, opts);
   }
 
   joinManyToMany<
@@ -338,8 +350,9 @@ export class Repository<
     model1: N1,
     model2: N2,
     joinSqlDefFn: JoinFn<TContext, string & keyof TDimensions, N1, N2>,
+    opts?: JoinOptions,
   ) {
-    return this.join("manyToMany", model1, model2, joinSqlDefFn);
+    return this.join("manyToMany", model1, model2, joinSqlDefFn, opts);
   }
 
   getDimension(dimensionName: string): Dimension {

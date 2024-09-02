@@ -85,14 +85,14 @@ it("can crate a query plan", () => {
             {
               leftModel: "tracks",
               rightModel: "albums",
-              joinType: "rightJoin",
+              joinType: "right",
             },
             {
               leftModel: "albums",
               rightModel: "artists",
-              joinType: "leftJoin",
+              joinType: "left",
             },
-            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+            { leftModel: "tracks", rightModel: "genres", joinType: "left" },
           ],
         },
         filters: [
@@ -150,19 +150,19 @@ it("can crate a query plan", () => {
             {
               leftModel: "invoice_lines",
               rightModel: "tracks",
-              joinType: "leftJoin",
+              joinType: "left",
             },
             {
               leftModel: "tracks",
               rightModel: "albums",
-              joinType: "rightJoin",
+              joinType: "right",
             },
             {
               leftModel: "albums",
               rightModel: "artists",
-              joinType: "leftJoin",
+              joinType: "left",
             },
-            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+            { leftModel: "tracks", rightModel: "genres", joinType: "left" },
           ],
         },
         filters: [
@@ -213,24 +213,24 @@ it("can crate a query plan", () => {
             {
               leftModel: "invoices",
               rightModel: "invoice_lines",
-              joinType: "leftJoin",
+              joinType: "left",
             },
             {
               leftModel: "invoice_lines",
               rightModel: "tracks",
-              joinType: "leftJoin",
+              joinType: "left",
             },
             {
               leftModel: "tracks",
               rightModel: "albums",
-              joinType: "rightJoin",
+              joinType: "right",
             },
             {
               leftModel: "albums",
               rightModel: "artists",
-              joinType: "leftJoin",
+              joinType: "left",
             },
-            { leftModel: "tracks", rightModel: "genres", joinType: "leftJoin" },
+            { leftModel: "tracks", rightModel: "genres", joinType: "left" },
           ],
         },
         filters: [
