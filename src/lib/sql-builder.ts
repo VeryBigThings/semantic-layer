@@ -5,7 +5,7 @@ import { AnyBaseDialect } from "./dialect/base.js";
 export interface QueryJoin {
   table: string | SqlFragment | SqlQueryBuilder;
   on: string | SqlFragment;
-  type: "inner" | "left" | "right";
+  type: "inner" | "left" | "right" | "full";
 }
 
 export interface SqlQueryStructure {
@@ -82,7 +82,7 @@ export class SqlQueryBuilder {
   join(
     table: string | SqlFragment | SqlQueryBuilder,
     on: string | SqlFragment,
-    type: "inner" | "left" | "right",
+    type: "inner" | "left" | "right" | "full",
   ) {
     this.query = {
       ...this.query,
@@ -110,6 +110,13 @@ export class SqlQueryBuilder {
     on: string | SqlFragment,
   ) {
     return this.join(table, on, "inner");
+  }
+
+  fullJoin(
+    table: string | SqlFragment | SqlQueryBuilder,
+    on: string | SqlFragment,
+  ) {
+    return this.join(table, on, "full");
   }
 
   toSQL(): SqlQuery {

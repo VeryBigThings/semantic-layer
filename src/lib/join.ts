@@ -3,12 +3,15 @@ import { ColumnRef, DimensionRef, IdentifierRef, SqlFn } from "./sql-fn.js";
 import { AnyModel } from "./model.js";
 import { ModelMemberWithoutModelPrefix } from "./types.js";
 
+export type ExplicitJoinType = "inner" | "full";
+
 export interface Join<C> {
   left: string;
   right: string;
   joinOnDef: (context: C) => SqlFn;
   reversed: boolean;
   type: "oneToOne" | "oneToMany" | "manyToOne" | "manyToMany";
+  joinType?: ExplicitJoinType;
 }
 
 export type AnyJoin = Join<any>;
@@ -47,11 +50,30 @@ export function makeModelJoinPayload(model: AnyModel, context: unknown) {
   };
 }
 
-export const JOIN_WEIGHTS: Record<AnyJoin["type"], number> = {
-  oneToOne: 1,
-  oneToMany: 3,
-  manyToOne: 2,
-  manyToMany: 4,
+export const JOIN_PRIORITIES = ["low", "normal", "high"] as const;
+
+export const JOIN_WEIGHTS: Record<
+  (typeof JOIN_PRIORITIES)[number],
+  Record<AnyJoin["type"], number>
+> = {
+  low: {
+    oneToOne: 100,
+    oneToMany: 300,
+    manyToOne: 200,
+    manyToMany: 400,
+  },
+  normal: {
+    oneToOne: 10,
+    oneToMany: 30,
+    manyToOne: 20,
+    manyToMany: 40,
+  },
+  high: {
+    oneToOne: 1,
+    oneToMany: 3,
+    manyToOne: 2,
+    manyToMany: 4,
+  },
 };
 
 export const REVERSED_JOIN: Record<AnyJoin["type"], AnyJoin["type"]> = {
@@ -59,4 +81,9 @@ export const REVERSED_JOIN: Record<AnyJoin["type"], AnyJoin["type"]> = {
   oneToMany: "manyToOne",
   manyToOne: "oneToMany",
   manyToMany: "manyToMany",
+};
+
+export type JoinOptions = {
+  priority?: (typeof JOIN_PRIORITIES)[number];
+  type?: ExplicitJoinType;
 };

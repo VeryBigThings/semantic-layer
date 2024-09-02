@@ -48,7 +48,9 @@ export function findOptimalJoinGraph(
     return makeSingleModelGraph(requestedModels[0]!);
   }
 
-  const paths = graphlib.alg.dijkstraAll(originalGraph);
+  const paths = graphlib.alg.dijkstraAll(originalGraph, (e) => {
+    return originalGraph.edge(e);
+  });
   const completeGraph = buildCompleteGraph(paths, requestedModels);
   const mst = graphlib.alg.prim(completeGraph, (e) => {
     return completeGraph.edge(e);

@@ -135,10 +135,18 @@ export class QueryBuilder<
       this.dialect,
       context,
     );
-    const queryPlan = getQueryPlan(this, queryContext, context, parsedQuery);
+    const queryPlan = this.getQueryPlan(queryContext, context, parsedQuery);
     const sqlQuery = buildQuery(this, queryContext, context, queryPlan);
 
     return sqlQuery.toSQL();
+  }
+
+  getQueryPlan(
+    queryContext: QueryContext,
+    context: unknown,
+    query: AnyInputQuery,
+  ) {
+    return getQueryPlan(this, queryContext, context, query);
   }
 
   unsafeBuildQuery(payload: unknown, context: unknown) {

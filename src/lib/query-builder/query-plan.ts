@@ -318,6 +318,7 @@ function getSegmentQueryMetricsRefsSubQueryPlan(
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity for join planning
 function getSegmentQueryJoins(
   queryBuilder: AnyQueryBuilder,
   models: string[],
@@ -327,13 +328,13 @@ function getSegmentQueryJoins(
   const visitedModels = new Set<string>();
   const modelsToProcess: {
     modelName: string;
-    join?: { join: AnyJoin; left: string; right: string };
+    join?: { config: AnyJoin; leftModel: string; rightModel: string };
   }[] = [{ modelName: initialModel }];
 
   const joins: {
     leftModel: string;
     rightModel: string;
-    joinType: "leftJoin" | "rightJoin";
+    joinType: "left" | "right" | "inner" | "full";
   }[] = [];
   let hasRowMultiplication = false;
 
@@ -350,14 +351,21 @@ function getSegmentQueryJoins(
     );
 
     if (join) {
-      if (join.join.type === "manyToMany" || join.join.type === "oneToMany") {
+      if (
+        join.config.type === "manyToMany" ||
+        join.config.type === "oneToMany"
+      ) {
         hasRowMultiplication = true;
       }
-      const joinType = join.join.reversed ? "rightJoin" : "leftJoin";
+      const joinType = join.config.joinType
+        ? join.config.joinType
+        : join.config.reversed
+          ? "right"
+          : "left";
 
       joins.push({
-        leftModel: join.left,
-        rightModel: join.right,
+        leftModel: join.leftModel,
+        rightModel: join.rightModel,
         joinType,
       });
     }
@@ -371,7 +379,11 @@ function getSegmentQueryJoins(
         return {
           modelName: unvisitedModelName,
           join: join
-            ? { left: modelName, right: unvisitedModelName, join }
+            ? {
+                leftModel: modelName,
+                rightModel: unvisitedModelName,
+                config: join,
+              }
             : undefined,
         };
       }),
