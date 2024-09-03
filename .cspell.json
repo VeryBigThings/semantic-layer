@@ -23,6 +23,7 @@
     "Favourites",
     "Fernanda",
     "Fernandes",
+    "Filenaming",
     "Finlandia",
     "Galactica",
     "gjuchault",
@@ -51,11 +52,11 @@
     "socio",
     "sqls",
     "stico",
+    "SUBQUERY",
     "Sucesso",
     "testcontainers",
     "tsdoc",
-    "verybigthings",
-    "SUBQUERY"
+    "verybigthings"
   ],
   "flagWords": [],
   "ignorePaths": [

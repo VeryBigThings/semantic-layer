@@ -20,7 +20,8 @@
         "noNonNullAssertion": "off",
         "useImportType": "off",
         "noParameterProperties": "off",
-        "noNamespaceImport": "off"
+        "noNamespaceImport": "off",
+        "useFilenamingConvention": "off"
       },
       "performance": {
         "noBarrelFile": "off",
