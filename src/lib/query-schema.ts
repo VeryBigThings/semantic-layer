@@ -10,9 +10,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   const dimensionPaths = queryBuilder.repository
     .getDimensions()
+    .filter((d) => !d.isPrivate())
     .map((d) => d.getPath());
   const metricPaths = queryBuilder.repository
     .getMetrics()
+    .filter((m) => !m.isPrivate())
     .map((m) => m.getPath());
 
   const memberToTypeIndex = {
@@ -52,10 +54,10 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Essential complexity for validating filters. We need to validate that all and/or connectives have filters with members of the same type (dimension or metric), and we need to do this recursively. Using a queue to avoid stack overflows (although it's not a big chance that we'll have more than a few levels of nesting).
   const getConnectiveFilterMemberTypes = (filters: AnyQueryFilter[]) => {
     const connectiveFiltersMemberTypes: Set<"metric" | "dimension"> = new Set();
-    const filtersQueue = [...filters];
+    const filtersToProcess = [...filters];
 
-    while (filtersQueue.length > 0) {
-      const filter = filtersQueue.shift();
+    while (filtersToProcess.length > 0) {
+      const filter = filtersToProcess.shift();
       // We don't have any type safety here because at this moment we don't know which filters are registered (although we should in practice have two types of structures - filters which should all have format of {operator: string, member: string, ...} or connectives which should have a format of {operator: "and" | "or", filters: [...]}), so we do some extra checks //
       if (isRecord(filter)) {
         if (
@@ -63,7 +65,7 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
           (filter.operator === "or" && Array.isArray(filter.filters))
         ) {
           const subFilters = filter.filters as AnyQueryFilter[];
-          filtersQueue.push(...subFilters);
+          filtersToProcess.push(...subFilters);
         } else {
           const member =
             typeof filter.member === "string" ? filter.member : null;
@@ -127,7 +129,9 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
         .array(
           z
             .string()
-            .refine((arg) => memberPaths.includes(arg))
+            .refine((arg) => memberPaths.includes(arg), {
+              message: "Member not found",
+            })
             .describe("Dimension or metric name"),
         )
         .min(1),
@@ -135,7 +139,12 @@ export function buildQuerySchema(queryBuilder: AnyQueryBuilder) {
       offset: z.number().optional(),
       order: z
         .array(
-          z.object({ member: z.string(), direction: z.enum(["asc", "desc"]) }),
+          z.object({
+            member: z.string().refine((arg) => memberPaths.includes(arg), {
+              message: "Member not found",
+            }),
+            direction: z.enum(["asc", "desc"]),
+          }),
         )
         .optional(),
       filters: filters.optional(),

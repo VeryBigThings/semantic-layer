@@ -1653,38 +1653,46 @@ describe("semantic layer", async () => {
         customers___customer_id: {
           memberType: "dimension",
           path: "customers.customer_id",
+          alias: "customers___customer_id",
           type: "number",
           description: "The unique identifier of the customer",
           format: undefined,
           isPrimaryKey: true,
           isGranularity: false,
+          isPrivate: false,
         },
         invoices___invoice_id: {
           memberType: "dimension",
           path: "invoices.invoice_id",
+          alias: "invoices___invoice_id",
           type: "number",
           description: "The unique identifier of the invoice",
           format: undefined,
           isPrimaryKey: true,
           isGranularity: false,
+          isPrivate: false,
         },
         invoices___customer_id: {
           memberType: "dimension",
           path: "invoices.customer_id",
+          alias: "invoices___customer_id",
           type: "number",
           description: "The unique identifier of the invoice customer",
           format: undefined,
           isPrimaryKey: false,
           isGranularity: false,
+          isPrivate: false,
         },
         invoices___total: {
           memberType: "metric",
           path: "invoices.total",
+          alias: "invoices___total",
           format: "percentage",
           type: "string",
           description: undefined,
           isPrimaryKey: false,
           isGranularity: false,
+          isPrivate: false,
         },
       });
     });
@@ -3097,6 +3105,107 @@ describe("semantic layer", async () => {
           invoice_lines___total_with_quantity: "2328.60 - 1",
         },
       ]);
+    });
+  });
+
+  describe("repository with private members", () => {
+    const customersModel = semanticLayer
+      .model()
+      .withName("customers")
+      .fromTable("Customer")
+      .withDimension("customer_id", {
+        type: "number",
+        primaryKey: true,
+        private: true,
+        sql: ({ model, sql }) => sql`${model.column("CustomerId")}`,
+      })
+      .withDimension("public_customer_id", {
+        type: "number",
+        primaryKey: true,
+        sql: ({ model, sql }) => sql`${model.dimension("customer_id")}`,
+      })
+      .withMetric("count", {
+        type: "string",
+        private: true,
+        sql: ({ model, sql }) =>
+          sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
+      })
+      .withMetric("public_count", {
+        type: "string",
+        sql: ({ model, sql }) => sql`${model.metric("count").aggregated()}`,
+      });
+
+    const repository = semanticLayer
+      .repository()
+      .withModel(customersModel)
+      .withCalculatedDimension("public_customer_id", {
+        type: "string",
+        sql: ({ sql, models }) =>
+          sql`${models.customers.dimension(
+            "customer_id",
+          )} || ' - ' || ${models.customers.dimension("public_customer_id")}`,
+      })
+      .withCalculatedMetric("public_count", {
+        type: "string",
+        sql: ({ sql, models }) =>
+          sql`${models.customers.metric("count").aggregated()} ||  ' - ' || ${models.customers.metric("public_count").aggregated()}`,
+      });
+
+    const queryBuilder = repository.build("postgresql");
+
+    it("can have private members", async () => {
+      const validationResult = queryBuilder.querySchema.safeParse({
+        members: ["customers.customer_id", "customers.count"],
+      });
+
+      // @ts-expect-error - We expect the validation to fail
+      assert.deepEqual(validationResult.error.issues, [
+        { code: "custom", message: "Member not found", path: ["members", 0] },
+        { code: "custom", message: "Member not found", path: ["members", 1] },
+      ]);
+
+      const query = queryBuilder.buildQuery({
+        members: [
+          "customers.public_customer_id",
+          "public_customer_id",
+          "customers.public_count",
+          "public_count",
+        ],
+        limit: 1,
+        order: [{ member: "customers.public_customer_id", direction: "asc" }],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [
+        {
+          customers___public_count: "1",
+          customers___public_customer_id: 1,
+          public_count: "1 - 1",
+          public_customer_id: "1 - 1",
+        },
+      ]);
+
+      const introspectionResult = queryBuilder.introspect({
+        members: ["customers.customer_id"],
+      });
+
+      assert.deepEqual(introspectionResult, {
+        customers___customer_id: {
+          memberType: "dimension",
+          path: "customers.customer_id",
+          alias: "customers___customer_id",
+          format: undefined,
+          type: "number",
+          description: undefined,
+          isPrimaryKey: true,
+          isGranularity: false,
+          isPrivate: true,
+        },
+      });
     });
   });
 });

@@ -13,10 +13,11 @@ import {
 import invariant from "tiny-invariant";
 import { Simplify } from "type-fest";
 import { AnyBaseDialect } from "./dialect/base.js";
+import { pathToAlias } from "./helpers.js";
 import { HierarchyElementConfig } from "./hierarchy.js";
 import { buildQuery } from "./query-builder/build-query.js";
 import { FilterBuilder } from "./query-builder/filter-builder.js";
-import { getQueryPlan } from "./query-builder/query-plan.js";
+import { QueryPlan, getQueryPlan } from "./query-builder/query-plan.js";
 import { QueryContext } from "./query-builder/query-plan/query-context.js";
 import { QuerySchema, buildQuerySchema } from "./query-schema.js";
 import type { AnyRepository } from "./repository.js";
@@ -29,12 +30,13 @@ function isValidGranularityConfigElements(
 }
 
 export class QueryBuilder<
-  C,
-  D extends MemberNameToType,
-  M extends MemberNameToType,
-  F,
-  P,
-  G,
+  TContext,
+  TDimensions extends MemberNameToType,
+  TMetrics extends MemberNameToType,
+  TMemberNames extends string,
+  TFilters,
+  TDialectParamsReturnType,
+  THierarchyNames,
 > {
   public readonly querySchema: QuerySchema;
   public readonly hierarchies: HierarchyConfig[];
@@ -122,7 +124,7 @@ export class QueryBuilder<
     return hierarchy;
   }
 
-  getHierarchy<G1 extends G>(hierarchyName: G1 & string) {
+  getHierarchy<G1 extends THierarchyNames>(hierarchyName: G1 & string) {
     return this.unsafeGetHierarchy(hierarchyName);
   }
 
@@ -141,11 +143,12 @@ export class QueryBuilder<
     return sqlQuery.toSQL();
   }
 
+  // Return type annotation is needed because otherwise build generates incorrect index.d.ts
   getQueryPlan(
     queryContext: QueryContext,
     context: unknown,
     query: AnyInputQuery,
-  ) {
+  ): QueryPlan {
     return getQueryPlan(this, queryContext, context, query);
   }
 
@@ -157,18 +160,18 @@ export class QueryBuilder<
     ).toNative();
     return {
       sql,
-      bindings: bindings as P,
+      bindings: bindings as TDialectParamsReturnType,
     };
   }
 
   buildQuery<const Q extends { members: string[] }>(
     query: Q &
       InputQuery<
-        string & keyof D,
-        string & keyof M,
-        F & { member: string & (keyof D | keyof M) }
+        string & keyof TDimensions,
+        string & keyof TMetrics,
+        TFilters & { member: string & TMemberNames }
       >,
-    ...rest: C extends undefined ? [] : [C]
+    ...rest: TContext extends undefined ? [] : [TContext]
   ) {
     const [context] = rest;
     const { sql, bindings } = this.unsafeBuildQuery(query, context);
@@ -176,14 +179,14 @@ export class QueryBuilder<
     const result: SqlQueryResult<
       Simplify<
         QueryReturnType<
-          D & M,
-          QueryMemberName<Q["members"]> & (keyof D | keyof M)
+          TDimensions & TMetrics,
+          QueryMemberName<Q["members"]> & (keyof TDimensions | keyof TMetrics)
         >
       >,
-      P
+      TDialectParamsReturnType
     > = {
       sql,
-      bindings: bindings as P,
+      bindings: bindings as TDialectParamsReturnType,
     };
 
     return result;
@@ -199,15 +202,18 @@ export class QueryBuilder<
     return query.members.reduce<IntrospectionResult>((acc, memberName) => {
       const member = this.repository.getMember(memberName);
       const isDimension = member.isDimension();
+      const alias = pathToAlias(memberName);
 
-      acc[memberName.replaceAll(".", "___")] = {
+      acc[alias] = {
         memberType: isDimension ? "dimension" : "metric",
         path: member.getPath(),
+        alias,
         format: member.getFormat() as AnyMemberFormat,
         type: member.getType(),
         description: member.getDescription(),
         isPrimaryKey: isDimension ? member.isPrimaryKey() : false,
         isGranularity: isDimension ? member.isGranularity() : false,
+        isPrivate: member.isPrivate(),
       };
 
       return acc;
@@ -217,17 +223,20 @@ export class QueryBuilder<
 
 export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
   any,
-  infer D,
-  infer M,
-  infer F,
+  infer TDimensions,
+  infer TMetrics,
+  infer TMemberNames,
+  infer TFilters,
   any,
   any
 >
   ? InputQuery<
-      string & keyof D,
-      string & keyof M,
-      F & { member: string & (keyof D | keyof M) }
+      string & keyof TDimensions,
+      string & keyof TMetrics,
+      TFilters & {
+        member: TMemberNames;
+      }
     >
   : never;
 
-export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any, any>;
+export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any, any, any>;

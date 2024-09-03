@@ -9,13 +9,13 @@ import { CalculatedMetricQueryMember } from "../repository/calculated-metric.js"
 import { findOptimalJoinGraph } from "./optimal-join-graph.js";
 import { QueryContext } from "./query-plan/query-context.js";
 
-export type QueryFilterConnective = {
+export type QueryPlanQueryFilterConnective = {
   operator: "and" | "or";
-  filters: QueryFilter[];
+  filters: QueryPlanQueryFilter[];
 };
 
-export type QueryFilter =
-  | QueryFilterConnective
+export type QueryPlanQueryFilter =
+  | QueryPlanQueryFilterConnective
   | {
       operator: string;
       member: string;
@@ -23,8 +23,8 @@ export type QueryFilter =
     };
 
 function filterIsConnective(
-  filter: QueryFilter,
-): filter is QueryFilterConnective {
+  filter: QueryPlanQueryFilter,
+): filter is QueryPlanQueryFilterConnective {
   return filter.operator === "and" || filter.operator === "or";
 }
 
@@ -107,7 +107,7 @@ function getOrderWithOnlyProjectedMembers(
   }
 }
 
-function getFirstMemberFilter(filter: QueryFilter) {
+function getFirstMemberFilter(filter: QueryPlanQueryFilter) {
   if (filterIsConnective(filter)) {
     return getFirstMemberFilter(filter.filters[0]!);
   }
@@ -116,11 +116,11 @@ function getFirstMemberFilter(filter: QueryFilter) {
 
 function getDimensionAndMetricFilters(
   repository: AnyRepository,
-  filters: QueryFilter[] | undefined,
+  filters: QueryPlanQueryFilter[] | undefined,
 ) {
   return (filters ?? []).reduce<{
-    dimensionFilters: QueryFilter[];
-    metricFilters: QueryFilter[];
+    dimensionFilters: QueryPlanQueryFilter[];
+    metricFilters: QueryPlanQueryFilter[];
   }>(
     (acc, filter) => {
       const memberFilter = getFirstMemberFilter(filter);
@@ -136,7 +136,10 @@ function getDimensionAndMetricFilters(
   );
 }
 
-function getFiltersMembers(repository: AnyRepository, filters: QueryFilter[]) {
+function getFiltersMembers(
+  repository: AnyRepository,
+  filters: QueryPlanQueryFilter[],
+) {
   const members: Member[] = [];
   const filtersToProcess = [...filters];
   while (filtersToProcess.length > 0) {
@@ -285,7 +288,7 @@ function getSegmentQueryMetricsRefsSubQueryPlan(
   context: unknown,
   dimensions: string[],
   metrics: string[],
-  filters: QueryFilter[],
+  filters: QueryPlanQueryFilter[],
 ): { joinOnDimensions: string[]; queryPlan: QueryPlan } | undefined {
   const metricRefs = Array.from(
     new Set(
@@ -399,7 +402,7 @@ function getSegmentQueryJoins(
 interface SegmentInput {
   dimensions: { projected: Dimension[]; filter: Dimension[] };
   metrics?: ReturnType<typeof getMetricSegments>[number];
-  filters: QueryFilter[];
+  filters: QueryPlanQueryFilter[];
 }
 
 function getSegmentQuery(

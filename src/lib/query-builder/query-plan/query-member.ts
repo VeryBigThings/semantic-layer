@@ -3,6 +3,7 @@ import {
   DimensionRef,
   MetricAliasColumnOrDimensionRef,
   MetricAliasMetricRef,
+  MetricRef,
   SqlFn,
   valueIsMetricAliasRef,
 } from "../../sql-fn.js";
@@ -132,7 +133,8 @@ export abstract class MetricQueryMember extends QueryMember {
     );
     return [fragment];
   }
-  getMetricRefs() {
+  // Return type annotation is needed because otherwise build generates incorrect index.d.ts
+  getMetricRefs(): MetricRef[] {
     const filterFn = (ref: unknown): ref is MetricAliasMetricRef =>
       ref instanceof MetricAliasMetricRef;
     return this.sqlFnResult.filterRefs(filterFn).map((v) => v.aliasOf);

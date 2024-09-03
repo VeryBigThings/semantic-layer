@@ -51,11 +51,12 @@ export type ModelSqlFn<C> = (args: {
 }*/
 
 export class Model<
-  C,
-  N extends string,
-  D extends MemberNameToType = MemberNameToType,
-  M extends MemberNameToType = MemberNameToType,
-  G extends string = never,
+  TContext,
+  TModelName extends string,
+  TModelDimensions extends MemberNameToType = MemberNameToType,
+  TModelMetrics extends MemberNameToType = MemberNameToType,
+  TPrivateMembers extends string = never,
+  TModelHierarchyNames extends string = never,
 > {
   public readonly dimensions: Record<string, BasicDimension> = {};
   public readonly metrics: Record<string, BasicMetric> = {};
@@ -70,24 +71,49 @@ export class Model<
   public readonly hierarchyNames: Set<string> = new Set();
 
   constructor(
-    public readonly name: N,
-    public readonly config: ModelConfig<C>,
+    public readonly name: TModelName,
+    public readonly config: ModelConfig<TContext>,
   ) {}
   withDimension<
-    DN1 extends string,
-    DP extends BasicDimensionProps<C, string & keyof D>,
-    DG extends boolean = DimensionHasTemporalGranularity<DP>,
+    TDimensionName extends string,
+    TDimensionProps extends BasicDimensionProps<
+      TContext,
+      string & keyof TModelDimensions
+    >,
+    TDimensionIsPrivate extends
+      boolean = TDimensionProps["private"] extends true ? true : false,
+    TDimensionHasTemporalGranularity extends
+      boolean = DimensionHasTemporalGranularity<TDimensionProps>,
   >(
-    name: Exclude<DN1, keyof D | keyof M>,
-    dimensionProps: DP,
+    name: Exclude<TDimensionName, keyof TModelDimensions | keyof TModelMetrics>,
+    dimensionProps: TDimensionProps,
   ): Model<
-    C,
-    N,
-    DG extends true
-      ? D & WithTemporalGranularityDimensions<DN1, DP["type"]>
-      : D & { [k in DN1]: DP["type"] },
-    M,
-    DG extends true ? G | DN1 : G
+    TContext,
+    TModelName,
+    TDimensionHasTemporalGranularity extends true
+      ? TModelDimensions &
+          WithTemporalGranularityDimensions<
+            TDimensionName,
+            TDimensionProps["type"]
+          >
+      : TModelDimensions & { [k in TDimensionName]: TDimensionProps["type"] },
+    TModelMetrics,
+    TDimensionIsPrivate extends true
+      ?
+          | TPrivateMembers
+          | (TDimensionIsPrivate extends true
+              ? string &
+                  keyof WithTemporalGranularityDimensions<
+                    TDimensionName,
+                    TDimensionProps["type"]
+                  >
+              : TDimensionName)
+      : TPrivateMembers,
+    TDimensionHasTemporalGranularity extends true
+      ? TDimensionIsPrivate extends true
+        ? TModelHierarchyNames
+        : TModelHierarchyNames | TDimensionName
+      : TModelHierarchyNames
   > {
     invariant(
       !(this.dimensions[name] || this.metrics[name]),
@@ -98,10 +124,10 @@ export class Model<
     this.dimensions[name] = dimension;
     if (
       // TODO: figure out why typeHasGranularity is not working anymore
-      dimensionProps.type === "datetime" ||
-      dimensionProps.type === "date" ||
-      (dimensionProps.type === "time" &&
-        dimensionProps.omitGranularity !== true)
+      (dimensionProps.type === "datetime" ||
+        dimensionProps.type === "date" ||
+        dimensionProps.type === "time") &&
+      dimensionProps.omitGranularity !== true
     ) {
       const granularityDimensions =
         TemporalGranularityByDimensionType[dimensionProps.type];
@@ -120,21 +146,39 @@ export class Model<
           g,
         );
       }
-      this.unsafeWithHierarchy(
-        name,
-        makeTemporalHierarchyElementsForDimension(name, dimensionProps.type),
-        "temporal",
-      );
+      if (!dimensionProps.private) {
+        this.unsafeWithHierarchy(
+          name,
+          makeTemporalHierarchyElementsForDimension(name, dimensionProps.type),
+          "temporal",
+        );
+      }
     }
     return this;
   }
   withMetric<
-    MN1 extends string,
-    MP extends BasicMetricProps<C, string & keyof D, string & keyof M>,
+    TMetricName extends string,
+    TMetricProps extends BasicMetricProps<
+      TContext,
+      string & keyof TModelDimensions,
+      string & keyof TModelMetrics
+    >,
+    TMetricIsPrivate extends boolean = TMetricProps["private"] extends true
+      ? true
+      : false,
   >(
-    name: Exclude<MN1, keyof M | keyof D>,
-    metric: MP,
-  ): Model<C, N, D, M & { [k in MN1]: MP["type"] }, G> {
+    name: Exclude<TMetricName, keyof TModelMetrics | keyof TModelDimensions>,
+    metric: TMetricProps,
+  ): Model<
+    TContext,
+    TModelName,
+    TModelDimensions,
+    TModelMetrics & { [k in TMetricName]: TMetricProps["type"] },
+    TMetricIsPrivate extends true
+      ? TPrivateMembers | TMetricName
+      : TPrivateMembers,
+    TModelHierarchyNames
+  > {
     invariant(
       !(this.dimensions[name] || this.metrics[name]),
       `Member "${name}" already exists`,
@@ -150,7 +194,7 @@ export class Model<
   ) {
     invariant(
       this.hierarchyNames.has(hierarchyName) === false,
-      `Granularity ${hierarchyName} already exists`,
+      `Hierarchy ${hierarchyName} already exists`,
     );
     this.hierarchyNames.add(hierarchyName);
     if (type === "categorical") {
@@ -160,34 +204,56 @@ export class Model<
     }
     return this;
   }
-  withCategoricalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, G>,
+  withCategoricalHierarchy<THierarchyName extends string>(
+    hierarchyName: Exclude<THierarchyName, TModelHierarchyNames>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+      element: ReturnType<
+        typeof makeHierarchyElementInitMaker<
+          Omit<TModelDimensions, TPrivateMembers>
+        >
+      >;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
-  ): Model<C, N, D, M, G | GN> {
+  ): Model<
+    TContext,
+    TModelName,
+    TModelDimensions,
+    TModelMetrics,
+    TPrivateMembers,
+    TModelHierarchyNames | THierarchyName
+  > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
     });
     return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
   }
-  withTemporalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, G>,
+  withTemporalHierarchy<THierarchyName extends string>(
+    hierarchyName: Exclude<THierarchyName, TModelHierarchyNames>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<D>>;
+      element: ReturnType<
+        typeof makeHierarchyElementInitMaker<
+          Omit<TModelDimensions, TPrivateMembers>
+        >
+      >;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
-  ): Model<C, N, D, M, G | GN> {
+  ): Model<
+    TContext,
+    TModelName,
+    TModelDimensions,
+    TModelMetrics,
+    TPrivateMembers,
+    TModelHierarchyNames | THierarchyName
+  > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
     });
     return this.unsafeWithHierarchy(hierarchyName, elements, "temporal");
   }
-  getMetric(name: string & keyof M) {
+  getMetric(name: string & keyof TModelMetrics) {
     const metric = this.metrics[name];
     invariant(metric, `Metric ${name} not found in model ${this.name}`);
     return metric;
   }
-  getDimension(name: string & keyof D) {
+  getDimension(name: string & keyof TModelDimensions) {
     const dimension = this.dimensions[name];
     invariant(dimension, `Dimension ${name} not found in model ${this.name}`);
     return dimension;
@@ -195,7 +261,7 @@ export class Model<
   getPrimaryKeyDimensions() {
     return Object.values(this.dimensions).filter((d) => d.props.primaryKey);
   }
-  getMember(name: string & (keyof D | keyof M)) {
+  getMember(name: string & (keyof TModelDimensions | keyof TModelMetrics)) {
     const member = this.dimensions[name] || this.metrics[name];
     invariant(member, `Member ${name} not found in model ${this.name}`);
     return member;
@@ -210,7 +276,7 @@ export class Model<
     repository: AnyRepository,
     queryContext: QueryContext,
     dialect: AnyBaseDialect,
-    context: C,
+    context: TContext,
   ) {
     invariant(this.config.type === "table", "Model is not a table");
 
@@ -237,7 +303,7 @@ export class Model<
     repository: AnyRepository,
     queryContext: QueryContext,
     dialect: AnyBaseDialect,
-    context: C,
+    context: TContext,
   ) {
     invariant(this.config.type === "sqlQuery", "Model is not an SQL query");
 
@@ -253,7 +319,7 @@ export class Model<
     repository: AnyRepository,
     queryContext: QueryContext,
     dialect: AnyBaseDialect,
-    context: C,
+    context: TContext,
   ) {
     if (this.config.type === "table") {
       const { sql, bindings } = this.getTableName(
@@ -276,7 +342,7 @@ export class Model<
     repository: AnyRepository,
     queryContext: QueryContext,
     dialect: AnyBaseDialect,
-    context: C,
+    context: TContext,
   ) {
     if (this.config.type === "sqlQuery") {
       return SqlFragment.make({
@@ -288,8 +354,15 @@ export class Model<
     return this.getTableName(repository, queryContext, dialect, context);
   }
 
-  clone<N extends string>(name: N) {
-    const newModel = new Model<C, N, D, M, G>(name, this.config);
+  clone<TNewModelName extends string>(name: TNewModelName) {
+    const newModel = new Model<
+      TContext,
+      TNewModelName,
+      TModelDimensions,
+      TModelMetrics,
+      TPrivateMembers,
+      TModelHierarchyNames
+    >(name, this.config);
     for (const [key, value] of Object.entries(this.dimensions)) {
       newModel.dimensions[key] = value.clone(newModel);
     }
@@ -373,7 +446,19 @@ export type GetModelMetrics<T> = T extends Model<
     }
   : never;
 
+export type GetModelPrivateMembers<T> = T extends Model<
+  any,
+  infer TModelName,
+  any,
+  any,
+  infer TPrivateMembers,
+  any
+>
+  ? `${TModelName}.${TPrivateMembers}`
+  : never;
+
 export type GetModelHierarchies<T> = T extends Model<
+  any,
   any,
   any,
   any,

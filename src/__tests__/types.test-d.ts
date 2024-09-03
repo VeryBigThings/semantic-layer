@@ -21,6 +21,26 @@ const customersModel = semanticLayer
     type: "number",
     sql: ({ model, sql }) => sql`COUNT(DISTINCT ${model.column("CustomerId")})`,
   })
+  .withDimension("created_at", {
+    type: "datetime",
+    sql: ({ model, sql }) => sql`${model.column("CreatedAt")}`,
+  })
+  .withDimension("updated_at", {
+    type: "datetime",
+    sql: ({ model, sql }) => sql`${model.column("UpdatedAt")}`,
+    private: true,
+  })
+  .withDimension("private_dimension", {
+    type: "string",
+    private: true,
+    sql: ({ model }) => model.column("private_dimension"),
+  })
+  .withMetric("private_metric", {
+    type: "number",
+    private: true,
+    sql: ({ model, sql }) =>
+      sql`COUNT(DISTINCT ${model.column("PrivateMetric")})`,
+  })
   .withCategoricalHierarchy("customerHierarchy1", ({ element }) => [
     element("customer")
       .withDimensions(["customer_id", "first_name"])
@@ -30,19 +50,37 @@ const customersModel = semanticLayer
         ({ dimension }) => `${dimension("first_name")}`,
       ),
   ])
-  .withCategoricalHierarchy("customerHierarchy2", ({ element }) => [
-    element("customer")
-      .withDimensions(["customer_id", "first_name"])
-      .withKey(["customer_id"])
+  .withTemporalHierarchy("customerHierarchy2", ({ element }) => [
+    element("created_at")
+      .withDimensions(["created_at"])
+      .withKey(["created_at"])
       .withFormat(
-        ["first_name"],
-        ({ dimension }) => `${dimension("first_name")}`,
+        ["created_at"],
+        ({ dimension }) => `${dimension("created_at")}`,
       ),
   ]);
 
 const repository = semanticLayer
   .repository<{ foo: string }>()
-  .withModel(customersModel);
+  .withModel(customersModel)
+  .withCategoricalHierarchy("repositoryHierarchy1", ({ element }) => [
+    element("customer")
+      .withDimensions(["customers.customer_id", "customers.first_name"])
+      .withKey(["customers.customer_id"])
+      .withFormat(
+        ["customers.first_name"],
+        ({ dimension }) => `${dimension("customers.first_name")}`,
+      ),
+  ])
+  .withTemporalHierarchy("repositoryHierarchy2", ({ element }) => [
+    element("created_at")
+      .withDimensions(["customers.created_at"])
+      .withKey(["customers.created_at"])
+      .withFormat(
+        ["customers.created_at"],
+        ({ dimension }) => `${dimension("customers.created_at")}`,
+      ),
+  ]);
 
 const queryBuilder = repository.build("postgresql");
 
@@ -77,17 +115,70 @@ describe("model", () => {
     >().toEqualTypeOf<{
       "customers.customer_id": "number";
       "customers.first_name": "string";
+      "customers.created_at": "datetime";
+      "customers.created_at.date": "date";
+      "customers.created_at.time": "time";
+      "customers.created_at.hour": "string";
+      "customers.created_at.year": "number";
+      "customers.created_at.quarter": "string";
+      "customers.created_at.quarter_of_year": "number";
+      "customers.created_at.month": "string";
+      "customers.created_at.month_num": "number";
+      "customers.created_at.week": "string";
+      "customers.created_at.week_num": "number";
+      "customers.created_at.day_of_month": "number";
+      "customers.created_at.hour_of_day": "number";
+      "customers.created_at.minute": "string";
+      "customers.updated_at": "datetime";
+      "customers.updated_at.date": "date";
+      "customers.updated_at.time": "time";
+      "customers.updated_at.hour": "string";
+      "customers.updated_at.year": "number";
+      "customers.updated_at.quarter": "string";
+      "customers.updated_at.quarter_of_year": "number";
+      "customers.updated_at.month": "string";
+      "customers.updated_at.month_num": "number";
+      "customers.updated_at.week": "string";
+      "customers.updated_at.week_num": "number";
+      "customers.updated_at.day_of_month": "number";
+      "customers.updated_at.hour_of_day": "number";
+      "customers.updated_at.minute": "string";
+      "customers.private_dimension": "string";
     }>();
 
     expectTypeOf<
       semanticLayer.GetModelMetrics<CustomersModel>
     >().toEqualTypeOf<{
       "customers.count": "number";
+      "customers.private_metric": "number";
     }>();
 
     expectTypeOf<
+      semanticLayer.GetModelPrivateMembers<CustomersModel>
+    >().toEqualTypeOf<
+      | "customers.private_dimension"
+      | "customers.private_metric"
+      | "customers.updated_at"
+      | "customers.updated_at.date"
+      | "customers.updated_at.time"
+      | "customers.updated_at.hour"
+      | "customers.updated_at.year"
+      | "customers.updated_at.quarter"
+      | "customers.updated_at.quarter_of_year"
+      | "customers.updated_at.month"
+      | "customers.updated_at.month_num"
+      | "customers.updated_at.week"
+      | "customers.updated_at.week_num"
+      | "customers.updated_at.day_of_month"
+      | "customers.updated_at.hour_of_day"
+      | "customers.updated_at.minute"
+    >();
+
+    expectTypeOf<
       semanticLayer.GetModelHierarchies<CustomersModel>
-    >().toEqualTypeOf<"customerHierarchy1" | "customerHierarchy2">();
+    >().toEqualTypeOf<
+      "customerHierarchy1" | "customerHierarchy2" | "created_at"
+    >();
   });
 
   it("can type check MemberFormat", () => {
@@ -123,12 +214,43 @@ describe("model", () => {
       type: "string";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"string"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -140,12 +262,43 @@ describe("model", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -157,12 +310,43 @@ describe("model", () => {
       type: "boolean";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"boolean"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -175,12 +359,43 @@ describe("model", () => {
       description?: string | undefined;
       omitGranularity?: boolean | undefined;
       format?: semanticLayer.MemberFormat<"datetime"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -193,12 +408,43 @@ describe("model", () => {
       description?: string | undefined;
       omitGranularity?: boolean | undefined;
       format?: semanticLayer.MemberFormat<"date"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -211,12 +457,43 @@ describe("model", () => {
       description?: string | undefined;
       omitGranularity?: boolean | undefined;
       format?: semanticLayer.MemberFormat<"time"> | undefined;
+      private?: boolean | undefined;
       sql?:
         | semanticLayer.BasicDimensionSqlFn<
             {
               foo: string;
             },
-            "customer_id" | "first_name"
+            | "customer_id"
+            | "first_name"
+            | "created_at"
+            | "created_at.date"
+            | "created_at.time"
+            | "created_at.hour"
+            | "created_at.year"
+            | "created_at.quarter"
+            | "created_at.quarter_of_year"
+            | "created_at.month"
+            | "created_at.month_num"
+            | "created_at.week"
+            | "created_at.week_num"
+            | "created_at.day_of_month"
+            | "created_at.hour_of_day"
+            | "created_at.minute"
+            | "updated_at"
+            | "updated_at.date"
+            | "updated_at.time"
+            | "updated_at.hour"
+            | "updated_at.year"
+            | "updated_at.quarter"
+            | "updated_at.quarter_of_year"
+            | "updated_at.month"
+            | "updated_at.month_num"
+            | "updated_at.week"
+            | "updated_at.week_num"
+            | "updated_at.day_of_month"
+            | "updated_at.hour_of_day"
+            | "updated_at.minute"
+            | "private_dimension"
           >
         | undefined;
       primaryKey?: boolean | undefined;
@@ -260,12 +537,43 @@ describe("model", () => {
       type: "string";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"string"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -275,12 +583,43 @@ describe("model", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -290,12 +629,43 @@ describe("model", () => {
       type: "boolean";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"boolean"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -305,12 +675,43 @@ describe("model", () => {
       type: "datetime";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"datetime"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -320,12 +721,43 @@ describe("model", () => {
       type: "date";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"date"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -335,12 +767,43 @@ describe("model", () => {
       type: "time";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"time"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.BasicMetricSqlFn<
         {
           foo: string;
         },
-        "customer_id" | "first_name",
-        "count"
+        | "customer_id"
+        | "first_name"
+        | "created_at"
+        | "created_at.date"
+        | "created_at.time"
+        | "created_at.hour"
+        | "created_at.year"
+        | "created_at.quarter"
+        | "created_at.quarter_of_year"
+        | "created_at.month"
+        | "created_at.month_num"
+        | "created_at.week"
+        | "created_at.week_num"
+        | "created_at.day_of_month"
+        | "created_at.hour_of_day"
+        | "created_at.minute"
+        | "updated_at"
+        | "updated_at.date"
+        | "updated_at.time"
+        | "updated_at.hour"
+        | "updated_at.year"
+        | "updated_at.quarter"
+        | "updated_at.quarter_of_year"
+        | "updated_at.month"
+        | "updated_at.month_num"
+        | "updated_at.week"
+        | "updated_at.week_num"
+        | "updated_at.day_of_month"
+        | "updated_at.hour_of_day"
+        | "updated_at.minute"
+        | "private_dimension",
+        "count" | "private_metric"
       >;
     }>();
 
@@ -390,13 +853,59 @@ describe("model", () => {
           ): semanticLayer.HierarchyElementInit<{
             customer_id: "number";
             first_name: "string";
+            created_at: "datetime";
+            "created_at.date": "date";
+            "created_at.time": "time";
+            "created_at.hour": "string";
+            "created_at.year": "number";
+            "created_at.quarter": "string";
+            "created_at.quarter_of_year": "number";
+            "created_at.month": "string";
+            "created_at.month_num": "number";
+            "created_at.week": "string";
+            "created_at.week_num": "number";
+            "created_at.day_of_month": "number";
+            "created_at.hour_of_day": "number";
+            "created_at.minute": "string";
           }>;
-          fromDimension<DN extends "customer_id" | "first_name">(
+          fromDimension<
+            DN extends
+              | "customer_id"
+              | "first_name"
+              | "created_at"
+              | "created_at.date"
+              | "created_at.time"
+              | "created_at.hour"
+              | "created_at.year"
+              | "created_at.quarter"
+              | "created_at.quarter_of_year"
+              | "created_at.month"
+              | "created_at.month_num"
+              | "created_at.week"
+              | "created_at.week_num"
+              | "created_at.day_of_month"
+              | "created_at.hour_of_day"
+              | "created_at.minute",
+          >(
             name: DN,
           ): semanticLayer.HierarchyElement<
             {
               customer_id: "number";
               first_name: "string";
+              created_at: "datetime";
+              "created_at.date": "date";
+              "created_at.time": "time";
+              "created_at.hour": "string";
+              "created_at.year": "number";
+              "created_at.quarter": "string";
+              "created_at.quarter_of_year": "number";
+              "created_at.month": "string";
+              "created_at.month_num": "number";
+              "created_at.week": "string";
+              "created_at.week_num": "number";
+              "created_at.day_of_month": "number";
+              "created_at.hour_of_day": "number";
+              "created_at.minute": "string";
             },
             DN
           >;
@@ -422,12 +931,44 @@ describe("model", () => {
             customer_id: "number";
             first_name: "string";
           }>;
-          fromDimension<DN extends "customer_id" | "first_name">(
+          fromDimension<
+            DN extends
+              | "customer_id"
+              | "first_name"
+              | "created_at"
+              | "created_at.date"
+              | "created_at.time"
+              | "created_at.hour"
+              | "created_at.year"
+              | "created_at.quarter"
+              | "created_at.quarter_of_year"
+              | "created_at.month"
+              | "created_at.month_num"
+              | "created_at.week"
+              | "created_at.week_num"
+              | "created_at.day_of_month"
+              | "created_at.hour_of_day"
+              | "created_at.minute",
+          >(
             name: DN,
           ): semanticLayer.HierarchyElement<
             {
               customer_id: "number";
               first_name: "string";
+              created_at: "datetime";
+              "created_at.date": "date";
+              "created_at.time": "time";
+              "created_at.hour": "string";
+              "created_at.year": "number";
+              "created_at.quarter": "string";
+              "created_at.quarter_of_year": "number";
+              "created_at.month": "string";
+              "created_at.month_num": "number";
+              "created_at.week": "string";
+              "created_at.week_num": "number";
+              "created_at.day_of_month": "number";
+              "created_at.hour_of_day": "number";
+              "created_at.minute": "string";
             },
             DN
           >;
@@ -456,6 +997,7 @@ describe("repository", () => {
       any,
       any,
       any,
+      any,
       any
     >
       ? TContext
@@ -464,6 +1006,7 @@ describe("repository", () => {
     type GetRepositoryModelNames<T> = T extends semanticLayer.Repository<
       any,
       infer TModelNames,
+      any,
       any,
       any,
       any,
@@ -478,6 +1021,7 @@ describe("repository", () => {
       infer TDimensions,
       any,
       any,
+      any,
       any
     >
       ? TDimensions
@@ -489,12 +1033,26 @@ describe("repository", () => {
       any,
       infer TMetrics,
       any,
+      any,
       any
     >
       ? TMetrics
       : never;
 
+    type GetRepositoryPrivateMembers<T> = T extends semanticLayer.Repository<
+      any,
+      any,
+      any,
+      any,
+      infer TPrivateMembers,
+      any,
+      any
+    >
+      ? TPrivateMembers
+      : never;
+
     type GetRepositoryHierarchies<T> = T extends semanticLayer.Repository<
+      any,
       any,
       any,
       any,
@@ -515,14 +1073,67 @@ describe("repository", () => {
     expectTypeOf<GetRepositoryDimensions<Repository>>().branded.toEqualTypeOf<{
       "customers.customer_id": "number";
       "customers.first_name": "string";
+      "customers.private_dimension": "string";
+      "customers.created_at": "datetime";
+      "customers.created_at.date": "date";
+      "customers.created_at.time": "time";
+      "customers.created_at.hour": "string";
+      "customers.created_at.year": "number";
+      "customers.created_at.quarter": "string";
+      "customers.created_at.quarter_of_year": "number";
+      "customers.created_at.month": "string";
+      "customers.created_at.month_num": "number";
+      "customers.created_at.week": "string";
+      "customers.created_at.week_num": "number";
+      "customers.created_at.day_of_month": "number";
+      "customers.created_at.hour_of_day": "number";
+      "customers.created_at.minute": "string";
+      "customers.updated_at": "datetime";
+      "customers.updated_at.date": "date";
+      "customers.updated_at.time": "time";
+      "customers.updated_at.hour": "string";
+      "customers.updated_at.year": "number";
+      "customers.updated_at.quarter": "string";
+      "customers.updated_at.quarter_of_year": "number";
+      "customers.updated_at.month": "string";
+      "customers.updated_at.month_num": "number";
+      "customers.updated_at.week": "string";
+      "customers.updated_at.week_num": "number";
+      "customers.updated_at.day_of_month": "number";
+      "customers.updated_at.hour_of_day": "number";
+      "customers.updated_at.minute": "string";
     }>();
 
     expectTypeOf<GetRepositoryMetrics<Repository>>().branded.toEqualTypeOf<{
       "customers.count": "number";
+      "customers.private_metric": "number";
     }>();
 
+    expectTypeOf<GetRepositoryPrivateMembers<Repository>>().toEqualTypeOf<
+      | "customers.private_dimension"
+      | "customers.private_metric"
+      | "customers.updated_at"
+      | "customers.updated_at.date"
+      | "customers.updated_at.time"
+      | "customers.updated_at.hour"
+      | "customers.updated_at.year"
+      | "customers.updated_at.quarter"
+      | "customers.updated_at.quarter_of_year"
+      | "customers.updated_at.month"
+      | "customers.updated_at.month_num"
+      | "customers.updated_at.week"
+      | "customers.updated_at.week_num"
+      | "customers.updated_at.day_of_month"
+      | "customers.updated_at.hour_of_day"
+      | "customers.updated_at.minute"
+    >();
+
     expectTypeOf<GetRepositoryHierarchies<Repository>>().toEqualTypeOf<
-      "customers.customerHierarchy1" | "customers.customerHierarchy2"
+      | "customers.customerHierarchy1"
+      | "customers.customerHierarchy2"
+      | "customers.created_at"
+      | "repositoryHierarchy1"
+      | "repositoryHierarchy2"
     >();
   });
 
@@ -542,12 +1153,43 @@ describe("repository", () => {
       type: "string";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"string"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -562,12 +1204,43 @@ describe("repository", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -582,12 +1255,43 @@ describe("repository", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -602,12 +1306,43 @@ describe("repository", () => {
       type: "date";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"date"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -622,12 +1357,43 @@ describe("repository", () => {
       type: "datetime";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"datetime"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -642,12 +1408,43 @@ describe("repository", () => {
       type: "time";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"time"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedDimensionSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute"
       >;
     }>();
 
@@ -697,13 +1494,44 @@ describe("repository", () => {
       type: "string";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"string"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -718,13 +1546,44 @@ describe("repository", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -739,13 +1598,44 @@ describe("repository", () => {
       type: "number";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"number"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -757,13 +1647,44 @@ describe("repository", () => {
       type: "date";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"date"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -778,13 +1699,44 @@ describe("repository", () => {
       type: "datetime";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"datetime"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -796,13 +1748,44 @@ describe("repository", () => {
       type: "time";
       description?: string | undefined;
       format?: semanticLayer.MemberFormat<"time"> | undefined;
+      private?: boolean | undefined;
       sql: semanticLayer.CalculatedMetricSqlFn<
         {
           foo: string;
         },
         "customers",
-        "customers.customer_id" | "customers.first_name",
-        "customers.count"
+        | "customers.customer_id"
+        | "customers.first_name"
+        | "customers.private_dimension"
+        | "customers.created_at"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
+        | "customers.updated_at"
+        | "customers.updated_at.date"
+        | "customers.updated_at.time"
+        | "customers.updated_at.hour"
+        | "customers.updated_at.year"
+        | "customers.updated_at.quarter"
+        | "customers.updated_at.quarter_of_year"
+        | "customers.updated_at.month"
+        | "customers.updated_at.month_num"
+        | "customers.updated_at.week"
+        | "customers.updated_at.week_num"
+        | "customers.updated_at.day_of_month"
+        | "customers.updated_at.hour_of_day"
+        | "customers.updated_at.minute",
+        "customers.count" | "customers.private_metric"
       >;
     }>();
 
@@ -855,15 +1838,59 @@ describe("repository", () => {
           ): semanticLayer.HierarchyElementInit<{
             "customers.customer_id": "number";
             "customers.first_name": "string";
+            "customers.created_at": "datetime";
+            "customers.created_at.date": "date";
+            "customers.created_at.time": "time";
+            "customers.created_at.hour": "string";
+            "customers.created_at.year": "number";
+            "customers.created_at.quarter": "string";
+            "customers.created_at.quarter_of_year": "number";
+            "customers.created_at.month": "string";
+            "customers.created_at.month_num": "number";
+            "customers.created_at.week": "string";
+            "customers.created_at.week_num": "number";
+            "customers.created_at.day_of_month": "number";
+            "customers.created_at.hour_of_day": "number";
+            "customers.created_at.minute": "string";
           }>;
           fromDimension<
-            DN extends "customers.customer_id" | "customers.first_name",
+            DN extends
+              | "customers.customer_id"
+              | "customers.first_name"
+              | "customers.created_at"
+              | "customers.created_at.date"
+              | "customers.created_at.time"
+              | "customers.created_at.hour"
+              | "customers.created_at.year"
+              | "customers.created_at.quarter"
+              | "customers.created_at.quarter_of_year"
+              | "customers.created_at.month"
+              | "customers.created_at.month_num"
+              | "customers.created_at.week"
+              | "customers.created_at.week_num"
+              | "customers.created_at.day_of_month"
+              | "customers.created_at.hour_of_day"
+              | "customers.created_at.minute",
           >(
             name: DN,
           ): semanticLayer.HierarchyElement<
             {
               "customers.customer_id": "number";
               "customers.first_name": "string";
+              "customers.created_at": "datetime";
+              "customers.created_at.date": "date";
+              "customers.created_at.time": "time";
+              "customers.created_at.hour": "string";
+              "customers.created_at.year": "number";
+              "customers.created_at.quarter": "string";
+              "customers.created_at.quarter_of_year": "number";
+              "customers.created_at.month": "string";
+              "customers.created_at.month_num": "number";
+              "customers.created_at.week": "string";
+              "customers.created_at.week_num": "number";
+              "customers.created_at.day_of_month": "number";
+              "customers.created_at.hour_of_day": "number";
+              "customers.created_at.minute": "string";
             },
             DN
           >;
@@ -890,15 +1917,59 @@ describe("repository", () => {
           ): semanticLayer.HierarchyElementInit<{
             "customers.customer_id": "number";
             "customers.first_name": "string";
+            "customers.created_at": "datetime";
+            "customers.created_at.date": "date";
+            "customers.created_at.time": "time";
+            "customers.created_at.hour": "string";
+            "customers.created_at.year": "number";
+            "customers.created_at.quarter": "string";
+            "customers.created_at.quarter_of_year": "number";
+            "customers.created_at.month": "string";
+            "customers.created_at.month_num": "number";
+            "customers.created_at.week": "string";
+            "customers.created_at.week_num": "number";
+            "customers.created_at.day_of_month": "number";
+            "customers.created_at.hour_of_day": "number";
+            "customers.created_at.minute": "string";
           }>;
           fromDimension<
-            DN extends "customers.customer_id" | "customers.first_name",
+            DN extends
+              | "customers.customer_id"
+              | "customers.first_name"
+              | "customers.created_at"
+              | "customers.created_at.date"
+              | "customers.created_at.time"
+              | "customers.created_at.hour"
+              | "customers.created_at.year"
+              | "customers.created_at.quarter"
+              | "customers.created_at.quarter_of_year"
+              | "customers.created_at.month"
+              | "customers.created_at.month_num"
+              | "customers.created_at.week"
+              | "customers.created_at.week_num"
+              | "customers.created_at.day_of_month"
+              | "customers.created_at.hour_of_day"
+              | "customers.created_at.minute",
           >(
             name: DN,
           ): semanticLayer.HierarchyElement<
             {
               "customers.customer_id": "number";
               "customers.first_name": "string";
+              "customers.created_at": "datetime";
+              "customers.created_at.date": "date";
+              "customers.created_at.time": "time";
+              "customers.created_at.hour": "string";
+              "customers.created_at.year": "number";
+              "customers.created_at.quarter": "string";
+              "customers.created_at.quarter_of_year": "number";
+              "customers.created_at.month": "string";
+              "customers.created_at.month_num": "number";
+              "customers.created_at.week": "string";
+              "customers.created_at.week_num": "number";
+              "customers.created_at.day_of_month": "number";
+              "customers.created_at.hour_of_day": "number";
+              "customers.created_at.minute": "string";
             },
             DN
           >;
@@ -917,13 +1988,43 @@ describe("query builder", () => {
     type QF = Simplify<NonNullable<Q["filters"]>[number]>;
 
     expectTypeOf<Q["members"][number]>().toEqualTypeOf<
-      "customers.customer_id" | "customers.first_name" | "customers.count"
+      | "customers.created_at"
+      | "customers.customer_id"
+      | "customers.first_name"
+      | "customers.created_at.date"
+      | "customers.created_at.time"
+      | "customers.created_at.hour"
+      | "customers.created_at.year"
+      | "customers.created_at.quarter"
+      | "customers.created_at.quarter_of_year"
+      | "customers.created_at.month"
+      | "customers.created_at.month_num"
+      | "customers.created_at.week"
+      | "customers.created_at.week_num"
+      | "customers.created_at.day_of_month"
+      | "customers.created_at.hour_of_day"
+      | "customers.created_at.minute"
+      | "customers.count"
     >();
 
     expectTypeOf<NonNullable<Q["order"]>[number]>().toEqualTypeOf<{
       member:
+        | "customers.created_at"
         | "customers.customer_id"
         | "customers.first_name"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
         | "customers.count";
       direction: "asc" | "desc";
     }>();
@@ -931,8 +2032,22 @@ describe("query builder", () => {
     expectTypeOf<Extract<QF, { operator: "equals" }>>().toEqualTypeOf<{
       operator: "equals";
       member:
+        | "customers.created_at"
         | "customers.customer_id"
         | "customers.first_name"
+        | "customers.created_at.date"
+        | "customers.created_at.time"
+        | "customers.created_at.hour"
+        | "customers.created_at.year"
+        | "customers.created_at.quarter"
+        | "customers.created_at.quarter_of_year"
+        | "customers.created_at.month"
+        | "customers.created_at.month_num"
+        | "customers.created_at.week"
+        | "customers.created_at.week_num"
+        | "customers.created_at.day_of_month"
+        | "customers.created_at.hour_of_day"
+        | "customers.created_at.minute"
         | "customers.count";
       value: (string | number | bigint | boolean | Date)[];
     }>();
