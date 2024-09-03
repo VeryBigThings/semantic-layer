@@ -327,32 +327,50 @@ export function model<C = undefined>() {
   };
 }
 
-export type GetModelContext<T> = T extends Model<infer C, any, any, any, any>
-  ? C
+export type GetModelContext<T> = T extends Model<
+  infer TModelContext,
+  any,
+  any,
+  any,
+  any
+>
+  ? TModelContext
   : never;
 
-export type GetModelName<T> = T extends Model<any, infer N, any, any, any>
-  ? N
+export type GetModelName<T> = T extends Model<
+  any,
+  infer TModelName,
+  any,
+  any,
+  any
+>
+  ? TModelName
   : never;
 
 export type GetModelDimensions<T> = T extends Model<
   any,
-  infer N,
-  infer D,
+  infer TModelName,
+  infer TModelDimensions,
   any,
   any
 >
-  ? { [K in string & keyof D as `${N}.${K}`]: D[K] }
+  ? {
+      [K in string &
+        keyof TModelDimensions as `${TModelName}.${K}`]: TModelDimensions[K];
+    }
   : never;
 
 export type GetModelMetrics<T> = T extends Model<
   any,
-  infer N,
+  infer TModelName,
   any,
-  infer M,
+  infer TModelMetrics,
   any
 >
-  ? { [K in string & keyof M as `${N}.${K}`]: M[K] }
+  ? {
+      [K in string &
+        keyof TModelMetrics as `${TModelName}.${K}`]: TModelMetrics[K];
+    }
   : never;
 
 export type GetModelHierarchies<T> = T extends Model<
@@ -360,7 +378,7 @@ export type GetModelHierarchies<T> = T extends Model<
   any,
   any,
   any,
-  infer G
+  infer THierarchies
 >
-  ? G
+  ? THierarchies
   : never;

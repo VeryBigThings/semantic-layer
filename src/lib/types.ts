@@ -331,10 +331,6 @@ export type QueryMetricName<T> = Extract<
   string
 >;
 
-export type QueryAdHocMetricType<N extends string> = {
-  [K in N as Replace<K, ".", "___", { all: true }>]: unknown;
-};
-
 export type IntrospectionResult = Record<
   string,
   {
