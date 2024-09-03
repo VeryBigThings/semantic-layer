@@ -23,6 +23,7 @@ import {
   GetModelHierarchies,
   GetModelMetrics,
   GetModelName,
+  GetModelPrivateMembers,
 } from "./model.js";
 
 import {
@@ -59,6 +60,7 @@ export class Repository<
   TModelNames extends string = never,
   TDimensions extends MemberNameToType = MemberNameToType,
   TMetrics extends MemberNameToType = MemberNameToType,
+  TPrivateMembers extends string = never,
   TFilters = GetFilterFragmentBuilderRegistryPayload<
     ReturnType<typeof defaultFilterFragmentBuilderRegistry>
   >,
@@ -107,6 +109,7 @@ export class Repository<
       TModelNames | GetModelName<T>,
       TDimensions & GetModelDimensions<T>,
       TMetrics & GetModelMetrics<T>,
+      TPrivateMembers | GetModelPrivateMembers<T>,
       TFilters,
       THierarchies | `${GetModelName<T>}.${GetModelHierarchies<T>}`
     >;
@@ -134,6 +137,7 @@ export class Repository<
         [k in TCalculatedDimensionName]: TCalculatedDimensionProps["type"];
       },
       TMetrics,
+      TPrivateMembers,
       TFilters,
       THierarchies
     >;
@@ -162,6 +166,7 @@ export class Repository<
       TMetrics & {
         [k in TCalculatedMetricName]: TCalculatedMetricProps["type"];
       },
+      TPrivateMembers,
       TFilters,
       THierarchies
     >;
@@ -184,36 +189,42 @@ export class Repository<
     }
     return this;
   }
-  withCategoricalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, THierarchies>,
+  withCategoricalHierarchy<THierarchyName extends string>(
+    hierarchyName: Exclude<THierarchyName, THierarchies>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<TDimensions>>;
+      element: ReturnType<
+        typeof makeHierarchyElementInitMaker<Omit<TDimensions, TPrivateMembers>>
+      >;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Repository<
     TContext,
     TModelNames,
     TDimensions,
     TMetrics,
+    TPrivateMembers,
     TFilters,
-    THierarchies | GN
+    THierarchies | THierarchyName
   > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
     });
     return this.unsafeWithHierarchy(hierarchyName, elements, "categorical");
   }
-  withTemporalHierarchy<GN extends string>(
-    hierarchyName: Exclude<GN, THierarchies>,
+  withTemporalHierarchy<THierarchyName extends string>(
+    hierarchyName: Exclude<THierarchyName, THierarchies>,
     builder: (args: {
-      element: ReturnType<typeof makeHierarchyElementInitMaker<TDimensions>>;
+      element: ReturnType<
+        typeof makeHierarchyElementInitMaker<Omit<TDimensions, TPrivateMembers>>
+      >;
     }) => [AnyHierarchyElement, ...AnyHierarchyElement[]],
   ): Repository<
     TContext,
     TModelNames,
     TDimensions,
     TMetrics,
+    TPrivateMembers,
     TFilters,
-    THierarchies | GN
+    THierarchies | THierarchyName
   > {
     const elements = builder({
       element: makeHierarchyElementInitMaker(),
@@ -230,6 +241,7 @@ export class Repository<
       TModelNames,
       TDimensions,
       TMetrics,
+      TPrivateMembers,
       GetFilterFragmentBuilderRegistryPayload<T>,
       THierarchies
     >;
@@ -447,8 +459,9 @@ export class Repository<
     const dialect = AvailableDialects[dialectName];
     return new QueryBuilder<
       TContext,
-      TDimensions,
-      TMetrics,
+      Omit<TDimensions, TPrivateMembers>,
+      Omit<TMetrics, TPrivateMembers>,
+      Exclude<string & (keyof TDimensions | keyof TMetrics), TPrivateMembers>,
       TFilters,
       P,
       THierarchies

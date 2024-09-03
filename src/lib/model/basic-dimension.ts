@@ -91,6 +91,9 @@ export class BasicDimension extends Dimension {
   getFormat() {
     return this.props.format;
   }
+  isPrivate() {
+    return !!this.props.private;
+  }
   clone(model: AnyModel) {
     return new BasicDimension(model, this.name, { ...this.props });
   }

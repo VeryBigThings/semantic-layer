@@ -15,6 +15,7 @@ export type * from "./member.js";
 export type * from "./model/member.js";
 export * from "./query-builder/query-plan/query-context.js";
 export type * from "./query-builder/query-plan/query-member.js";
+export type * from "./query-builder/query-plan.js";
 export type * from "./repository/member.js";
 
 import * as helpers from "./helpers.js";

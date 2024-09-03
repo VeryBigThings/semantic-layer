@@ -10,6 +10,8 @@ export abstract class Member {
   abstract isMetric(): this is Metric;
   abstract isDimension(): this is Dimension;
 
+  abstract isPrivate(): boolean;
+
   abstract getAlias(): string;
   abstract getPath(): string;
   abstract getDescription(): string | undefined;

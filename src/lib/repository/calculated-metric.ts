@@ -113,7 +113,9 @@ export class CalculatedMetric extends Metric {
   getFormat() {
     return this.props.format;
   }
-
+  isPrivate() {
+    return !!this.props.private;
+  }
   getQueryMember(
     queryContext: QueryContext,
     repository: AnyRepository,
@@ -159,7 +161,7 @@ export class CalculatedMetricQueryMember extends MetricQueryMember {
     let refAliasCounter = 0;
     const models = this.repository.getModels();
     const getNextRefAlias = () =>
-      `${this.member.getAlias()}___metric_ref_${refAliasCounter++}`;
+      `${this.member.getAlias()}___mr_${refAliasCounter++}`;
 
     return this.member.props.sql({
       identifier: (name: string) => new IdentifierRef(name),

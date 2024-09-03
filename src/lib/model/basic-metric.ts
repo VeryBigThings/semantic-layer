@@ -74,6 +74,9 @@ export class BasicMetric extends Metric {
   getFormat() {
     return this.props.format;
   }
+  isPrivate() {
+    return !!this.props.private;
+  }
   clone(model: AnyModel) {
     return new BasicMetric(model, this.name, { ...this.props });
   }
@@ -122,7 +125,7 @@ export class BasicMetricQueryMember extends MetricQueryMember {
   private callSqlFn(): SqlFn {
     let refAliasCounter = 0;
     const getNextRefAlias = () =>
-      `${this.member.name}___metric_ref_${refAliasCounter++}`;
+      `${this.member.model.name}___${this.member.name}___mr_${refAliasCounter++}`;
 
     return this.member.props.sql({
       identifier: (name: string) => new IdentifierRef(name),

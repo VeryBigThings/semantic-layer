@@ -84,6 +84,9 @@ export class CalculatedDimension extends Dimension {
   getFormat() {
     return this.props.format;
   }
+  isPrivate() {
+    return !!this.props.private;
+  }
   isPrimaryKey() {
     return false;
   }

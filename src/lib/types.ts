@@ -265,6 +265,7 @@ export type MemberProps<
 > = {
   [K in MemberType]: {
     type: K;
+    private?: boolean;
     description?: string;
     format?: MemberFormat<K>;
   } & TSharedAdditionalProps &
@@ -336,11 +337,13 @@ export type IntrospectionResult = Record<
   {
     memberType: "dimension" | "metric";
     path: string;
+    alias: string;
     format?: AnyMemberFormat | undefined;
     type: MemberType | "unknown";
     description?: string | undefined;
     isPrimaryKey: boolean;
     isGranularity: boolean;
+    isPrivate: boolean;
   }
 >;
 
