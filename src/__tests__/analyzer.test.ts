@@ -710,6 +710,25 @@ it("can generate queries for a hierarchy", () => {
       "tracks.track_id",
       "invoices.total",
     ],
+    originalQuery: {
+      members: [
+        "artists.name",
+        "albums.title",
+        "tracks.track_id",
+        "customers.full_name",
+        "customers.email",
+        "customers.phone",
+        "invoices.invoice_date",
+        "invoices.total",
+      ],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
+    totalsQuery: {
+      members: ["invoices.total"],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
     queriesInfo: [
       {
         element: {
@@ -900,6 +919,25 @@ it("can generate queries for a hierarchy", () => {
       "invoices.invoice_date",
       "invoices.total",
     ],
+    originalQuery: {
+      members: [
+        "artists.name",
+        "albums.title",
+        "tracks.track_id",
+        "customers.full_name",
+        "customers.email",
+        "customers.phone",
+        "invoices.invoice_date",
+        "invoices.total",
+      ],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
+    totalsQuery: {
+      members: ["invoices.total"],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
     queriesInfo: [
       {
         element: {
@@ -1056,6 +1094,22 @@ it("can generate queries for a hierarchy that wasn't present in the original que
       "invoices.invoice_date",
       "invoices.total",
     ],
+    originalQuery: {
+      members: [
+        "artists.name",
+        "albums.title",
+        "tracks.track_id",
+        "invoices.invoice_date",
+        "invoices.total",
+      ],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
+    totalsQuery: {
+      members: ["invoices.total"],
+      filters: [{ operator: "equals", member: "genres.name", value: ["Rock"] }],
+      order: [{ member: "artists.name", direction: "asc" }],
+    },
     queriesInfo: [
       {
         element: {

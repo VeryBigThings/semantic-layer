@@ -186,7 +186,14 @@ export function analyzeQueryHierarchy(
       ...queriesForHierarchy.restDimensions,
       ...analysis.metrics,
     ],
-    // Repeat the last query because we will add all the rest dimensions to it
+    originalQuery: {
+      ...analysis.query,
+    },
+    totalsQuery: {
+      ...analysis.query,
+      members: [...analysis.metrics],
+    },
+    // Repeat the last query because we will add all the rest dimensions to it (this will be the "expanded" level)
     queriesInfo: [
       ...queriesForHierarchy.queriesInfo,
       queriesForHierarchy.queriesInfo[
@@ -200,6 +207,9 @@ export function analyzeQueryHierarchy(
         })),
         ...(analysis.query.order ?? []),
       ];
+      // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
+      const isExpandedLevel = idx === queriesForHierarchy.queriesInfo.length;
+
       return {
         element: queryInfo.element,
         keyDimensions: [
@@ -215,10 +225,7 @@ export function analyzeQueryHierarchy(
               ...queryInfo.formatDimensions,
               ...queryInfo.prevLevelsExtraDimensions,
               ...queryInfo.extraDimensions,
-              // We check for the length instead of length - 1 because we've duplicated the last query to add all the rest dimensions so the length of the array we're iterating over is one element longer thant the queriesForHierarchy.queriesInfo.length
-              ...(idx === queriesForHierarchy.queriesInfo.length
-                ? queriesForHierarchy.restDimensions
-                : []),
+              ...(isExpandedLevel ? queriesForHierarchy.restDimensions : []),
               ...analysis.metrics,
             ]),
           ],
