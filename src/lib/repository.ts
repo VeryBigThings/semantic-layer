@@ -55,6 +55,22 @@ export type ModelWithMatchingContext<C, T extends AnyModel> = [C] extends [
 
 export type AnyRepository = Repository<any, any, any, any, any, any>;
 
+function isRepositoryProperlyConnected(
+  modelNames: string[],
+  components: string[][],
+) {
+  if (modelNames.length === 1) {
+    return true;
+  }
+
+  if (components.length === 1) {
+    const firstComponent = components[0]!;
+    return firstComponent.length === modelNames.length;
+  }
+
+  return false;
+}
+
 export class Repository<
   TContext,
   TModelNames extends string = never,
@@ -456,6 +472,16 @@ export class Repository<
   build<N extends AvailableDialectsNames, P = DialectParamsReturnType<N>>(
     dialectName: N,
   ) {
+    const repositoryGraphComponents = graphlib.alg.components(this.graph);
+
+    invariant(
+      isRepositoryProperlyConnected(
+        Object.keys(this.models),
+        repositoryGraphComponents,
+      ),
+      "All models in a repository must be connected.",
+    );
+
     const dialect = AvailableDialects[dialectName];
     return new QueryBuilder<
       TContext,
