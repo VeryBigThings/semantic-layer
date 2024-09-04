@@ -1,5 +1,11 @@
 import { Replace, Simplify } from "type-fest";
 import { HierarchyElement, HierarchyElementConfig } from "./hierarchy.js";
+import {
+  AnyQueryBuilder,
+  GetQueryBuilderDimensions,
+  GetQueryBuilderMetrics,
+  QueryBuilderQuery,
+} from "./query-builder.js";
 import { exhaustiveCheck } from "./util.js";
 
 export interface AndConnective<F = never> {
@@ -325,6 +331,35 @@ export type InferSqlQueryResultType<
         >
       >
   : never;
+
+export type InferSqlQueryResultTypeFromQuery<
+  TQueryBuilder extends AnyQueryBuilder,
+  TQuery extends QueryBuilderQuery<TQueryBuilder>,
+  TOverrides extends Record<string, unknown> = never,
+> = [TOverrides] extends [never]
+  ? QueryReturnType<
+      GetQueryBuilderDimensions<TQueryBuilder> &
+        GetQueryBuilderMetrics<TQueryBuilder>,
+      TQuery["members"][number] &
+        (
+          | keyof GetQueryBuilderDimensions<TQueryBuilder>
+          | keyof GetQueryBuilderMetrics<TQueryBuilder>
+        )
+    >
+  : Simplify<
+      MergeInferredSqlQueryResultTypeWithOverrides<
+        QueryReturnType<
+          GetQueryBuilderDimensions<TQueryBuilder> &
+            GetQueryBuilderMetrics<TQueryBuilder>,
+          TQuery["members"][number] &
+            (
+              | keyof GetQueryBuilderDimensions<TQueryBuilder>
+              | keyof GetQueryBuilderMetrics<TQueryBuilder>
+            )
+        >,
+        ProcessTOverridesNames<TOverrides>
+      >
+    >;
 
 export type QueryMemberName<T extends unknown[]> = T[number] & string;
 export type QueryMetricName<T> = Extract<
