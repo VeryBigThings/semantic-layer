@@ -192,6 +192,56 @@ export class QueryBuilder<
     return result;
   }
 
+  unsafeBuildCountQuery(payload: unknown, context: unknown) {
+    const parsedQuery: AnyInputQuery = this.querySchema.parse(payload);
+    const queryContext = new QueryContext(
+      this.repository,
+      this.dialect,
+      context,
+    );
+    const queryPlan = this.getQueryPlan(queryContext, context, parsedQuery);
+    const { sql, bindings } = buildQuery(this, queryContext, context, queryPlan)
+      .toCountQuery()
+      .toNative();
+    return {
+      sql: sql,
+      bindings: bindings as TDialectParamsReturnType,
+    };
+  }
+
+  buildCountQuery<const Q extends { members: string[] }>(
+    query: Q &
+      InputQuery<
+        string & keyof TDimensions,
+        string & keyof TMetrics,
+        TFilters & { member: string & TMemberNames }
+      >,
+    ...rest: TContext extends undefined ? [] : [TContext]
+  ) {
+    const [context] = rest;
+    const {
+      limit: _limit,
+      offset: _offset,
+      order: _order,
+      ...queryWithoutLimitAndOffset
+    } = query;
+
+    const { sql, bindings } = this.unsafeBuildCountQuery(
+      queryWithoutLimitAndOffset,
+      context,
+    );
+
+    const result: SqlQueryResult<
+      { count: string | number | bigint },
+      TDialectParamsReturnType
+    > = {
+      sql,
+      bindings: bindings as TDialectParamsReturnType,
+    };
+
+    return result;
+  }
+
   getFilterBuilder(queryContext: QueryContext): FilterBuilder {
     return this.repository
       .getFilterFragmentBuilderRegistry()

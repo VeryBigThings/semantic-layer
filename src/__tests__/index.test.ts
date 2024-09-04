@@ -499,6 +499,28 @@ describe("semantic layer", async () => {
       );
     });
 
+    it("can query for the result count", async () => {
+      const query = queryBuilder.buildCountQuery({
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
+        limit: 10,
+        filters: [
+          {
+            operator: "lt",
+            member: "invoice_lines.unit_price",
+            value: [38],
+          },
+        ],
+      });
+
+      const result = await client.query<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result.rows, [{ count: "31" }]);
+    });
+
     it("can query one dimension and metric and filter by a different metric", async () => {
       const query = queryBuilder.buildQuery({
         members: ["customers.customer_id", "invoices.total"],
@@ -3158,7 +3180,8 @@ describe("semantic layer", async () => {
         members: ["customers.customer_id", "customers.count"],
       });
 
-      // @ts-expect-error - We expect the validation to fail
+      // @ts-expect-error - We expect the validation to fail so no need to check
+      // if the error exists
       assert.deepEqual(validationResult.error.issues, [
         { code: "custom", message: "Member not found", path: ["members", 0] },
         { code: "custom", message: "Member not found", path: ["members", 1] },

@@ -109,7 +109,7 @@ const invoicesModel = semanticLayer
   .withMetric("total", {
     type: "number",
     description: "Invoice total.",
-    sql: ({ model, sql }) => sql`SUM(COALESCE, ${model.column("Total")}, 0))`,
+    sql: ({ model, sql }) => sql`SUM(COALESCE(${model.column("Total")}, 0))`,
   });
 
 const invoiceLinesModel = semanticLayer
@@ -617,5 +617,27 @@ describe("mssql dialect", () => {
         },
       ]);
     });
+  });
+
+  it("can query for the result count", async () => {
+    const query = queryBuilder.buildCountQuery({
+      members: ["customers.customer_id", "invoices.total"],
+      order: [{ member: "customers.customer_id", direction: "asc" }],
+      limit: 10,
+      filters: [
+        {
+          operator: "lt",
+          member: "invoice_lines.unit_price",
+          value: [38],
+        },
+      ],
+    });
+
+    const result = await runQuery<InferSqlQueryResultType<typeof query>>(
+      query.sql,
+      query.bindings,
+    );
+
+    assert.deepEqual(result, [{ count: 31 }]);
   });
 });
