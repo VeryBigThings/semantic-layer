@@ -39,6 +39,12 @@ export class SqlQueryBuilder {
     public readonly from: From,
   ) {}
 
+  clone() {
+    const sqlQuery = new SqlQueryBuilder(this.dialect, this.from);
+    sqlQuery.query = { ...this.query };
+    return sqlQuery;
+  }
+
   distinct() {
     this.query = { ...this.query, distinct: true };
     return this;
@@ -121,6 +127,15 @@ export class SqlQueryBuilder {
 
   toSQL(): SqlQuery {
     return toSQL(this);
+  }
+
+  toCountQuery(): SqlQuery {
+    const cloned = this.clone().as("q");
+    // MSSql doesn't support ORDER BY in sub queries if there is no TOP / OFFSET clause set
+    cloned.query.orderBy = [];
+    const sqlQuery = new SqlQueryBuilder(this.dialect, cloned);
+    sqlQuery.select(SqlFragment.fromSql("count(1) as count"));
+    return sqlQuery.toSQL();
   }
 }
 
