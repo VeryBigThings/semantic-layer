@@ -617,27 +617,27 @@ describe("mssql dialect", () => {
         },
       ]);
     });
-  });
 
-  it("can query for the result count", async () => {
-    const query = queryBuilder.buildCountQuery({
-      members: ["customers.customer_id", "invoices.total"],
-      order: [{ member: "customers.customer_id", direction: "asc" }],
-      limit: 10,
-      filters: [
-        {
-          operator: "lt",
-          member: "invoice_lines.unit_price",
-          value: [38],
-        },
-      ],
+    it("can query for the result count", async () => {
+      const query = queryBuilder.buildCountQuery({
+        members: ["customers.customer_id", "invoices.total"],
+        order: [{ member: "customers.customer_id", direction: "asc" }],
+        limit: 10,
+        filters: [
+          {
+            operator: "lt",
+            member: "invoice_lines.unit_price",
+            value: [38],
+          },
+        ],
+      });
+
+      const result = await runQuery<InferSqlQueryResultType<typeof query>>(
+        query.sql,
+        query.bindings,
+      );
+
+      assert.deepEqual(result, [{ count: 31 }]);
     });
-
-    const result = await runQuery<InferSqlQueryResultType<typeof query>>(
-      query.sql,
-      query.bindings,
-    );
-
-    assert.deepEqual(result, [{ count: 31 }]);
   });
 });

@@ -289,4 +289,27 @@ export type QueryBuilderQuery<Q> = Q extends QueryBuilder<
     >
   : never;
 
+export type GetQueryBuilderMetrics<Q> = Q extends QueryBuilder<
+  any,
+  any,
+  infer TMetrics,
+  any,
+  any,
+  any,
+  any
+>
+  ? TMetrics
+  : never;
+export type GetQueryBuilderDimensions<Q> = Q extends QueryBuilder<
+  any,
+  infer TDimensions,
+  any,
+  any,
+  any,
+  any,
+  any
+>
+  ? TDimensions
+  : never;
+
 export type AnyQueryBuilder = QueryBuilder<any, any, any, any, any, any, any>;

@@ -84,6 +84,49 @@ const repository = semanticLayer
 
 const queryBuilder = repository.build("postgresql");
 
+it("can infer result type from query object", () => {
+  const query = {
+    members: ["customers.customer_id", "customers.first_name"],
+    order: [{ member: "customers.customer_id", direction: "asc" }],
+    filters: [
+      { operator: "equals", member: "customers.customer_id", value: [1] },
+    ],
+    limit: 10,
+  } satisfies semanticLayer.QueryBuilderQuery<typeof queryBuilder>;
+
+  expectTypeOf<
+    semanticLayer.InferSqlQueryResultTypeFromQuery<
+      typeof queryBuilder,
+      typeof query
+    >
+  >().toEqualTypeOf<{
+    customers___customer_id: number;
+    customers___first_name: string;
+  }>();
+
+  expectTypeOf<
+    semanticLayer.InferSqlQueryResultTypeFromQuery<
+      typeof queryBuilder,
+      typeof query,
+      { "customers.customer_id": boolean }
+    >
+  >().toEqualTypeOf<{
+    customers___customer_id: boolean;
+    customers___first_name: string;
+  }>();
+
+  expectTypeOf<
+    semanticLayer.InferSqlQueryResultTypeFromQuery<
+      typeof queryBuilder,
+      typeof query,
+      { customers___customer_id: boolean }
+    >
+  >().toEqualTypeOf<{
+    customers___customer_id: boolean;
+    customers___first_name: string;
+  }>();
+});
+
 describe("model", () => {
   type CustomersModel = typeof customersModel;
   type ModelWithDimension = typeof customersModel.withDimension;
