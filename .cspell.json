@@ -13,6 +13,7 @@
     "Carnaval",
     "chrono",
     "Cidade",
+    "clsx",
     "Creedence",
     "dagrejs",
     "DATEPART",
@@ -56,6 +57,7 @@
     "Sucesso",
     "testcontainers",
     "tsdoc",
+    "typeof",
     "verybigthings"
   ],
   "flagWords": [],

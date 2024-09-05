@@ -1,8 +1,7 @@
-# @verybigthings/semantic-layer
-
-![NPM](https://img.shields.io/npm/l/@verybigthings/semantic-layer)
-![NPM](https://img.shields.io/npm/v/@verybigthings/semantic-layer)
-![GitHub Workflow Status](https://github.com/verybigthings/semantic-layer/actions/workflows/semantic-layer.yml/badge.svg?branch=main)
+---
+sidebar_position: 1
+slug: /
+---
 
 # Quick Start Guide
 
@@ -10,9 +9,9 @@ Welcome to the semantic layer library! Let's dive in and create a simple data mo
 
 ## Installation
 
-First, let's get the library installed (use npm or a package manager of your choice):
+First, let's get the library installed:
 
-```bash
+```bash npm2yarn
 npm install @verybigthings/semantic-layer
 ```
 
@@ -120,9 +119,3 @@ const result = await pg.query(query.sql, query.bindings);
 ```
 
 And there you have it! You've just set up a semantic layer for your music store data. This layer will make it easy to analyze customer purchases without writing complex SQL queries each time.
-
-Read the [documentation](https://verybigthings.github.io/semantic-layer/) for more information.
-
-## Acknowledgments
-
-`@verybigthings/semantic-layer` draws inspiration from several BI libraries, particularly [Cube.dev](https://cube.dev). While our API was initially inspired by Cube.dev, it has since diverged based on our own needs and preferences.

@@ -6,7 +6,8 @@
       "node_modules",
       "coverage",
       "vitest.config.ts",
-      "scripts/build.ts"
+      "scripts/build.ts",
+      "docs"
     ]
   },
   "formatter": {
